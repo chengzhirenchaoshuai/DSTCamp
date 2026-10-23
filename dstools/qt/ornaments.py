@@ -157,18 +157,23 @@ def _move_together(moves: list[tuple[QWidget, QPoint]]) -> None:
 class _SpriteWindow(QWidget):
     """承载一张精灵的透明小窗：Tool 窗口归主窗口所有，叠在主窗口上，不进任务栏，鼠标穿透。"""
 
-    def __init__(self, owner: QWidget):
+    def __init__(self, owner: QWidget, on_painted: Callable[[], None]):
         super().__init__(owner, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
                          | Qt.WindowType.WindowTransparentForInput | Qt.WindowType.NoDropShadowWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.sprite: Sprite | None = None
+        self.painted = False  # 本次显示后是否已画过一帧
+        self._on_painted = on_painted
 
     def paintEvent(self, _event) -> None:
         if self.sprite is not None:
             painter = QPainter(self)
             painter.drawPixmap(0, 0, _pixmap(self.sprite, self.devicePixelRatioF()))
+        if not self.painted:
+            self.painted = True
+            QTimer.singleShot(0, self._on_painted)  # 下一轮这一帧已推到屏幕上
 
 
 class WindowOrnaments(QObject):
@@ -181,10 +186,12 @@ class WindowOrnaments(QObject):
         self._is_maximized = is_maximized
         self._enabled = enabled
         self._windows: list[_SpriteWindow] = []
-        # 主窗口从隐藏变为显示后，等它第一次绘制完再露出小窗；小窗画得快，否则会先于主窗口出现
+        # 主窗口从隐藏变为显示时，小窗先以全透明显示并画好，等主窗口和小窗都画完一帧再改为不透明。
+        # 透明小窗改透明度不用重画，与主窗口几乎同帧出现；直接显示则小窗画得快，会先于主窗口出现
         self._awaiting_paint = False
+        self._main_painted = False
         self._reveal_fallback = QTimer(self, singleShot=True, interval=500)
-        self._reveal_fallback.timeout.connect(self._reveal)
+        self._reveal_fallback.timeout.connect(lambda: self._reveal(force=True))
         if enabled:
             window.installEventFilter(self)  # 关闭时不装，主窗口事件不经过这里
         theme.changed.connect(self._on_theme_changed)
@@ -226,7 +233,7 @@ class WindowOrnaments(QObject):
         if not sprites:
             return
         window = self._window
-        if not window.isVisible() or window.isMinimized() or self._is_maximized() or self._awaiting_paint:
+        if not window.isVisible() or window.isMinimized() or self._is_maximized():
             for sprite_window in self._windows:
                 sprite_window.hide()
             return
@@ -235,7 +242,8 @@ class WindowOrnaments(QObject):
             handle = window.windowHandle()
             geometry = handle.geometry() if handle is not None else window.geometry()
         while len(self._windows) < len(sprites):
-            self._windows.append(_SpriteWindow(window))
+            self._windows.append(_SpriteWindow(window, self._reveal))
+        opacity = 0.0 if self._awaiting_paint else 1.0
         moves = []
         for sprite_window, sprite in zip(self._windows, sprites):
             w, h = _display_size(sprite)
@@ -245,7 +253,11 @@ class WindowOrnaments(QObject):
             if sprite_window.sprite is not sprite:
                 sprite_window.sprite = sprite
                 sprite_window.update()
+            if sprite_window.windowOpacity() != opacity:
+                sprite_window.setWindowOpacity(opacity)
             current = sprite_window.geometry()
+            if not sprite_window.isVisible():
+                sprite_window.painted = False
             if not sprite_window.isVisible() or current.size() != target.size():
                 sprite_window.setGeometry(target)
                 sprite_window.show()
@@ -257,11 +269,15 @@ class WindowOrnaments(QObject):
         _pixmaps.clear()
         self.refresh()
 
-    def _reveal(self) -> None:
+    def _reveal(self, force: bool = False) -> None:
+        """主窗口与所有小窗都画完一帧（或兜底超时）后，把小窗改为不透明。"""
+        if not self._awaiting_paint:
+            return
+        if not force and not (self._main_painted and all(w.painted for w in self._windows if w.isVisible())):
+            return
         self._reveal_fallback.stop()
-        if self._awaiting_paint:
-            self._awaiting_paint = False
-            self.refresh()
+        self._awaiting_paint = False
+        self.refresh()
 
     def eventFilter(self, obj, event) -> bool:
         if obj is not self._window:
@@ -269,10 +285,12 @@ class WindowOrnaments(QObject):
         kind = event.type()
         if kind == QEvent.Type.Show:
             self._awaiting_paint = True
-            self._reveal_fallback.start()  # 万一收不到绘制事件，也不至于一直不显示
+            self._main_painted = False
+            self._reveal_fallback.start()  # 万一收不到绘制事件，也不至于一直透明
         elif kind == QEvent.Type.Paint:
-            if self._awaiting_paint:
-                # 绘制事件在主窗口画之前到达，排到事件循环下一轮，等这一帧推到屏幕上再显示
+            if self._awaiting_paint and not self._main_painted:
+                # 绘制事件在主窗口画之前到达，排到事件循环下一轮，等这一帧推到屏幕上再判断
+                self._main_painted = True
                 QTimer.singleShot(0, self._reveal)
             return False
         elif kind == QEvent.Type.Hide:
