@@ -10,7 +10,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader, QLinearGradient, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -181,6 +181,10 @@ class WindowOrnaments(QObject):
         self._is_maximized = is_maximized
         self._enabled = enabled
         self._windows: list[_SpriteWindow] = []
+        # 主窗口从隐藏变为显示后，等它第一次绘制完再露出小窗；小窗画得快，否则会先于主窗口出现
+        self._awaiting_paint = False
+        self._reveal_fallback = QTimer(self, singleShot=True, interval=500)
+        self._reveal_fallback.timeout.connect(self._reveal)
         if enabled:
             window.installEventFilter(self)  # 关闭时不装，主窗口事件不经过这里
         theme.changed.connect(self._on_theme_changed)
@@ -222,7 +226,7 @@ class WindowOrnaments(QObject):
         if not sprites:
             return
         window = self._window
-        if not window.isVisible() or window.isMinimized() or self._is_maximized():
+        if not window.isVisible() or window.isMinimized() or self._is_maximized() or self._awaiting_paint:
             for sprite_window in self._windows:
                 sprite_window.hide()
             return
@@ -253,8 +257,28 @@ class WindowOrnaments(QObject):
         _pixmaps.clear()
         self.refresh()
 
+    def _reveal(self) -> None:
+        self._reveal_fallback.stop()
+        if self._awaiting_paint:
+            self._awaiting_paint = False
+            self.refresh()
+
     def eventFilter(self, obj, event) -> bool:
-        if obj is self._window and event.type() in (
+        if obj is not self._window:
+            return False
+        kind = event.type()
+        if kind == QEvent.Type.Show:
+            self._awaiting_paint = True
+            self._reveal_fallback.start()  # 万一收不到绘制事件，也不至于一直不显示
+        elif kind == QEvent.Type.Paint:
+            if self._awaiting_paint:
+                # 绘制事件在主窗口画之前到达，排到事件循环下一轮，等这一帧推到屏幕上再显示
+                QTimer.singleShot(0, self._reveal)
+            return False
+        elif kind == QEvent.Type.Hide:
+            self._awaiting_paint = False
+            self._reveal_fallback.stop()
+        if kind in (
             QEvent.Type.Move, QEvent.Type.Resize, QEvent.Type.Show, QEvent.Type.Hide,
             QEvent.Type.WindowStateChange,
         ):
