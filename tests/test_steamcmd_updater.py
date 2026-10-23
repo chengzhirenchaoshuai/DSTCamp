@@ -42,6 +42,13 @@ def test_steamcmd_install_layout() -> None:
         (steamcmd_root / "steamcmd.exe").write_bytes(b"")
         assert not steamcmd_updater.is_steam_library_install(
             steamcmd_root / "steamapps" / "common" / "Don't Starve Together Dedicated Server")
+        # Steam 客户端根目录也会自带 steamcmd.exe：有 steam.exe 时仍按 Steam 库处理
+        steam_client = Path(tmp) / "SteamClient"
+        steam_client.mkdir()
+        (steam_client / "steam.exe").write_bytes(b"")
+        (steam_client / "steamcmd.exe").write_bytes(b"")
+        assert steamcmd_updater.is_steam_library_install(
+            steam_client / "steamapps" / "common" / "Don't Starve Together Dedicated Server")
 
         missing = steamcmd_updater.snapshot_install(root)
         assert missing.manifest_path is None and missing.install_dir is None
@@ -52,6 +59,64 @@ def test_steamcmd_install_layout() -> None:
         assert snapshot.install_dir == root and snapshot.build_id == "100"
         assert steamcmd_updater.update_succeeded(0, snapshot)
         assert not steamcmd_updater.update_succeeded(7, snapshot)
+
+
+def _write_manifest(path: Path, *, stateflags: str = "4", updateresult: str | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        '"AppState"',
+        "{",
+        ' "appid" "343050"',
+        f' "StateFlags" "{stateflags}"',
+    ]
+    if updateresult is not None:
+        lines.append(f' "UpdateResult" "{updateresult}"')
+    lines.append("}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_clear_steamapps_if_manifest_stuck() -> None:
+    """只有 StateFlags/UpdateResult 为 6 时才删 steamapps；正常清单保留。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "dstserver"
+        steamapps = root / "steamapps"
+        acf = steamapps / "appmanifest_343050.acf"
+
+        _write_manifest(acf, stateflags="4")
+        assert steamcmd_updater.clear_steamapps_if_manifest_stuck(root) is False
+        assert acf.is_file()
+
+        _write_manifest(acf, stateflags="6")
+        assert steamcmd_updater.clear_steamapps_if_manifest_stuck(root) is True
+        assert not steamapps.exists()
+
+        _write_manifest(acf, stateflags="4", updateresult="6")
+        assert steamcmd_updater.clear_steamapps_if_manifest_stuck(root) is True
+        assert not steamapps.exists()
+
+        assert steamcmd_updater.clear_steamapps_if_manifest_stuck(root) is False
+
+
+def test_run_update_logs_when_manifest_still_stuck() -> None:
+    """全部尝试失败且清单仍为 6 时，控制台说明下次开始前才会清。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "dstserver"
+        lines: list[str] = []
+
+        def fake_run(command, on_line, cancel_event):
+            _write_manifest(root / "steamapps" / "appmanifest_343050.acf", stateflags="6")
+            return 8
+
+        with patch.object(steamcmd_updater, "_run_once", side_effect=fake_run):
+            try:
+                steamcmd_updater.run_update(
+                    Path("steamcmd.exe"), root, on_line=lines.append, attempts=1)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("expected RuntimeError")
+        assert any("0x6" in line or "StateFlags" in line or "UpdateResult" in line for line in lines)
+        assert (root / "steamapps" / "appmanifest_343050.acf").is_file()
 
 
 def test_run_update_retries_once() -> None:

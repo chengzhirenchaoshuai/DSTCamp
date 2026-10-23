@@ -156,11 +156,20 @@ def is_steam_library_install(install_dir: Path) -> bool:
     """装在 Steam 库 steamapps/common 下的由 Steam 客户端管理，其余按 SteamCMD 安装处理。
 
     坑：SteamCMD 不带 force_install_dir 时默认装到它自己的 steamapps/common 下，目录结构与 Steam 库相同，
-    以 steamapps 同级有 steamcmd.exe 区分，这种归 SteamCMD。"""
+    以 steamapps 同级有 steamcmd.exe 区分，这种归 SteamCMD。
+
+    另一坑：Steam 客户端根目录也会自带 steamcmd.exe（与 steam.exe 同级）。若只凭 steamcmd.exe 判断，
+    会把真实 Steam 库专服误判成 SteamCMD 安装，进而对库路径跑 +force_install_dir，留下嵌套的
+    install_dir/steamapps/appmanifest_*.acf，干扰版本核对。有 steam.exe 时一律按 Steam 库处理。"""
     parent = Path(install_dir).parent
     if parent.name.casefold() != "common" or parent.parent.name.casefold() != "steamapps":
         return False
-    return not (parent.parent.parent / "steamcmd.exe").is_file()
+    root = parent.parent.parent  # steamapps 的上一级
+    if (root / "steam.exe").is_file():
+        return True
+    if (root / "steamcmd.exe").is_file():
+        return False
+    return True
 
 
 def find_dedicated_server_dir() -> Path | None:
