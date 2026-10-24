@@ -1690,7 +1690,7 @@ STRINGS = {
         "local.external_lan_only_reason": "当前存档已开启“仅限局域网”，公网直连和内网穿透不可用；如需使用，请在服务器配置中关闭此设置。",
         "local.public_ip_unavailable_reason": "暂时获取不到公网 IPv4，请检查网络后重试。IPv6 不受游戏支持。",
         "local.connect_proxy_suspected": "疑似代理",
-        "local.public_ip_proxy_reason": "检测到代理软件（如 Clash、Mihomo）正以 TUN 模式接管网络，这里显示的可能是代理出口 IP，而不是你宽带的公网 IP，别人用这个代码可能连不上。\n\n请在代理软件里把 cip.cc、myip.ipip.net、cdid.c-ctrip.com 设为直连，或临时关闭 TUN 模式，再点击顶部“刷新全部”重新获取。",
+        "local.public_ip_proxy_reason": "检测到代理软件（如 Clash、Mihomo）正以 TUN 模式接管网络，这里显示的可能是代理出口 IP，而不是你宽带的公网 IP，别人用这个代码可能连不上。\n请在代理软件里把 cip.cc、myip.ipip.net、cdid.c-ctrip.com 设为直连，或临时关闭 TUN 模式，再点击顶部“刷新全部”重新获取。",
         "local.nat_frpc_not_ready_reason": "映射已建立，但 frpc 客户端未启动。",
         "local.nat_not_mapped_short": "未映射",
         # 系统托盘
@@ -3432,7 +3432,7 @@ STRINGS = {
         "local.external_lan_only_reason": "LAN Only is enabled for this save, so public direct connections and NAT traversal are unavailable. Disable it in Server Configuration to use them.",
         "local.public_ip_unavailable_reason": "Couldn't obtain a public IPv4 address. Check the network and try again. IPv6 is not supported by the game.",
         "local.connect_proxy_suspected": "Proxy?",
-        "local.public_ip_proxy_reason": "A proxy app (such as Clash or Mihomo) appears to be routing traffic in TUN mode. The address shown may be the proxy's exit IP rather than your broadband public IP, so others may not be able to connect with this code.\n\nSet cip.cc, myip.ipip.net and cdid.c-ctrip.com to DIRECT in the proxy app, or turn off TUN mode temporarily, then click \"Refresh All\" at the top to fetch it again.",
+        "local.public_ip_proxy_reason": "A proxy app (such as Clash or Mihomo) appears to be routing traffic in TUN mode. The address shown may be the proxy's exit IP rather than your broadband public IP, so others may not be able to connect with this code.\nSetcip.cc, myip.ipip.net and cdid.c-ctrip.com to DIRECT in the proxy app, or turn off TUN mode temporarily, then click \"Refresh All\" at the top to fetch it again.",
         "local.nat_frpc_not_ready_reason": "The mapping exists, but the frpc client is not running.",
         "local.nat_not_mapped_short": "Not mapped",
         # 系统托盘

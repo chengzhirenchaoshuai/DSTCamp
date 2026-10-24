@@ -3269,7 +3269,7 @@ class LocalServicePage(Page):
         if key.startswith("proxy_"):
             reason = t("local.public_ip_proxy_reason")
             if key == "proxy_nostart":
-                reason += "\n\n" + t("local.lan_not_ready_reason")
+                reason += "\n" + t("local.lan_not_ready_reason")
             self._public_row.set_status(f"● {t('local.connect_proxy_suspected')}", theme.hex("ERROR"), reason)
         elif key == "ready":
             self._public_row.set_status(f"● {t('local.connect_ready')}", theme.hex("SUCCESS"))
