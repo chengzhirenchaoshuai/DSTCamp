@@ -108,7 +108,9 @@ class NodePickerDialog(dialogs.Dialog):
         # QScrollArea.setWidget() 会把内容控件设为自动填充背景，用的是系统默认灰
         # （#efefef），盖住了弹窗的主题底色；关掉填充让主题背景透出来
         grid_widget.setAutoFillBackground(False)
-        self.body.addWidget(self.text_label(t("dlg.node_picker_hint"), muted=True))
+        hint = self.text_label(t("dlg.node_picker_hint"), size_key="FONT_SIZE_BASE")
+        hint.setStyleSheet(f"color: {theme.hex('PRIMARY_DARK')};")
+        self.body.addWidget(hint)
         self.body.addWidget(area, 1)
         cancel = dialogs.style_button(QPushButton(t("dlg.cancel_btn")), "secondary")
         cancel.clicked.connect(self.reject)
