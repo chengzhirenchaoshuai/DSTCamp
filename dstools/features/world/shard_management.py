@@ -29,6 +29,8 @@ from dstools.features.world.location_profiles import (
     CAVE_LOCATION,
     FOREST_LOCATION,
     get_location_definition,
+    IA_CORE_MOD_ID,
+    location_capability_ids,
     location_requirements_met,
     resolve_world_location_profile,
     with_required_dependencies,
@@ -447,8 +449,11 @@ def worldgate_enabled(cluster: Cluster) -> bool:
 
 def unreachable_shards(cluster: Cluster) -> list[str]:
     """只能靠万界之门进入、存档却没启用它的世界，启用了时返回空：主世界与 Caves 以外的森林和洞穴
-    （原版洞口只按这两个名字连接；海难、猪镇等 Mod 世界由提供它的 Mod 自己连通，不算在内）。"""
+    （原版洞口只按这两个名字连接；海难、猪镇等 Mod 世界由提供它的 Mod 自己连通，不算在内）。
+    岛屿冒险核心（含三合一整合版）把洞口、海洋之椅等改为按世界类型连接，不看分片名，启用时不算。"""
     if cluster.source != SaveSource.SERVER:
+        return []
+    if IA_CORE_MOD_ID in location_capability_ids(get_enabled_mod_ids(cluster)):
         return []
     master = _master_shard(cluster)
     extra = [shard.name for shard in cluster.shards

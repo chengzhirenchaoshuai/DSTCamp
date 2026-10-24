@@ -845,6 +845,11 @@ def test_manage_existing_shards() -> None:
             path.write_text(path.read_text(encoding="utf-8").replace('["enabled"] = true', '["enabled"] = false'),
                             encoding="utf-8")
         assert unreachable_shards(cluster) == ["Forest2"]
+        # 三合一（含岛屿冒险核心）按世界类型连接，海洋之椅能到 Forest2，不拦
+        path = output / "Caves" / "modoverrides.lua"
+        path.write_text(path.read_text(encoding="utf-8").replace(
+            "return {", 'return {\n  ["workshop-3811652910"] = { ["enabled"] = true },', 1), encoding="utf-8")
+        assert unreachable_shards(cluster) == []
         for name, content in originals.items():
             (output / name / "modoverrides.lua").write_bytes(content)
 
