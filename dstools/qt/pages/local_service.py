@@ -781,11 +781,10 @@ class _ConnectRow(QWidget):
         if original is None:  # 获取中、不可用等状态文字，点击不是复制
             self._value.setToolTip(self._hint)
             return
-        # 提示里显示完整代码（界面上密码已打码），下面是说明和"点击复制"
+        # 提示里显示完整代码（界面上密码已打码），不换行，提示框按它撑宽；下面是说明
         self._value.setToolTip(
-            f"<b><code>{html.escape(original)}</code></b>"
-            f"<p style='margin-top:4px; margin-bottom:4px;'>{html.escape(self._hint)}</p>"
-            f"<small>{html.escape(t('local.connect_click_copy'))}</small>")
+            f"<p style='white-space:pre; margin-bottom:4px;'><b><code>{html.escape(original)}</code></b></p>"
+            f"<p>{html.escape(self._hint)}</p>")
 
     def set_status(self, text: str, color: str, reason: str = "") -> None:
         self._status.setText(text)
