@@ -314,15 +314,31 @@ class _Toast(QWidget):
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._text)
 
 
-def show_toast(parent, text: str, ms: int = 1400) -> None:
-    """轻提示：浮在父窗口中央，淡入淡出后自动消失，不抢焦点。
+def _toast_pos_near(anchor, toast, near) -> QPoint:
+    """紧贴 near 控件上方、与它左对齐，上方放不下就放下方；整体限制在 anchor 窗口内。"""
+    gap = 4
+    top_left = near.mapTo(anchor, QPoint(0, 0))
+    x = top_left.x()
+    y = top_left.y() - toast.height() - gap
+    if y < 0:
+        y = top_left.y() + near.height() + gap
+    x = max(0, min(x, anchor.width() - toast.width()))
+    y = max(0, min(y, anchor.height() - toast.height()))
+    return anchor.mapToGlobal(QPoint(x, y))
+
+
+def show_toast(parent, text: str, ms: int = 1400, near=None) -> None:
+    """轻提示：浮在父窗口中央（给了 near 控件时贴在它旁边），淡入淡出后自动消失，不抢焦点。
 
     对 QGraphicsOpacityEffect.opacity 做属性动画；背景用截取父窗口并压淡的"假透明"。"""
     anchor = parent.window() if parent is not None else None
     toast = _Toast(anchor, text)
     if anchor is not None:
-        center = anchor.mapToGlobal(anchor.rect().center())
-        toast.move(center.x() - toast.width() // 2, center.y() - toast.height() // 2)
+        if near is not None:
+            toast.move(_toast_pos_near(anchor, toast, near))
+        else:
+            center = anchor.mapToGlobal(anchor.rect().center())
+            toast.move(center.x() - toast.width() // 2, center.y() - toast.height() // 2)
         top_left_local = anchor.mapFromGlobal(toast.mapToGlobal(QPoint(0, 0)))
         grab_rect = QRect(top_left_local, toast.size()).intersected(anchor.rect())
         if not grab_rect.isEmpty():

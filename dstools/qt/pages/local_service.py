@@ -772,6 +772,11 @@ class _ConnectRow(QWidget):
         self._title.mousePressEvent = lambda _e: on_click()
         self._title.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    @property
+    def value_label(self) -> QLabel:
+        """复制提示贴着它显示。"""
+        return self._value
+
     def set_value(self, display: str, original: str | None = None) -> None:
         self._value.setText(display)
         # 值的提示显示完整代码（界面上密码已打码），说明附在后面，不能被代码覆盖掉
@@ -2983,27 +2988,27 @@ class LocalServicePage(Page):
 
     def _copy_lan_connect(self) -> None:
         if self._lan_code:
-            self._copy_to_clipboard(self._lan_code)
+            self._copy_to_clipboard(self._lan_code, near=self._lan_row.value_label)
 
     def _copy_public_connect(self) -> None:
         if self._public_code:
-            self._copy_to_clipboard(self._public_code)
+            self._copy_to_clipboard(self._public_code, near=self._public_row.value_label)
         elif self._public_state == "failed":
             self._public_retry_attempt = 0
             self._start_public_fetch(self.get_cluster())
 
     def _copy_nat_connect(self) -> None:
         if self._nat_code:
-            self._copy_to_clipboard(self._nat_code)
+            self._copy_to_clipboard(self._nat_code, near=self._nat_row.value_label)
         elif self._nat_state == "failed":
             self._nat_retry_attempt = 0
             self._start_nat_fetch(self.get_cluster())
         elif self._nat_state != "loading":
             dialogs.show_info(self.window(), "", t("local.nat_not_mapped"))
 
-    def _copy_to_clipboard(self, text: str) -> None:
+    def _copy_to_clipboard(self, text: str, near=None) -> None:
         QGuiApplication.clipboard().setText(text)
-        dialogs.show_toast(self.window(), t("local.connect_copied"))
+        dialogs.show_toast(self.window(), t("local.connect_copied"), near=near)
 
     def _nat_connect_info(self, cluster, owner: str | None) -> tuple[str | None, str | None]:
         """按实际映射方式取穿透地址（工作线程调用，owner 由界面线程预先算好）。
