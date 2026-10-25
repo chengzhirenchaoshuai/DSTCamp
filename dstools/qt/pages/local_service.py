@@ -64,7 +64,7 @@ from dstools.shared.app_settings import (
     get_dedicated_server_extra_args, get_global_tokens, get_lolia_mapping, get_sakura_token, get_selfhost_frp_mapping,
     get_selfhost_frp_server, get_steamcmd_account, get_token_holds, get_token_switch_on_timeout, clear_token_hold, prune_token_holds,
     set_auto_restart_enabled,
-    set_dedicated_server_extra_args, set_steamcmd_account, set_steamcmd_path, set_token_hold,
+    set_dedicated_server_extra_args, set_global_tokens, set_steamcmd_account, set_steamcmd_path, set_token_hold,
 )
 from dstools.shared.clipboard import copy_file_to_clipboard
 from dstools.shared.resource_paths import path_is_ascii
@@ -2082,7 +2082,23 @@ class LocalServicePage(Page):
             return None
         return blocking_token_holds(time.time()).get(fingerprint)
 
+    def _adopt_token_into_pool(self, cluster) -> None:
+        """存档自带的新令牌不在令牌池时收进池里：只有池里的令牌才有冲突/崩溃后的等待记录和一键换用，
+        换用后被换下的令牌也还留在池里，不会随存档令牌文件被覆盖而丢失。"""
+        if load_cluster_config(cluster.path).network.get("offline_cluster", False):
+            return
+        current = read_token(self._start_token_path(cluster))
+        if classify_token(current) != ServerTokenKind.NEW:
+            return
+        pool = get_global_tokens()
+        fingerprint = token_fingerprint(current)
+        if any(token_fingerprint(token) == fingerprint for token in pool):
+            return
+        set_global_tokens(pool + [current])
+        dialogs.show_toast(self.window(), t("local.token_adopted", cluster=cluster.name), ms=3000)
+
     def _prepare_token_for_start(self, cluster) -> bool:
+        self._adopt_token_into_pool(cluster)
         selection = self._start_token_selection(cluster)
         hold = self._current_token_hold(cluster) if selection is not None else None
         if hold is not None and (selection.token is None or selection.changed):
@@ -2107,6 +2123,49 @@ class LocalServicePage(Page):
         if chosen == "changed":
             dialogs.show_toast(self.window(), t("local.token_auto_selected", cluster=cluster.name))
         return True
+
+    def _token_conflict_actions(self, proc) -> list:
+        """令牌冲突诊断弹窗的处理按钮：池里有空闲令牌就一键换用并重启，没有就引导添加备用令牌。"""
+        cluster = self._cluster_for_running_process(proc, self.get_cluster())
+        if cluster is None or cluster.source != SaveSource.SERVER or cluster.platform == Platform.WEGAME:
+            return []
+        if self._alternative_start_token(cluster):
+            return [(t("local.token_conflict_switch_btn"), lambda: self._switch_token_and_restart(cluster))]
+        return [(t("local.token_conflict_add_btn"), lambda: self._add_spare_token_for_conflict(cluster))]
+
+    def _switch_token_and_restart(self, cluster) -> None:
+        """换用池中空闲令牌，并用新令牌重启这个存档正在运行的世界；原令牌的等待记录保留，到期自动恢复可用。"""
+        self._auto_restart.cancel(cluster)
+        if not self._switch_to_alternative_token(cluster):
+            dialogs.show_warning(self.window(), t("local.token_unavailable_title"),
+                                  t("local.token_unavailable_msg", details=self._token_unavailable_details()))
+            return
+        dialogs.show_toast(self.window(), t("local.token_auto_selected", cluster=cluster.name))
+        self._restart_running_shards(cluster)
+
+    def _restart_running_shards(self, cluster) -> None:
+        running = [shard for shard in cluster.shards
+                   if (proc := self.manager.get(cluster.path, shard.name)) is not None
+                   and proc.status == ServerStatus.RUNNING]
+        self._restart_shards(cluster, running)
+
+    def _add_spare_token_for_conflict(self, cluster) -> None:
+        """打开全局令牌池让用户添加备用令牌；选了“用于当前存档”就直接换上，否则池里有空闲令牌时询问是否换用。"""
+        dialog = dialogs.GlobalTokensDialog(self.window(), token_uses=self.ctx.token_uses())
+        dialog.exec()
+        chosen = dialog.result_token
+        current = read_token(self._start_token_path(cluster))
+        if chosen and token_fingerprint(chosen) != token_fingerprint(current):
+            # 只写令牌文件不预占：重启前的令牌检查会照常核对它是否被占用或仍在等待释放
+            self._auto_restart.cancel(cluster)
+            token_path = self._start_token_path(cluster)
+            write_token(token_path, chosen)
+            cluster.token_path = token_path
+            self._restart_running_shards(cluster)
+        elif self._alternative_start_token(cluster) and dialogs.ask_yes_no(
+                self.window(), t("diag.token_conflict.title"),
+                t("local.token_conflict_switch_ask", cluster=cluster.name)):
+            self._switch_token_and_restart(cluster)
 
     def _release_token_reservation_if_stopped(self, cluster_path) -> None:
         cluster_key = str(cluster_path)
@@ -2692,7 +2751,8 @@ class LocalServicePage(Page):
             pane = ConsolePane(proc, on_close=lambda: self._close_console_pane(key, cluster, shard),
                                 on_rollback=lambda: self._open_rollback_dialog(), on_failure=self._on_server_failure,
                                 on_registered=self._on_server_registered,
-                                on_export_mods=lambda p, c=cluster: self._export_running_mods(p, c))
+                                on_export_mods=lambda p, c=cluster: self._export_running_mods(p, c),
+                                token_conflict_actions=self._token_conflict_actions)
             self._console_panes[key] = pane
             if str(cluster.path) == (str(self.get_cluster().path) if self.get_cluster() else None):
                 self._add_console_tab(pane, shard.name)

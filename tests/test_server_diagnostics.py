@@ -192,7 +192,7 @@ def test_server_failure_diagnostics() -> None:
     )
     assert live_conflict is not None
     assert live_conflict.category == "token_conflict"
-    assert "地上与洞穴" in live_conflict.summary
+    assert "Caves" in live_conflict.summary
     assert contains_server_registration_success([
         "[Steam] Server registered via geo DNS in ap-east-1"
     ])

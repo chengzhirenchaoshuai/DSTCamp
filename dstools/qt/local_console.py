@@ -64,16 +64,29 @@ class _DiagnosticDetailDialog(QDialog):
         self._view.setMinimumHeight(360)
         self._view.setFont(theme.font("FONT_SIZE_SM"))
         layout.addWidget(self._view)
-        row = QHBoxLayout()
-        row.addStretch()
-        close_btn = QPushButton(t("dlg.confirm_btn"))
-        close_btn.clicked.connect(self.close)
-        row.addWidget(close_btn)
-        layout.addLayout(row)
+        self._row = QHBoxLayout()
+        self._row.addStretch()
+        self._close_btn = QPushButton(t("dlg.confirm_btn"))
+        self._close_btn.clicked.connect(self.close)
+        self._row.addWidget(self._close_btn)
+        layout.addLayout(self._row)
+        self._action_btns: list[QPushButton] = []
 
-    def show_detail(self, title: str, detail: str) -> None:
+    def show_detail(self, title: str, detail: str, actions=()) -> None:
+        """``actions`` 为 (按钮文字, 回调) 列表，排在“确定”左侧；点击后先关闭弹窗再执行回调。"""
         self.setWindowTitle(title)
         self._view.setPlainText(detail)
+        for button in self._action_btns:
+            button.setParent(None)
+            button.deleteLater()
+        self._action_btns = []
+        for label, callback in actions:
+            button = QPushButton(label)
+            button.clicked.connect(lambda _checked=False, cb=callback: (self.close(), cb()))
+            self._row.insertWidget(self._row.count() - 1, button)
+            self._action_btns.append(button)
+        # 有处理按钮时它是主操作，“确定”退为次要样式
+        dialogs.style_button(self._close_btn, "secondary" if self._action_btns else "primary")
         self.show()
         self.raise_()
         self.activateWindow()
@@ -344,9 +357,11 @@ class ConsolePane(QWidget):
     status_changed = Signal(object)
 
     def __init__(self, proc, on_close, on_rollback, on_failure=None, on_registered=None, on_export_mods=None,
-                 parent=None):
+                 token_conflict_actions=None, parent=None):
         super().__init__(parent)
         self._on_export_mods = on_export_mods
+        # 令牌冲突诊断弹窗里的处理按钮：proc -> [(文字, 回调)]，每次弹出时按当时的令牌池现算
+        self._token_conflict_actions = token_conflict_actions
         # Mod 横幅点击时的去向：全部成功→导出图片；有失败→失败列表
         self._mod_failed_ids: tuple[str, ...] = ()
         self._diagnostic_category = ""
@@ -668,7 +683,10 @@ class ConsolePane(QWidget):
             return
         if self._detail_dialog is None:
             self._detail_dialog = _DiagnosticDetailDialog(self.window())
-        self._detail_dialog.show_detail(self._diagnostic_detail_title, self._diagnostic_detail)
+        actions = ()
+        if self._diagnostic_category == "token_conflict" and self._token_conflict_actions is not None:
+            actions = self._token_conflict_actions(self.proc)
+        self._detail_dialog.show_detail(self._diagnostic_detail_title, self._diagnostic_detail, actions)
 
     def _show_report(self, report) -> None:
         """把诊断结果写到横幅和详情，并自动弹出一次详情窗。"""

@@ -253,23 +253,20 @@ def test_token_classification_and_selection() -> None:
         assert service._token_reservations == {}
         warning.assert_called_once()
 
-        # 当前令牌不属于池时保持原值，并在启动前清理历史孤立标记。
+        # 当前新令牌不属于池时先收进令牌池并提示（冲突后才有等待记录和一键换用），存档令牌不变。
         write_token(token_path, NEW_A)
         with (
             patch.object(local_module, "load_cluster_config", return_value=SimpleNamespace(network={})),
             patch.object(local_module, "get_global_tokens", return_value=[NEW_B]),
-            patch.object(
-                local_module,
-                "blocking_token_holds",
-                return_value={token_fingerprint(NEW_A): {"state": "conflict"}},
-            ),
-            patch.object(local_module, "prune_token_holds") as prune_holds,
+            patch.object(local_module, "set_global_tokens") as adopt,
+            patch.object(local_module, "blocking_token_holds", return_value={}),
+            patch.object(local_module, "prune_token_holds"),
             patch.object(local_module.dialogs, "show_toast") as toast,
         ):
             assert service._prepare_token_for_start(cluster)
         assert read_token(token_path) == NEW_A
-        assert prune_holds.call_args.args == ([NEW_B],)
-        toast.assert_not_called()
+        adopt.assert_called_once_with([NEW_B, NEW_A])
+        toast.assert_called_once()
 
         # 原令牌仍在等待期且池里有替代：手动启动先询问，选"换用"才换，选"仍用原令牌"保持原值。
         held_a = {token_fingerprint(NEW_A): {"state": "crashed", "retry_at": time.time() + 300}}
