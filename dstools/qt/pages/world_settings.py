@@ -8,7 +8,7 @@ import webbrowser
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget, QVBoxLayout,
+    QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget, QStyle, QVBoxLayout,
 )
 
 from dstools.features.local_service.backup_manager import create_backup
@@ -165,13 +165,18 @@ class WorldSettingsPage(Page):
         self._discard_button = QPushButton()
         self._discard_button.setEnabled(False)
         self._discard_button.clicked.connect(self._discard_changes)
+        # 跟 Mod 页一致：预设按钮在左下角，保存类按钮居中；左栏与右侧空白等宽，保证中间按钮真正居中
         button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(self._apply_preset_button)
-        button_row.addWidget(self._save_preset_button)
+        left_group = QHBoxLayout()
+        left_group.addWidget(self._save_preset_button)
+        left_group.addWidget(self._apply_preset_button)
+        left_group.addStretch()
+        button_row.addLayout(left_group, 1)
         button_row.addWidget(self._discard_button)
         button_row.addWidget(self._save_button)
-        button_row.addStretch()
+        # 右侧只有空白时 Qt 不加它前面的间距，手动补上，否则按钮组偏左几像素
+        button_row.addSpacing(self.style().pixelMetric(QStyle.PixelMetric.PM_LayoutHorizontalSpacing))
+        button_row.addStretch(1)
         layout.addLayout(button_row)
 
         theme.changed.connect(self._on_theme_changed)
