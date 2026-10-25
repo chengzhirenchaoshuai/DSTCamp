@@ -115,6 +115,8 @@ class ModPage(Page):
         # 排序位置按加载时的状态定，跟其它 Mod 一样切换开关不重排
         self._client_mods_disabled = False
         self._client_mods_sort_enabled = False
+        # 加载排序时已启用的 Mod：开关行按它们定位，不受之后切换的影响
+        self._sort_enabled_ids: frozenset = frozenset()
 
         # 更新状态（供 Workshop 更新弹窗共享，避免重复扫描）
         self._workshop_update_running = False
@@ -621,6 +623,7 @@ class ModPage(Page):
         local_index = self._local_shardindex(c)
         if not shard or not (shard.mod_overrides_path or local_index):
             self._client_mods_disabled = self._client_mods_sort_enabled = False
+            self._sort_enabled_ids = frozenset()
             self._mod_data.clear()
             self._mod_infos.clear()
             self._icon_imgs.clear()
@@ -822,6 +825,7 @@ class ModPage(Page):
         # 只在重新加载数据时排序；切换启用开关不重排，避免该行立即跳动
         priority_mod_id = luajit_injector.WORKSHOP_MOD_KEY if result["luajit_active"] else None
         self._mod_data = sort_mod_data(result["mod_data"], result["mod_infos"], priority_mod_id=priority_mod_id)
+        self._sort_enabled_ids = frozenset(wid for wid, mod in self._mod_data.items() if mod.enabled)
         self._mod_infos = result["mod_infos"]
         self._mod_paths = result["mod_paths"]
         self._icon_imgs = result["icon_imgs"]
@@ -954,11 +958,12 @@ class ModPage(Page):
         return rows
 
     def _client_mods_row_index(self, rows: list[dict], name: str) -> int:
-        """按 sort_mod_data 的规则（启用在前、再按名称）找开关行的位置，置顶的 LuaJIT 行之后。"""
+        """按 sort_mod_data 的规则（启用在前、再按名称）找开关行的位置，置顶的 LuaJIT 行之后。
+        各行的启用状态取加载排序时的快照：行顺序没有随切换重排，用当前状态会让开关行跳到刚关掉的 Mod 前面。"""
         for index, row in enumerate(rows):
             if row.get("locked"):
                 continue
-            if self._client_mods_sort_enabled != row["enabled"]:
+            if self._client_mods_sort_enabled != (row["workshop_id"] in self._sort_enabled_ids):
                 if self._client_mods_sort_enabled:
                     return index
                 continue
