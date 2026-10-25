@@ -115,6 +115,7 @@ class ModPage(Page):
         # 排序位置按加载时的状态定，跟其它 Mod 一样切换开关不重排
         self._client_mods_disabled = False
         self._client_mods_sort_enabled = False
+        self._edited_cluster_path = ""  # 当前列表内容来自哪个存档，用于判断重新加载时能否保留未保存改动
         # 加载排序时已启用的 Mod：开关行按它们定位，不受之后切换的影响
         self._sort_enabled_ids: frozenset = frozenset()
 
@@ -249,6 +250,11 @@ class ModPage(Page):
         self._apply_current_btn.setEnabled(False)
         self._apply_current_btn.clicked.connect(self._apply_current_shard)
         bottom_row.addWidget(self._apply_current_btn)
+        self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
+        self._unsaved_label.setProperty("accent", True)
+        self._unsaved_label.setFont(theme.font("FONT_SIZE_SM"))
+        self._unsaved_label.setVisible(False)
+        bottom_row.addWidget(self._unsaved_label)
         bottom_row.addStretch()
         self._update_hint_label = QPushButton("")
         self._update_hint_label.setProperty("flat", True)
@@ -333,6 +339,13 @@ class ModPage(Page):
         self._wegame_banner.set_text(t("mod.wegame_root_needed_banner") if self._wegame_root_missing(c) else "")
         self._refresh_runtime_banner()
         self._update_mod_location_display()
+        if (self._dirty and c is not None and str(c.path) == self._edited_cluster_path
+                and any(s.name == self._current_shard_name for s in c.shards)):
+            # 还是同一个存档（别处刷新了存档列表、切回本页等）：保留未保存的改动，不从磁盘重读
+            self._mods_loaded = True
+            self._refresh_workshop_update_button_state()
+            self._render_list()
+            return
         self._shard_combo.blockSignals(True)
         self._shard_combo.clear()
         if not c:
@@ -362,7 +375,15 @@ class ModPage(Page):
         return root is None or find_wegame_client_dir(root) is None
 
     def _on_shard_select(self, _index: int = 0) -> None:
-        self._current_shard_name = self._shard_combo.currentText()
+        name = self._shard_combo.currentText()
+        if self._dirty:
+            if name == self._current_shard_name:
+                return
+            choice = dialogs.ask_unsaved(self.window(), t("tab.mods").strip())
+            if choice == "cancel" or (choice == "save" and not self.save_unsaved_changes()):
+                self._shard_combo.setCurrentText(self._current_shard_name)
+                return
+        self._current_shard_name = name
         self._refresh_mods()
 
     def _on_columns_changed(self, index: int) -> None:
@@ -620,10 +641,12 @@ class ModPage(Page):
             return
         self._refresh_gen += 1
         gen = self._refresh_gen
+        self._edited_cluster_path = str(c.path) if c else ""
         local_index = self._local_shardindex(c)
         if not shard or not (shard.mod_overrides_path or local_index):
             self._client_mods_disabled = self._client_mods_sort_enabled = False
             self._sort_enabled_ids = frozenset()
+            self._set_dirty(False)
             self._mod_data.clear()
             self._mod_infos.clear()
             self._icon_imgs.clear()
@@ -833,6 +856,7 @@ class ModPage(Page):
         self._mod_stamps = result["stamps"]
         self._luajit_mod_locked = result["luajit_active"]
         self._client_mods_disabled = self._client_mods_sort_enabled = result["client_mods_disabled"]
+        self._set_dirty(False)  # 刚从磁盘读出，跟已保存内容一致
         self._loading = False
         self._loading_key = None
         self._mods_loaded = True
@@ -1031,11 +1055,59 @@ class ModPage(Page):
             count = sum(1 for mod in self._mod_data.values() if mod.enabled)
         self._enabled_count_label.setText(t("mod.enabled_count", count=count))
 
-    def _mark_dirty(self) -> None:
-        self._dirty = True
+    def _set_dirty(self, dirty: bool) -> None:
+        changed = dirty != self._dirty
+        self._dirty = dirty
         c = self.get_cluster()
-        self._save_btn.setEnabled(True)
-        self._apply_current_btn.setEnabled(bool(c and c.source == SaveSource.SERVER))
+        self._save_btn.setEnabled(dirty)
+        self._apply_current_btn.setEnabled(dirty and bool(c and c.source == SaveSource.SERVER))
+        self._unsaved_label.setVisible(dirty)
+        if changed:
+            self.ctx.unsaved_changed.emit()
+
+    def _mark_dirty(self) -> None:
+        self._set_dirty(True)
+
+    def has_unsaved_changes(self) -> bool:
+        return self._dirty
+
+    def discard_unsaved_changes(self) -> None:
+        # 不立即重读：切换存档会照常重新加载；其余情况标为过期，切回本页时再从磁盘读
+        self._set_dirty(False)
+        self.stale = True
+
+    def save_unsaved_changes(self) -> bool:
+        """离开前保存：跟"保存"按钮写同样的内容，但同步完成、不弹成功提示。"""
+        from dstools.features.mod.shardindex import LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, local_save_play_state
+
+        c = self.get_cluster()
+        index_path = self._local_shardindex(c)
+        if index_path is not None:
+            try:
+                state = local_save_play_state(c)
+            except Exception as exc:
+                dialogs.show_error(self.window(), t("mod.save_btn"), str(exc))
+                return False
+            if state == LOCAL_SAVE_RUNNING:
+                dialogs.show_warning(self.window(), t("mod.save_btn"), t("mod.local_save_running"))
+                return False
+            if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
+                    self.window(), t("mod.save_btn"), t("mod.local_save_game_open_confirm")):
+                return False
+            if not self._write_local_mods(c, index_path, silent=True):
+                return False
+        else:
+            shard = next((s for s in c.shards if s.name == self._current_shard_name), None) if c else None
+            if not c or not shard or not shard.mod_overrides_path or c.source != SaveSource.SERVER:
+                dialogs.show_warning(self.window(), t("mod.save_btn"), t("dlg.no_overrides"))
+                return False
+            try:
+                self._write_server_mods(c, shard, sync_others=True)
+            except OSError as exc:
+                dialogs.show_error(self.window(), t("mod.save_btn"), str(exc))
+                return False
+        self._set_dirty(False)
+        return True
 
     def get_pending_enabled_mod_ids(self, cluster):
         if not self._dirty or self._loading or cluster is None:
@@ -1263,11 +1335,11 @@ class ModPage(Page):
             sync_mods(overrides, dst)
             save_mod_overrides(dst)
         self.ctx.cluster_config_saved.emit(cluster)
+        # 本地存档每次都写全部世界，静默保存也已全部存好
+        self._set_dirty(False)
         if not silent:
             enabled_count = sum(1 for m in overrides.mods.values() if m.enabled)
             dialogs.show_info(self.window(), t("dlg.save_ok"), t("mod.local_saved", count=enabled_count))
-            self._dirty = False
-            self._save_btn.setEnabled(False)
             self._refresh_mods()
         return True
 
@@ -1282,26 +1354,31 @@ class ModPage(Page):
             if not silent:
                 dialogs.show_warning(self.window(), t("mod.save_btn"), t("dlg.no_overrides"))
             return
-        overrides = load_mod_overrides(shard.mod_overrides_path)
-        self._write_mod_states(overrides)
-        save_mod_overrides(overrides)
-        self.ctx.cluster_config_saved.emit(c)
+        overrides, other_shards = self._write_server_mods(c, shard, sync_others=not silent)
         if not silent:
             enabled_count = sum(1 for m in overrides.mods.values() if m.enabled)
             dialogs.show_info(self.window(), t("dlg.save_ok"), t("dlg.saved_mods", count=enabled_count, shard=shard.name))
-            other_shards = [sh for sh in c.shards if sh.name != shard.name and sh.mod_overrides_path]
-            count = 0
+            if other_shards:
+                dialogs.show_info(self.window(), t("mod.save_btn"), t("dlg.sync_done", count=len(other_shards)))
+            self._set_dirty(False)
+            self._refresh_mods()
+        elif not other_shards:
+            # 静默保存（配置弹窗"应用"）只写当前世界；没有别的世界要同步时已全部存好
+            self._set_dirty(False)
+
+    def _write_server_mods(self, cluster, shard, sync_others: bool):
+        """写当前世界的 modoverrides.lua，sync_others 时同步到其他世界；返回（写入内容, 其他世界列表）。"""
+        overrides = load_mod_overrides(shard.mod_overrides_path)
+        self._write_mod_states(overrides)
+        save_mod_overrides(overrides)
+        other_shards = [sh for sh in cluster.shards if sh.name != shard.name and sh.mod_overrides_path]
+        if sync_others:
             for sh in other_shards:
                 dst = load_mod_overrides(sh.mod_overrides_path)
                 sync_mods(overrides, dst)
                 save_mod_overrides(dst)
-                count += 1
-            if count:
-                dialogs.show_info(self.window(), t("mod.save_btn"), t("dlg.sync_done", count=count))
-            self._dirty = False
-            self._save_btn.setEnabled(False)
-            self._apply_current_btn.setEnabled(False)
-            self._refresh_mods()
+        self.ctx.cluster_config_saved.emit(cluster)
+        return overrides, other_shards
 
     def _apply_current_shard(self) -> None:
         c = self.get_cluster()

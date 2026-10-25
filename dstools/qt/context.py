@@ -25,6 +25,7 @@ class AppContext(QObject):
     tab_requested = Signal(str)            # 页面请求跳到另一个页签（如"去内网穿透页处理端口映射"）
     workshop_mods_changed = Signal()       # 本机 Workshop Mod 有增减（如启动前一键订阅下载完成），Mod 页据此重新扫描
     server_runtime_changed = Signal()      # 开服程序选项或程序位置变了（本地服务器页发出），Mod 页据此按新的 mods/LuaJIT 刷新
+    unsaved_changed = Signal()             # 某页"有未保存改动"的状态变了，主窗口据此给页签加标记
 
     def __init__(self, klei_path: Path | None = None):
         super().__init__()
@@ -54,6 +55,9 @@ class AppContext(QObject):
         self.mod_catalog = ModCatalogStore()
         # Mod 页尚未保存的启用集合预览，供世界设置页即时显示"来自 Mod"的设置；None 表示按磁盘已保存内容
         self.pending_enabled_mod_ids = lambda cluster: None
+        # 主窗口接管：离开当前存档（开服、切换存档、退出等）前，有页面未保存时询问保存/不保存/取消；
+        # cluster 给出时只在它就是当前选中存档时询问。返回 False 表示用户取消
+        self.confirm_unsaved = lambda cluster=None: True
         self._platform = Platform.WEGAME if get_last_platform() == "WeGame" else Platform.STEAM
         self._selected: Cluster | None = None
         self._restore_selection(Path(get_last_cluster_path()) if get_last_cluster_path() else None)

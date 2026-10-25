@@ -2645,6 +2645,8 @@ class LocalServicePage(Page):
     def start_shard(self, cluster, shard) -> None:
         if not cluster or (str(cluster.path), shard.name) in self._restarting_keys:
             return
+        if not self.ctx.confirm_unsaved(cluster):
+            return
         self._auto_restart.cancel(cluster)
         if not self._prepare_token_for_start(cluster):
             return
@@ -2811,6 +2813,8 @@ class LocalServicePage(Page):
         proc = self.manager.get(cluster.path, shard.name)
         if proc is None or proc.status != ServerStatus.RUNNING:
             return
+        if not self.ctx.confirm_unsaved(cluster):
+            return
         self._auto_restart.cancel(cluster)
         self._restart_shards(cluster, [shard])
 
@@ -2914,6 +2918,8 @@ class LocalServicePage(Page):
         if not c.shards:
             dialogs.show_warning(self.window(), t("local.install_title"), t("local.no_shards"))
             return
+        if not self.ctx.confirm_unsaved(c):
+            return
         self._auto_restart.cancel(c)
         if not self._prepare_token_for_start(c):
             return
@@ -2990,6 +2996,8 @@ class LocalServicePage(Page):
                 targets.append(shard)
             elif proc is not None and proc.status in (ServerStatus.STARTING, ServerStatus.STOPPING):
                 return
+        if targets and not self.ctx.confirm_unsaved(c):
+            return
         self._auto_restart.cancel(c)
         self._restart_shards(c, targets)
 

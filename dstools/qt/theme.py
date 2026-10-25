@@ -565,6 +565,7 @@ class Theme(QObject):
             QLabel {{ color: {c['TEXT']}; background: transparent; padding-left: {label_pad}; }}
             QLabel[{_LABEL_PIXMAP_PROP}="true"] {{ padding-left: 0px; }}
             QLabel[muted="true"] {{ color: {c['TEXT_MUTED']}; }}
+            QLabel[accent="true"] {{ color: {c['ACCENT']}; }}
             QLabel[heading="true"] {{ color: {c['HEADING']}; font-weight: {fw_bold}; }}
             QPushButton {{ background: {c['PRIMARY']}; color: white; border: none; border-radius: 0px;
                 padding: 6px 16px; font-weight: {fw_bold}; }}

@@ -88,6 +88,7 @@ class WorldSettingsPage(Page):
         self._data: page_data.WorldPageData | None = None
         self._dirty = False
         self._generation_changed = False  # 本次未保存的修改是否包含世界生成项（保存后提示重置）
+        self._edited_cluster_path = ""  # 当前内容来自哪个存档，用于判断重新加载时能否保留未保存改动
         self._flash_timer = QTimer(self, singleShot=True, interval=FLASH_MS)
         self._flash_timer.timeout.connect(self._clear_flash)
 
@@ -161,6 +162,10 @@ class WorldSettingsPage(Page):
         button_row.addWidget(self._apply_preset_button)
         button_row.addWidget(self._save_preset_button)
         button_row.addWidget(self._save_button)
+        self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
+        self._unsaved_label.setProperty("accent", True)
+        self._unsaved_label.setVisible(False)
+        button_row.addWidget(self._unsaved_label)
         button_row.addStretch()
         layout.addLayout(button_row)
 
@@ -239,22 +244,32 @@ class WorldSettingsPage(Page):
 
     # ── 加载 ────────────────────────────────────────────────────────────
     def on_cluster_changed(self, cluster) -> None:
+        names = [s.name for s in cluster.shards] if cluster is not None else []
+        # 还是同一个存档（别处刷新了存档列表、Mod 页保存等）：保留未保存的改动，不从磁盘重读
+        keep = self._dirty and cluster is not None and str(cluster.path) == self._edited_cluster_path \
+            and self._shard in names
         self._shard_combo.blockSignals(True)
         self._shard_combo.clear()
-        if cluster is not None:
-            names = [s.name for s in cluster.shards]
-            self._shard_combo.addItems(names)
+        self._shard_combo.addItems(names)
+        if not keep:
             self._shard = "Master" if "Master" in names else (names[0] if names else "")
-            self._shard_combo.setCurrentText(self._shard)
-        else:
-            self._shard = ""
+        self._shard_combo.setCurrentText(self._shard)
         self._shard_combo.blockSignals(False)
         self._add_shard_button.setVisible(self._selected_is_server())
         self._manage_button.setVisible(self._selected_is_server())
-        self._load_world()
+        if not keep:
+            self._load_world()
 
     def _on_shard_picked(self, _index: int) -> None:
-        self._shard = self._shard_combo.currentText()
+        name = self._shard_combo.currentText()
+        if self._dirty:
+            if name == self._shard:
+                return
+            choice = dialogs.ask_unsaved(self.window(), t("tab.world").strip())
+            if choice == "cancel" or (choice == "save" and not self.save_unsaved_changes()):
+                self._shard_combo.setCurrentText(self._shard)
+                return
+        self._shard = name
         self._load_world()
 
     def _on_add_shard(self) -> None:
@@ -352,6 +367,7 @@ class WorldSettingsPage(Page):
         self._update_banner()
         self._update_tab_labels()
         cluster = self.ctx.selected_cluster()
+        self._edited_cluster_path = str(cluster.path) if cluster is not None else ""
         if cluster is None:
             self._show_info("", "")
             return
@@ -400,10 +416,53 @@ class WorldSettingsPage(Page):
 
     # ── 编辑 ────────────────────────────────────────────────────────────
     def _set_dirty(self, dirty: bool) -> None:
+        changed = dirty != self._dirty
         self._dirty = dirty
         if not dirty:
             self._generation_changed = False
         self._save_button.setEnabled(dirty)
+        self._unsaved_label.setVisible(dirty)
+        if changed:
+            self.ctx.unsaved_changed.emit()
+
+    def has_unsaved_changes(self) -> bool:
+        return self._dirty
+
+    def discard_unsaved_changes(self) -> None:
+        # 不立即重读：切换存档会照常重新加载；其余情况标为过期，切回本页时再从磁盘读
+        self._set_dirty(False)
+        self.stale = True
+
+    def save_unsaved_changes(self) -> bool:
+        """离开前保存：用户已在询问框选了"保存"，不再二次确认；需要重置世界时照常提示。"""
+        data = self._data
+        title = t("world.save_rules")
+        if data is None or not data.can_save or data.preset is None or data.path is None:
+            dialogs.show_warning(self.window(), title, t("world.no_preset"))
+            return False
+        if not data.is_server:
+            try:
+                state = local_save_play_state(self.ctx.selected_cluster())
+            except Exception as exc:
+                dialogs.show_error(self.window(), title, str(exc))
+                return False
+            if state == LOCAL_SAVE_RUNNING:
+                dialogs.show_warning(self.window(), title, t("world.local_save_running"))
+                return False
+            if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
+                    self.window(), title, t("world.local_save_game_open_confirm", name=data.shard_name)):
+                return False
+        try:
+            page_data.save_world_page(data)
+        except (OSError, ValueError, ShardIndexError) as exc:
+            dialogs.show_error(self.window(), title, str(exc))
+            return False
+        need_reset = self._generation_changed and page_data.generation_requires_reset(data)
+        self._set_dirty(False)
+        if need_reset:
+            dialogs.show_info(self.window(), t("dlg.save_ok"),
+                              t("world.saved_need_reset" if data.is_server else "world.saved_need_reset_local"))
+        return True
 
     def _on_value_clicked(self, key: str, delta: int, is_rule: bool = True) -> None:
         data = self._data

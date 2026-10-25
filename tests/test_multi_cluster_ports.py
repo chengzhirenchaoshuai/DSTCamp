@@ -84,6 +84,7 @@ def _local_page(clusters=(), *, manager=None, mapping=None, jumps=None):
         mapping_owner=lambda *_args: mapping,
         goto_tab=jumps.append if jumps is not None else (lambda _key: None),
         cluster_config_saved=SimpleNamespace(emit=lambda _cluster: None),
+        confirm_unsaved=lambda _cluster=None: True,
     )
     service.manager = manager or SimpleNamespace(running=lambda: [])
     service._launching_keys = set()

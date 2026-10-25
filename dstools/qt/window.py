@@ -668,16 +668,33 @@ class ClusterBar(QWidget):
             self._populating = False
         self._fit_spacing()  # 账号框显隐、存档名长短都会改变所需宽度
 
+    def _leave_confirmed(self) -> bool:
+        """换平台/账号/存档前处理未保存改动；取消时把选择框恢复成当前选中项。"""
+        if self._ctx.confirm_unsaved():
+            return True
+        self.reload()
+        return False
+
     def _on_platform(self, _index: int) -> None:
-        self._ctx.set_platform(Platform.WEGAME if self._platform.currentText() == "WeGame" else Platform.STEAM)
+        platform = Platform.WEGAME if self._platform.currentText() == "WeGame" else Platform.STEAM
+        if platform != self._ctx.platform and not self._leave_confirmed():
+            return
+        self._ctx.set_platform(platform)
 
     def _on_account(self, index: int) -> None:
         if not self._populating and index >= 0:
+            current = self._ctx.current_account()
+            if (current is None or current.id != self._account.itemData(index)) and not self._leave_confirmed():
+                return
             self._ctx.select_account(self._account.itemData(index))
 
     def _on_cluster(self, index: int) -> None:
         if not self._populating and index >= 0:
-            self._ctx.select_cluster(self._cluster.itemData(index))
+            cluster = self._cluster.itemData(index)
+            selected = self._ctx.selected_cluster()
+            if (selected is None or cluster is None or cluster.path != selected.path) and not self._leave_confirmed():
+                return
+            self._ctx.select_cluster(cluster)
 
 
 class MainWindow(QWidget):
@@ -736,6 +753,8 @@ class MainWindow(QWidget):
         self._build_pages()
         self.tabbar.current_changed.connect(self._on_tab_changed)
         ctx.cluster_changed.connect(self._on_cluster_changed)
+        ctx.unsaved_changed.connect(self._update_tab_labels)
+        ctx.confirm_unsaved = self._confirm_unsaved
         ctx.tab_requested.connect(self.goto_tab)
         ctx.platform_changed.connect(self._update_status)
         ctx.env_changed.connect(self._update_status)
@@ -790,6 +809,37 @@ class MainWindow(QWidget):
         for page in self.pages.values():
             page.stale = True
         self.current_page().load()
+
+    def _update_tab_labels(self) -> None:
+        """页签名；有未保存改动的页在名字后加圆点（名字两侧的留白保持不变）。"""
+        labels = []
+        for key in TAB_KEYS:
+            label = t(f"tab.{key}")
+            page = self.pages.get(key) if hasattr(self, "pages") else None
+            if page is not None and page.has_unsaved_changes():
+                tail = label[len(label.rstrip()):]
+                label = f"{label.rstrip()} •{tail}"
+            labels.append(label)
+        self.tabbar.set_labels(labels)
+
+    def _confirm_unsaved(self, cluster=None) -> bool:
+        """有页面未保存时询问保存/不保存/取消，返回是否继续；cluster 给出且不是当前存档时不问。"""
+        if cluster is not None:
+            selected = self.ctx.selected_cluster()
+            if selected is None or str(selected.path) != str(cluster.path):
+                return True
+        keys = [key for key in TAB_KEYS if self.pages[key].has_unsaved_changes()]
+        if not keys:
+            return True
+        sep = "、" if get_lang() == "zh" else ", "
+        choice = dialogs.ask_unsaved(self, sep.join(t(f"tab.{key}").strip() for key in keys))
+        if choice == "save":
+            return all(self.pages[key].save_unsaved_changes() for key in keys)
+        if choice == "discard":
+            for key in keys:
+                self.pages[key].discard_unsaved_changes()
+            return True
+        return False
 
     def refresh_all(self) -> None:
         self.ctx.refresh_env()
@@ -966,7 +1016,7 @@ class MainWindow(QWidget):
         self.titlebar.retranslate()
         self.menu_strip.retranslate()
         self.cluster_bar.retranslate()
-        self.tabbar.set_labels([t(f"tab.{key}") for key in TAB_KEYS])
+        self._update_tab_labels()
         self.tray.setToolTip(t("app.title"))
         self._tray_show.setText(t("tray.show"))
         self._tray_exit.setText(t("tray.exit"))
@@ -1004,6 +1054,8 @@ class MainWindow(QWidget):
     def _select_created_cluster(self, path: Path, launch: bool) -> None:
         """创建向导完成后：无论是否启动都选中新建存档并同步顶部选择框；选择「立即启动」
         时再跳到本地服务器页触发启动——走页面完整的令牌/端口/Mod 预检流程。"""
+        if not self._confirm_unsaved():
+            return
         if self.ctx.platform != Platform.STEAM:
             self.ctx.set_platform(Platform.STEAM)
         cluster = next((c for c in self.ctx.clusters() if c.path == path), None)
@@ -1197,6 +1249,8 @@ class MainWindow(QWidget):
 
     def _confirm_and_quit(self) -> None:
         """还有本地专服在跑时先问一句是否一并关闭；选"否"就是取消退出，不强行杀掉。"""
+        if not self._confirm_unsaved():
+            return
         running = self.ctx.manager.running()
         if not running:
             self.quit_app()
@@ -1211,6 +1265,8 @@ class MainWindow(QWidget):
     def restart_app(self) -> None:
         """重启 DSTCamp：有专服在跑时先确认并安全关闭，再启动辅助进程（run_gui.py --restart-helper），
         等本进程退出、单实例锁释放后重新启动。"""
+        if not self._confirm_unsaved():
+            return
         running = self.ctx.manager.running()
         if running:
             world_count = len(running)

@@ -260,6 +260,9 @@ class SelfUpdater:
                                                   t("update.import_confirm", version=version)):
                 cancel()
                 return
+            if not window.ctx.confirm_unsaved():
+                cancel()
+                return
             manager = window.ctx.manager
             if manager.running():
                 # 更新要退出程序：有专服在跑时先问，同意才安全关闭全部服务器再安装

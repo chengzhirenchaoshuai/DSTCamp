@@ -273,6 +273,14 @@ def ask_choice(parent, title: str, text: str, choices: list[tuple[str, str]], de
                          escape="cancel" if has_cancel else "", size=width_tier(min_width), rich=rich).ask()
 
 
+def ask_unsaved(parent, pages: str) -> str:
+    """离开前询问如何处理未保存的改动：返回 "save" / "discard" / "cancel"。"""
+    return ask_choice(parent, t("dlg.unsaved_title"), t("dlg.unsaved_msg", pages=pages),
+                      [(t("dlg.cancel_btn"), "cancel"), (t("dlg.unsaved_discard_btn"), "discard"),
+                       (t("dlg.unsaved_save_btn"), "save")],
+                      default="save", danger_values=("discard",)) or "cancel"
+
+
 class _Toast(QWidget):
     """手工绘制圆角底色、边框和文字。
 

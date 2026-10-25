@@ -29,3 +29,14 @@ class Page(QWidget):
 
     def retranslate(self) -> None:
         """界面语言切换后调用；子类重写，重设所有文案。"""
+
+    # ── 未保存改动：有编辑功能的页面重写，状态变化时发 ctx.unsaved_changed ──
+    def has_unsaved_changes(self) -> bool:
+        return False
+
+    def save_unsaved_changes(self) -> bool:
+        """离开前保存（同步完成，不弹"保存成功"）；失败或被拦下时返回 False，调用方随之取消离开。"""
+        return True
+
+    def discard_unsaved_changes(self) -> None:
+        """放弃改动，恢复为磁盘上已保存的内容。"""
