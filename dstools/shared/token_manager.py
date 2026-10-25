@@ -4,6 +4,9 @@ import hashlib
 from enum import Enum
 from pathlib import Path
 
+# Klei 账号的服务器令牌管理页（“申请令牌”入口）
+KLEI_SERVERS_URL = "https://accounts.klei.com/account/game/servers?game=DontStarveTogether"
+
 
 class ServerTokenKind(str, Enum):
     """Klei 服务器令牌格式：只识别实测过的三段式与四段式，未知格式可手动使用但不参与自动调度。"""

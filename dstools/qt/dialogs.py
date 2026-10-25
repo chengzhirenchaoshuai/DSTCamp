@@ -917,6 +917,18 @@ class GlobalTokensDialog(Dialog):
         self._hover_row: int | None = None
         pool.addWidget(self._table, 1)
 
+        # 没有备用令牌（新令牌不足两个且没有旧令牌）时提示再申请一个，崩溃或冲突后才能立即换用
+        self._spare_tip = QWidget()
+        tip_row = QHBoxLayout(self._spare_tip)
+        tip_row.setContentsMargins(0, 0, 0, 0)
+        tip_row.setSpacing(8)
+        tip_row.addWidget(self.text_label(t("token.spare_hint"), size_key="FONT_SIZE_SM"), 1)
+        apply_btn = style_button(QPushButton(t("token.apply")), "secondary")
+        apply_btn.setAutoDefault(False)
+        apply_btn.clicked.connect(self._on_apply)
+        tip_row.addWidget(apply_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        pool.addWidget(self._spare_tip)
+
         row = QHBoxLayout()
         row.setSpacing(8)
         self._add = QPushButton(t("admin.add"))
@@ -996,6 +1008,18 @@ class GlobalTokensDialog(Dialog):
             QHeaderView::section:only-one {{ border-top-left-radius: 7px; border-top-right-radius: 7px; }}
         """)
 
+    def _has_spare(self) -> bool:
+        """池里是否有备用令牌：旧令牌可多存档复用，有一个就够；新令牌要有两个以上。"""
+        from dstools.shared.token_manager import ServerTokenKind, classify_token
+        kinds = [classify_token(token) for token in self._tokens]
+        return ServerTokenKind.OLD in kinds or kinds.count(ServerTokenKind.NEW) >= 2
+
+    @staticmethod
+    def _on_apply() -> None:
+        import webbrowser
+        from dstools.shared.token_manager import KLEI_SERVERS_URL
+        webbrowser.open(KLEI_SERVERS_URL)
+
     def _row_texts(self, token: str) -> tuple[str, str, str, str]:
         """返回 (脱敏令牌, 类型, 状态文字, 状态颜色键)。"""
         from dstools.shared.token_manager import ServerTokenKind, classify_token, is_valid_token
@@ -1073,6 +1097,7 @@ class GlobalTokensDialog(Dialog):
                     item.setForeground(theme.color(color))
                 self._table.setItem(index, col, item)
         self._table.blockSignals(False)
+        self._spare_tip.setVisible(not self._has_spare())
         if self._tokens and select is not None:
             self._table.selectRow(min(select, len(self._tokens) - 1))
         self._update_buttons()

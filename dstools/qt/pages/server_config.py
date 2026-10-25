@@ -35,9 +35,8 @@ from dstools.shared.server_ports import (
     collect_cluster_port_claims, format_lan_port_issues, lan_restriction_names,
     rewrite_lan_server_ports_atomic, scan_udp_ports,
 )
-from dstools.shared.token_manager import is_valid_token, mask_token, write_token
+from dstools.shared.token_manager import KLEI_SERVERS_URL, is_valid_token, mask_token, write_token
 
-KLEI_SERVERS_URL = "https://accounts.klei.com/account/game/servers?game=DontStarveTogether"
 
 
 def _muted(text: str = "", size_key: str = "FONT_SIZE_SM") -> QLabel:
