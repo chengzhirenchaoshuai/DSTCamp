@@ -5,6 +5,7 @@
 WeGame 本地存档与未选存档时整页只读。
 """
 
+import copy
 import os
 import threading
 import time
@@ -118,6 +119,9 @@ class ModPage(Page):
         self._edited_cluster_path = ""  # 当前列表内容来自哪个存档，用于判断重新加载时能否保留未保存改动
         # 加载排序时已启用的 Mod：开关行按它们定位，不受之后切换的影响
         self._sort_enabled_ids: frozenset = frozenset()
+        # 与磁盘一致时的勾选和配置（加载、保存后记下），"取消修改"据此原地恢复，不重新扫描
+        self._saved_mod_state: dict = {}
+        self._saved_client_mods_disabled = False
 
         # 更新状态（供 Workshop 更新弹窗共享，避免重复扫描）
         self._workshop_update_running = False
@@ -662,6 +666,7 @@ class ModPage(Page):
             self._icon_imgs.clear()
             self._full_resolved_cache.clear()
             self._mod_stamps.clear()
+            self._remember_saved_state()
             self._loading = False
             self._loading_key = None
             self._mods_loaded = True
@@ -867,6 +872,7 @@ class ModPage(Page):
         self._luajit_mod_locked = result["luajit_active"]
         self._client_mods_disabled = self._client_mods_sort_enabled = result["client_mods_disabled"]
         self._set_dirty(False)  # 刚从磁盘读出，跟已保存内容一致
+        self._remember_saved_state()
         self._loading = False
         self._loading_key = None
         self._mods_loaded = True
@@ -1079,21 +1085,35 @@ class ModPage(Page):
     def _mark_dirty(self) -> None:
         self._set_dirty(True)
 
+    def _remember_saved_state(self) -> None:
+        self._saved_mod_state = {wid: (mod.enabled, copy.deepcopy(mod.configuration_options))
+                                 for wid, mod in self._mod_data.items()}
+        self._saved_client_mods_disabled = self._client_mods_disabled
+
+    def _restore_saved_state(self) -> None:
+        """把勾选和配置恢复成上次加载/保存时的样子；只改内存，列表顺序不变。"""
+        for wid, mod in self._mod_data.items():
+            saved = self._saved_mod_state.get(wid)
+            if saved is not None:
+                mod.enabled = saved[0]
+                mod.configuration_options = copy.deepcopy(saved[1])
+        self._client_mods_disabled = self._saved_client_mods_disabled
+        self._set_dirty(False)
+        self._update_enabled_count()
+        self._render_list()
+
     def _discard_changes(self) -> None:
-        """"取消修改"按钮：确认后丢掉未保存的勾选和配置，从磁盘重新读取。"""
+        """"取消修改"按钮：确认后丢掉未保存的勾选和配置。"""
         if not self._dirty or not dialogs.ask_yes_no(self.window(), t("dlg.discard_changes_btn"),
                                                      t("mod.discard_changes_confirm")):
             return
-        self._set_dirty(False)
-        self._refresh_mods()
+        self._restore_saved_state()
 
     def has_unsaved_changes(self) -> bool:
         return self._dirty
 
     def discard_unsaved_changes(self) -> None:
-        # 不立即重读：切换存档会照常重新加载；其余情况标为过期，切回本页时再从磁盘读
-        self._set_dirty(False)
-        self.stale = True
+        self._restore_saved_state()
 
     def save_unsaved_changes(self) -> bool:
         """离开前保存：跟"保存"按钮写同样的内容，但同步完成、不弹成功提示。"""
@@ -1353,6 +1373,7 @@ class ModPage(Page):
             dst = ModOverrides(path=sh.mod_overrides_path or sh.path / "modoverrides.lua")
             sync_mods(overrides, dst)
             save_mod_overrides(dst)
+        self._remember_saved_state()
         self.ctx.cluster_config_saved.emit(cluster)
         # 本地存档每次都写全部世界，静默保存也已全部存好
         self._set_dirty(False)
@@ -1396,6 +1417,7 @@ class ModPage(Page):
                 dst = load_mod_overrides(sh.mod_overrides_path)
                 sync_mods(overrides, dst)
                 save_mod_overrides(dst)
+        self._remember_saved_state()
         self.ctx.cluster_config_saved.emit(cluster)
         return overrides, other_shards
 
