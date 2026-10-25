@@ -464,15 +464,6 @@ class CreationWizardDialog(QDialog):
         toolbar.addWidget(self._remove_world_btn)
         self._update_remove_world_btn()
         toolbar.addStretch()
-        # 游戏的自定义世界预设（与世界设置页同一套），作用于当前选中的世界
-        apply_preset_btn = QPushButton(t("world.creation_apply_world_preset"))
-        apply_preset_btn.setToolTip(t("world.creation_apply_world_preset_tip"))
-        apply_preset_btn.clicked.connect(self._apply_world_preset)
-        toolbar.addWidget(apply_preset_btn)
-        save_preset_btn = QPushButton(t("world.creation_save_world_preset"))
-        save_preset_btn.setToolTip(t("world.creation_save_world_preset_tip"))
-        save_preset_btn.clicked.connect(self._save_world_preset)
-        toolbar.addWidget(save_preset_btn)
         layout.addLayout(toolbar)
 
         self._world_title_label = QLabel("")
@@ -498,6 +489,19 @@ class CreationWizardDialog(QDialog):
         self._world_stack.addWidget(self._rules_panel)
         self._world_stack.addWidget(self._gen_panel)
         layout.addWidget(self._world_stack, 1)
+
+        # 游戏的自定义世界预设（与世界设置页同一套），作用于当前选中的世界；跟 Mod 子页一样放左下角
+        preset_row = QHBoxLayout()
+        save_preset_btn = QPushButton(t("world.creation_save_world_preset"))
+        save_preset_btn.setToolTip(t("world.creation_save_world_preset_tip"))
+        save_preset_btn.clicked.connect(self._save_world_preset)
+        preset_row.addWidget(save_preset_btn)
+        apply_preset_btn = QPushButton(t("world.creation_apply_world_preset"))
+        apply_preset_btn.setToolTip(t("world.creation_apply_world_preset_tip"))
+        apply_preset_btn.clicked.connect(self._apply_world_preset)
+        preset_row.addWidget(apply_preset_btn)
+        preset_row.addStretch()
+        layout.addLayout(preset_row)
 
     def _on_world_sub_tab_changed(self, index: int) -> None:
         self._world_sub_tab = "rules" if index == 0 else "generation"
