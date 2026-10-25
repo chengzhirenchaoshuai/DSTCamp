@@ -116,6 +116,7 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 - **Better direct-connect codes**: the copy notice appears next to the code, tooltips show the full code, and the code descriptions are rewritten; node pickers suggest choosing a node close to you and your friends.
 - **WorldGate check is now a gentle notice** instead of a dialog that blocks starting.
 - **Preset buttons moved** to the bottom left; "Apply Preset" is renamed "Load Preset".
+- **The Mod page's "Custom" filter is renamed "Local Mods"**.
 - **World settings verified for new Mod versions**: Island Adventures Core 1.0.80, Shipwrecked 1.0.63, Beneath the World Below 0.4.16.6, three-in-one 1.2.8.
 
 ### 🐞 Fixes
