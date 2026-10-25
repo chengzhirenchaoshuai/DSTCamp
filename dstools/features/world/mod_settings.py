@@ -729,7 +729,7 @@ _set_verified_scope(
     master_controlled=True,
 )
 
-# workshop-3360553731 == Beneath the World Below（深埋之下），0.4.16.5
+# workshop-3360553731 == Beneath the World Below（深埋之下），0.4.16.6
 # 来源（content/322330/3360553731/）：
 #   - 25 个无条件条目：scripts/mains/init/bwb_customizations.lua，init_worldgen.lua 逐条注册；
 #     0.4.16 起原版测试版重做石虾，Mod 注释掉了 rocky_gold/rocky_master（旧存档里的会被换成普通石虾），
@@ -1062,9 +1062,9 @@ MOD_ICON_ATLAS: dict[str, tuple[str, str]] = {
 
 
 # workshop-3811652910 == 三合一测试mod（岛屿冒险核心/海难 + 云霄国度 + 补丁 + 兼容层整合版），
-# 已核对到 1.2.6。integrated_loader.lua 按
+# 已核对到 1.2.8。integrated_loader.lua 按
 # core→sw→pl→patch→compat 在各自子环境执行原 Mod 入口；注册世界设置的 modservercreationmain.lua /
-# modcustomizeitems.lua 及三张图集与本机独立版 3435352667 1.0.79 / 1467214795 1.0.62 /
+# modcustomizeitems.lua 及三张图集与本机独立版 3435352667 1.0.80 / 1467214795 1.0.63 /
 # 3322803908 1.0.50 逐字节相同，patch/compat 不注册
 # 新条目，故直接复用三张登记表。图集被 shared_assets.lua 映射到 Mod 根目录的同名路径。
 # 同名 poison 按 core 先注册生效（AddCustomizeItem 遇已注册 name 直接 return）。
@@ -1087,12 +1087,12 @@ MOD_LOAD_PRIORITY[_THREE_WORLDS_ID] = 5
 # Mod 更新后用 reference/dev_scripts/audit_world_settings.py 核对差异，改完登记表再更新这里。
 MOD_VERIFIED_VERSIONS: dict[str, str] = {
     _CHERRY_FOREST_ID: "1.6.107",
-    _IA_CORE_ID: "1.0.79",
-    _IA_SHIPWRECKED_ID: "1.0.62",
+    _IA_CORE_ID: "1.0.80",
+    _IA_SHIPWRECKED_ID: "1.0.63",
     _PORKLAND_ID: "1.0.50",
-    _BWB_ID: "0.4.16.5",
+    _BWB_ID: "0.4.16.6",
     _TA_ID: "26.09.19",
-    _THREE_WORLDS_ID: "1.2.6",
+    _THREE_WORLDS_ID: "1.2.8",
 }
 
 
