@@ -206,6 +206,11 @@ class ModPage(Page):
         self._export_image_btn = QPushButton(t("mod.export_image_btn"))
         self._export_image_btn.clicked.connect(self._export_mod_list_image)
         status_row.addWidget(self._export_image_btn)
+        status_row.addSpacing(10)
+        self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
+        self._unsaved_label.setProperty("accent", True)
+        self._unsaved_label.setVisible(False)
+        status_row.addWidget(self._unsaved_label)
         status_row.addStretch()
         self._scan_status_label = QLabel("")
         self._scan_status_label.setProperty("muted", True)
@@ -234,44 +239,48 @@ class ModPage(Page):
         self._list_panel.set_column_count(columns)
         root.addWidget(self._list_panel, 1)
 
+        # 左、中、右三栏，左右两栏拉伸系数相同、等宽：右侧更新提示文字出现或变长时，中间的保存按钮不被挤偏
         bottom_row = QHBoxLayout()
+        left_group, center_group, right_group = QHBoxLayout(), QHBoxLayout(), QHBoxLayout()
+        bottom_row.addLayout(left_group, 1)
+        bottom_row.addLayout(center_group)
+        bottom_row.addLayout(right_group, 1)
         self._preset_save_btn = QPushButton(t("mod.preset_save_btn"))
         self._preset_save_btn.clicked.connect(self._save_as_preset)
-        bottom_row.addWidget(self._preset_save_btn)
+        left_group.addWidget(self._preset_save_btn)
         self._preset_apply_btn = QPushButton(t("mod.preset_apply_btn"))
         self._preset_apply_btn.clicked.connect(self._apply_preset_dialog)
-        bottom_row.addWidget(self._preset_apply_btn)
-        bottom_row.addStretch()
+        left_group.addWidget(self._preset_apply_btn)
+        left_group.addStretch()
+        self._discard_btn = QPushButton(t("dlg.discard_changes_btn"))
+        self._discard_btn.setEnabled(False)
+        self._discard_btn.clicked.connect(self._discard_changes)
+        center_group.addWidget(self._discard_btn)
         self._save_btn = QPushButton(t("mod.save_btn"))
         self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._save_mods)
-        bottom_row.addWidget(self._save_btn)
+        center_group.addWidget(self._save_btn)
         self._apply_current_btn = QPushButton(t("mod.apply_current"))
         self._apply_current_btn.setEnabled(False)
         self._apply_current_btn.clicked.connect(self._apply_current_shard)
-        bottom_row.addWidget(self._apply_current_btn)
-        self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
-        self._unsaved_label.setProperty("accent", True)
-        self._unsaved_label.setFont(theme.font("FONT_SIZE_SM"))
-        self._unsaved_label.setVisible(False)
-        bottom_row.addWidget(self._unsaved_label)
-        bottom_row.addStretch()
+        center_group.addWidget(self._apply_current_btn)
+        right_group.addStretch()
         self._update_hint_label = QPushButton("")
         self._update_hint_label.setProperty("flat", True)
         self._update_hint_label.setVisible(False)
         self._update_hint_label.clicked.connect(self._on_mod_update_hint_click)
-        bottom_row.addWidget(self._update_hint_label)
+        right_group.addWidget(self._update_hint_label)
         # SteamCMD 通道才有：它的工坊目录只增不减，Steam 客户端那边靠取消订阅
         self._steamcmd_cleanup_btn = QPushButton(t("mod.steamcmd_cleanup_btn"))
         self._steamcmd_cleanup_btn.clicked.connect(self._open_steamcmd_cleanup_dialog)
-        bottom_row.addWidget(self._steamcmd_cleanup_btn)
+        right_group.addWidget(self._steamcmd_cleanup_btn)
         self._workshop_update_btn = QPushButton(t("mod.workshop_update_btn"))
         self._workshop_update_btn.setEnabled(False)
         self._workshop_update_btn.clicked.connect(self._open_workshop_update_dialog)
-        bottom_row.addWidget(self._workshop_update_btn)
+        right_group.addWidget(self._workshop_update_btn)
         # 跟本地服务器页"全部启动/全部停止/..."一排操作按钮统一字号（方角已经是
         # 全局默认样式，这里只需要再调小字号）。
-        for button in (self._preset_save_btn, self._preset_apply_btn, self._save_btn,
+        for button in (self._preset_save_btn, self._preset_apply_btn, self._discard_btn, self._save_btn,
                       self._apply_current_btn, self._steamcmd_cleanup_btn, self._workshop_update_btn):
             button.setFont(theme.font("FONT_SIZE_SM"))
         root.addLayout(bottom_row)
@@ -325,6 +334,7 @@ class ModPage(Page):
         self.refresh_sync_button_state()
         save_state = self._editable(c) and self._dirty
         self._save_btn.setEnabled(save_state)
+        self._discard_btn.setEnabled(save_state)
         self._apply_current_btn.setEnabled(save_state and is_server)
         preset_state = is_server
         self._preset_save_btn.setEnabled(preset_state)
@@ -1060,6 +1070,7 @@ class ModPage(Page):
         self._dirty = dirty
         c = self.get_cluster()
         self._save_btn.setEnabled(dirty)
+        self._discard_btn.setEnabled(dirty)
         self._apply_current_btn.setEnabled(dirty and bool(c and c.source == SaveSource.SERVER))
         self._unsaved_label.setVisible(dirty)
         if changed:
@@ -1067,6 +1078,14 @@ class ModPage(Page):
 
     def _mark_dirty(self) -> None:
         self._set_dirty(True)
+
+    def _discard_changes(self) -> None:
+        """"取消修改"按钮：确认后丢掉未保存的勾选和配置，从磁盘重新读取。"""
+        if not self._dirty or not dialogs.ask_yes_no(self.window(), t("dlg.discard_changes_btn"),
+                                                     t("mod.discard_changes_confirm")):
+            return
+        self._set_dirty(False)
+        self._refresh_mods()
 
     def has_unsaved_changes(self) -> bool:
         return self._dirty

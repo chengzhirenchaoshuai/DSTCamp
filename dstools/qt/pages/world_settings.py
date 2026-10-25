@@ -157,16 +157,27 @@ class WorldSettingsPage(Page):
         self._save_button = QPushButton()
         self._save_button.setEnabled(False)
         self._save_button.clicked.connect(self._on_save)
+        self._discard_button = QPushButton()
+        self._discard_button.setEnabled(False)
+        self._discard_button.clicked.connect(self._discard_changes)
+        # 左右两栏等宽，右栏的"有未保存的改动"出现时中间按钮不跟着移动
         button_row = QHBoxLayout()
-        button_row.addStretch()
+        right_group = QHBoxLayout()
+        button_row.addStretch(1)
         button_row.addWidget(self._apply_preset_button)
         button_row.addWidget(self._save_preset_button)
+        button_row.addWidget(self._discard_button)
         button_row.addWidget(self._save_button)
+        button_row.addLayout(right_group, 1)
         self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
         self._unsaved_label.setProperty("accent", True)
+        # 隐藏时也占位：右栏变空时 Qt 会省掉它前面的间距，按钮仍会挪动几像素
+        policy = self._unsaved_label.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        self._unsaved_label.setSizePolicy(policy)
         self._unsaved_label.setVisible(False)
-        button_row.addWidget(self._unsaved_label)
-        button_row.addStretch()
+        right_group.addWidget(self._unsaved_label)
+        right_group.addStretch()
         layout.addLayout(button_row)
 
         theme.changed.connect(self._on_theme_changed)
@@ -193,6 +204,7 @@ class WorldSettingsPage(Page):
         self._manage_button.setText(t("world.manage_btn"))
         self._manage_button.setToolTip(t("world.manage_tip"))
         self._save_button.setText(t("world.save_rules"))
+        self._discard_button.setText(t("dlg.discard_changes_btn"))
         self._apply_preset_button.setText(t("world.preset_apply_btn"))
         self._apply_preset_button.setToolTip(t("world.preset_apply_tip"))
         self._save_preset_button.setText(t("world.preset_save_btn"))
@@ -421,9 +433,17 @@ class WorldSettingsPage(Page):
         if not dirty:
             self._generation_changed = False
         self._save_button.setEnabled(dirty)
+        self._discard_button.setEnabled(dirty)
         self._unsaved_label.setVisible(dirty)
         if changed:
             self.ctx.unsaved_changed.emit()
+
+    def _discard_changes(self) -> None:
+        """"取消修改"按钮：确认后丢掉未保存的修改，从磁盘重新读取当前世界。"""
+        if not self._dirty or not dialogs.ask_yes_no(self.window(), t("dlg.discard_changes_btn"),
+                                                     t("world.discard_changes_confirm")):
+            return
+        self._load_world()  # 重新读取时会清掉未保存标记
 
     def has_unsaved_changes(self) -> bool:
         return self._dirty
