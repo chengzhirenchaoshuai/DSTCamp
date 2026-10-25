@@ -71,34 +71,61 @@ def _resolve_mod_config(page, workshop_id: str, mod_info) -> bool:
     return changed
 
 
+# 同一时间只开一个配置窗口：多个窗口各自"应用"会互相覆盖，窗口开着时切换存档还会把配置写进旧存档的数据。
+# 后台解析期间存 True（窗口还没建好），窗口打开后存窗口本身，关闭后清空。
+_active_dialog = None
+
+
 def open_mod_config(page, workshop_id: str, mod, mod_info, read_only: bool, read_only_reason: str,
                     *, default_mode: bool = False) -> None:
     """入口：先后台跑耗时解析，再构建真正的对话框。default_mode 编辑的是默认配置（游戏主菜单"模组"的全局配置）。"""
-    needs_resolve = not mod_info.full_sandbox_tried or not mod_info.chs_translation_tried
-    if not needs_resolve:
-        ModConfigDialog(page, workshop_id, mod, mod_info, read_only, read_only_reason,
-                        default_mode=default_mode).show()
+    global _active_dialog
+    if _active_dialog is not None:
+        if isinstance(_active_dialog, QDialog):
+            _active_dialog.raise_()
+            _active_dialog.activateWindow()
         return
 
+    def show_dialog() -> None:
+        global _active_dialog
+        dialog = ModConfigDialog(page, workshop_id, mod, mod_info, read_only, read_only_reason,
+                                 default_mode=default_mode)
+        # 模态于所在窗口（主窗口或创建向导）：开着时不能切换存档/世界或再点别的 Mod
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.finished.connect(_clear_active_dialog)
+        _active_dialog = dialog
+        dialog.show()
+
+    needs_resolve = not mod_info.full_sandbox_tried or not mod_info.chs_translation_tried
+    if not needs_resolve:
+        show_dialog()
+        return
+
+    _active_dialog = True
     # 加载期间只显示忙碌光标，不弹提示小窗（会在选项多的 Mod 上闪一下）
     QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
 
     def finish() -> None:
+        global _active_dialog
         QApplication.restoreOverrideCursor()
+        _active_dialog = None
 
     def done(changed: bool) -> None:
         finish()
         if changed:
             page._render_list()
-        ModConfigDialog(page, workshop_id, mod, mod_info, read_only, read_only_reason,
-                        default_mode=default_mode).show()
+        show_dialog()
 
     def error(_exc: Exception) -> None:
         finish()
-        ModConfigDialog(page, workshop_id, mod, mod_info, read_only, read_only_reason,
-                        default_mode=default_mode).show()
+        show_dialog()
 
     run_async(lambda: _resolve_mod_config(page, workshop_id, mod_info), done, error)
+
+
+def _clear_active_dialog(_result: int = 0) -> None:
+    global _active_dialog
+    _active_dialog = None
 
 
 class ModConfigDialog(QDialog):
