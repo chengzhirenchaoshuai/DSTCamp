@@ -262,7 +262,7 @@ class ModPage(Page):
         center_group.addWidget(self._discard_btn)
         self._save_btn = QPushButton(t("mod.save_btn"))
         self._save_btn.setEnabled(False)
-        self._save_btn.clicked.connect(self._save_mods)
+        self._save_btn.clicked.connect(lambda: self._save_mods())
         center_group.addWidget(self._save_btn)
         self._apply_current_btn = QPushButton(t("mod.apply_current"))
         self._apply_current_btn.setEnabled(False)
@@ -1141,7 +1141,7 @@ class ModPage(Page):
                 dialogs.show_warning(self.window(), t("mod.save_btn"), t("dlg.no_overrides"))
                 return False
             try:
-                self._write_server_mods(c, shard, sync_others=True)
+                self._write_server_mods(c, shard)
             except OSError as exc:
                 dialogs.show_error(self.window(), t("mod.save_btn"), str(exc))
                 return False
@@ -1330,9 +1330,9 @@ class ModPage(Page):
                         config = {opt.name: opt.default for opt in info.config_options if not opt.is_header}
                 overrides.mods[wid] = ModEntry(workshop_id=wid, enabled=mod.enabled, configuration_options=config)
 
-    def _save_local_mods(self, cluster, index_path: Path, silent: bool) -> None:
+    def _save_local_mods(self, cluster, index_path: Path) -> None:
         """本地存档：游戏前端缓存 shardindex，回到"登陆中..."页面才重读，存档运行时开服进程还会覆盖。
-        后台检测后：运行中拦下；游戏开着时手动保存先确认、静默保存（配置弹窗应用）存后轻提示；没开直接存。"""
+        后台检测后：运行中拦下；游戏开着时先确认；没开直接存。"""
         from dstools.features.mod.shardindex import (
             LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, local_save_play_state,
         )
@@ -1348,11 +1348,10 @@ class ModPage(Page):
             if state == LOCAL_SAVE_RUNNING:
                 dialogs.show_warning(self.window(), t("mod.save_btn"), t("mod.local_save_running"))
                 return
-            if state == LOCAL_SAVE_OPEN and not silent and not dialogs.ask_yes_no(
+            if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
                     self.window(), t("mod.save_btn"), t("mod.local_save_game_open_confirm")):
                 return
-            if self._write_local_mods(cluster, index_path, silent) and state == LOCAL_SAVE_OPEN and silent:
-                dialogs.show_toast(self.window(), t("mod.local_saved_game_open_toast"), ms=4000)
+            self._write_local_mods(cluster, index_path, silent=False)
 
         def failed(exc: Exception) -> None:
             self._save_btn.setEnabled(self._dirty)
@@ -1375,7 +1374,6 @@ class ModPage(Page):
             save_mod_overrides(dst)
         self._remember_saved_state()
         self.ctx.cluster_config_saved.emit(cluster)
-        # 本地存档每次都写全部世界，静默保存也已全部存好
         self._set_dirty(False)
         if not silent:
             enabled_count = sum(1 for m in overrides.mods.values() if m.enabled)
@@ -1383,40 +1381,39 @@ class ModPage(Page):
             self._refresh_mods()
         return True
 
-    def _save_mods(self, silent: bool = False) -> None:
+    def _save_mods(self) -> None:
         c = self.get_cluster()
         index_path = self._local_shardindex(c)
         if index_path is not None:
-            self._save_local_mods(c, index_path, silent)
+            self._save_local_mods(c, index_path)
             return
         shard = next((s for s in c.shards if s.name == self._current_shard_name), None) if c else None
         if not c or not shard or not shard.mod_overrides_path or c.source != SaveSource.SERVER:
-            if not silent:
-                dialogs.show_warning(self.window(), t("mod.save_btn"), t("dlg.no_overrides"))
+            dialogs.show_warning(self.window(), t("mod.save_btn"), t("dlg.no_overrides"))
             return
-        overrides, other_shards = self._write_server_mods(c, shard, sync_others=not silent)
-        if not silent:
-            enabled_count = sum(1 for m in overrides.mods.values() if m.enabled)
-            dialogs.show_info(self.window(), t("dlg.save_ok"), t("dlg.saved_mods", count=enabled_count, shard=shard.name))
-            if other_shards:
-                dialogs.show_info(self.window(), t("mod.save_btn"), t("dlg.sync_done", count=len(other_shards)))
-            self._set_dirty(False)
-            self._refresh_mods()
-        elif not other_shards:
-            # 静默保存（配置弹窗"应用"）只写当前世界；没有别的世界要同步时已全部存好
-            self._set_dirty(False)
+        overrides, other_shards = self._write_server_mods(c, shard)
+        enabled_count = sum(1 for m in overrides.mods.values() if m.enabled)
+        dialogs.show_info(self.window(), t("dlg.save_ok"), t("dlg.saved_mods", count=enabled_count, shard=shard.name))
+        if other_shards:
+            dialogs.show_info(self.window(), t("mod.save_btn"), t("dlg.sync_done", count=len(other_shards)))
+        self._set_dirty(False)
+        self._refresh_mods()
 
-    def _write_server_mods(self, cluster, shard, sync_others: bool):
-        """写当前世界的 modoverrides.lua，sync_others 时同步到其他世界；返回（写入内容, 其他世界列表）。"""
+    def config_applied(self) -> None:
+        """Mod 配置窗口点了"应用"：配置只改在内存里，跟勾选一样等"保存修改"统一写入。"""
+        self._mark_dirty()
+        self._render_list()
+
+    def _write_server_mods(self, cluster, shard):
+        """写当前世界的 modoverrides.lua 并同步到其他世界；返回（写入内容, 其他世界列表）。"""
         overrides = load_mod_overrides(shard.mod_overrides_path)
         self._write_mod_states(overrides)
         save_mod_overrides(overrides)
         other_shards = [sh for sh in cluster.shards if sh.name != shard.name and sh.mod_overrides_path]
-        if sync_others:
-            for sh in other_shards:
-                dst = load_mod_overrides(sh.mod_overrides_path)
-                sync_mods(overrides, dst)
-                save_mod_overrides(dst)
+        for sh in other_shards:
+            dst = load_mod_overrides(sh.mod_overrides_path)
+            sync_mods(overrides, dst)
+            save_mod_overrides(dst)
         self._remember_saved_state()
         self.ctx.cluster_config_saved.emit(cluster)
         return overrides, other_shards

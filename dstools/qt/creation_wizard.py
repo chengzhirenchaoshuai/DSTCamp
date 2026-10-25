@@ -899,8 +899,11 @@ class CreationWizardDialog(QDialog):
     def _mark_dirty(self) -> None:
         self._status_label.setText(t("world.creation_mod_dirty_hint"))
 
-    def _save_mods(self, silent: bool = False) -> None:
+    def config_applied(self) -> None:
+        """Mod 配置窗口点了"应用"：同步到待创建的 Mod 配置。"""
+        self._mark_dirty()
         self._sync_mod_overrides()
+        self._render_list()
 
     def _sync_mod_overrides(self) -> None:
         self._mod_overrides = {}

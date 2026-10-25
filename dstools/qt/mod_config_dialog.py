@@ -599,9 +599,7 @@ class ModConfigDialog(QDialog):
             self.page._save_default_config(self.workshop_id, self.mod.configuration_options)
             self.close()
             return
-        # 立刻写进当前世界的 modoverrides.lua（跟游戏内配置界面一致）；"应用到所有
-        # 世界"还没做，标脏让 保存/应用 按钮保持可点。存档配置不影响默认配置（与游戏一致）。
-        self.page._mark_dirty()
-        self.page._save_mods(silent=True)
-        self.page._render_list()
+        # 只改内存里的配置，由页面决定何时写入（Mod 页等"保存修改"，创建向导随创建写入）。
+        # 存档配置不影响默认配置（与游戏一致）。
+        self.page.config_applied()
         self.close()

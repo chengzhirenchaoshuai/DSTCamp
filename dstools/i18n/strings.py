@@ -1146,7 +1146,6 @@ STRINGS = {
             "生效。\n\n"
             "确定保存 Mod 设置吗？"
         ),
-        "mod.local_saved_game_open_toast": "已保存。游戏开着，请先在游戏主菜单「模组」里点「应用」再开启这个存档",
         "mod.local_saved": "已保存 {count} 个已启用 Mod 到本地存档（shardindex 与各世界 modoverrides.lua）",
         "mod.config_sync_toast": "Mod 配置已与游戏同步：{detail}",
         "mod.config_sync_pulled": "从游戏取回 {count} 个",
@@ -2905,7 +2904,6 @@ STRINGS = {
             "send it back to the start screen, then start this save for the changes to apply.\n\n"
             "Save the mod settings?"
         ),
-        "mod.local_saved_game_open_toast": "Saved. The game is open -- click \"Apply\" in the main menu's \"Mods\" before starting this save",
         "mod.local_saved": "Saved {count} enabled mod(s) to the local save (shardindex and each shard's modoverrides.lua)",
         "mod.config_sync_toast": "Mod configs synced with the game: {detail}",
         "mod.config_sync_pulled": "{count} pulled from the game",
