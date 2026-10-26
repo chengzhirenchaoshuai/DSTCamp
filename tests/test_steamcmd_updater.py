@@ -99,7 +99,7 @@ def test_clear_stuck_manifest_if_marked() -> None:
 
 
 def test_run_update_marks_0x6_for_next_clear() -> None:
-    """出现 0x6 文案或退出码 8 时记标记并说明；本次不删清单。"""
+    """出现 0x6 文案时记标记并说明；本次不删清单。"""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "dstserver"
         lines: list[str] = []

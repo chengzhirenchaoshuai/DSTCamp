@@ -465,7 +465,6 @@ def prepare_steamcmd(
 # SteamCMD 输出里的 0x6 失败（content_log / 控制台多为英文）；StateFlags=6 本身只表示“已安装+待更新”，不能当作失败证据
 _STATE_0X6_AFTER_UPDATE_RE = re.compile(r"state is 0x6 after update job", re.IGNORECASE)
 _CLEAR_STUCK_MANIFEST_MARKER = ".dstcamp_clear_stuck_manifest"
-_STUCK_UPDATE_EXIT_CODE = 8
 
 
 def _stuck_manifest_marker(install_dir: Path) -> Path:
@@ -584,8 +583,8 @@ def run_update(
         if account and returncode == LOGIN_FAILED_EXIT_CODE:
             _record_login(steamcmd, account, returncode)
             raise SteamcmdLoginError(f"SteamCMD 退出码 {returncode}")
-    # 只有输出里出现 0x6，或退出码 8（与社区对 0x6 失败的常见对应）时才记“下次清清单”
-    if saw_0x6 or returncode == _STUCK_UPDATE_EXIT_CODE:
+    # 只有输出里出现 0x6 才记“下次清清单”：退出码 8 是各种 state 失败（磁盘满、断网等）共用的，不能当作 0x6 证据
+    if saw_0x6:
         mark_stuck_manifest_for_retry(install_dir)
         manifest = Path(install_dir) / "steamapps" / f"appmanifest_{DEDICATED_SERVER_APP_ID}.acf"
         on_line(t("steamcmd.manifest_stuck_after_update", path=str(manifest)))
