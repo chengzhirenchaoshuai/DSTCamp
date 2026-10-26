@@ -67,8 +67,8 @@ def main():
 
     g["ChooseTranslationTable"] = _choose_translation_table
 
-    # KnownModIndex:InitializeModInfo 的桩：返回空表即可。Chinese++ Pro 等翻译文件只取其 description
-    # 做替换，不影响 configuration_options；116 份真实翻译文件抽样，加桩后成功率升到 84%
+    # KnownModIndex:InitializeModInfo 的桩：返回空表即可。Chinese++ Pro 的翻译文件由 chs_translation.py
+    # 注入 gz_start 走开服工具分支，不再调用它；保留桩兜底其他照抄这种写法、却没有 gz_start 分支的文件
     def _known_mod_index_stub(_self, *_args):
         return rt.table_from({"description": ""})
 

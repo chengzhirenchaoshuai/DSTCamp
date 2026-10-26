@@ -1,23 +1,28 @@
-"""借用汉化 Mod "Chinese++ Pro"（workshop-2941527805）的翻译，给 Mod 配置项叠加中文 label/hover。
+"""借用汉化 Mod "Chinese++ Pro"（workshop-2941527805）的翻译，给 Mod 名称、简介和配置项叠加中文。
 
 仅在用户订阅了该 Mod 且其中有目标 Mod 的翻译文件时生效，只改显示文字，不碰写入的值。
 翻译文件位于 scripts/info_chs/workshop-<id>.lua，合并算法照抄其 main/mod_chs.lua。
-约六成翻译文件含 Lua 逻辑，须用 sandbox.py 执行（_sandbox_worker.py 为此补了 KnownModIndex 桩，
-116 份抽样成功率 84%），解析不出就不叠加，不猜。
+约六成翻译文件含 Lua 逻辑，须用 sandbox.py 执行，解析不出就不叠加，不猜。
+约四成翻译文件在原名/原简介上做替换或拼接（如 ``name = temp_modname.."(永不妥协)"``），
+它们都留有给开服工具的 ``if gz_start then`` 分支，这里按该约定注入 gz_* 全局传入原始信息。
 """
 
+import hashlib
 import json
 from pathlib import Path
 
 from dstools.features.mod.parser import ModConfigOption, find_mod_folder
 from dstools.features.mod.sandbox import run_lua_snippet
 from dstools.models import Platform
+from dstools.shared.lua_parser import _lua_value
 from dstools.shared.resource_paths import cache_dir
 
 CHS_PRO_WORKSHOP_ID = "workshop-2941527805"
 
 _CACHE_DIR = cache_dir("mod_chs_translation")
 _TIMEOUT = 3.0
+# 缓存协议：v2 起结果含 name/description 并注入 gz_*，旧缓存（纯列表）自然因缺 digest 失效
+_CACHE_PROTOCOL = 2
 
 
 def find_translation_file(workshop_id: str, platform: Platform = Platform.STEAM,
@@ -31,12 +36,45 @@ def find_translation_file(workshop_id: str, platform: Platform = Platform.STEAM,
     return path if path.exists() else None
 
 
-def resolve_translation(translation_path: Path) -> list[dict] | None:
-    """沙箱执行翻译文件取回 configuration_options 原始数据，按文件 mtime 落盘缓存；解析不出返回 None。"""
+def _gz_preamble(name: str, description: str, version: str) -> str:
+    """按翻译文件里的 gz_* 约定传入原始 name/description/version。原始 configuration_options 是静态解析
+    结果、已不是 Lua 原表，只给空表：用到它的 3 份文件只是据此补"[故障]"前缀，缺了不影响翻译本身。"""
+    return (
+        "gz_start = true\n"
+        f"gz_modname = {_lua_value(name)}\n"
+        f"gz_description = {_lua_value(description)}\n"
+        f"gz_modversion = {_lua_value(version)}\n"
+        "gz_configuration_options = {}\n"
+    )
+
+
+def _parse_result(result) -> dict | None:
+    """校验沙箱返回值的形状，只保留非空字符串的 name/description 与列表形式的 configuration_options。"""
+    if not isinstance(result, dict):
+        return None
+    parsed = {}
+    for key in ("name", "description"):
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            parsed[key] = value
+    options = result.get("configuration_options")
+    if isinstance(options, list):
+        parsed["configuration_options"] = options
+    return parsed or None
+
+
+def resolve_translation(translation_path: Path, name: str = "", description: str = "",
+                        version: str = "") -> dict | None:
+    """沙箱执行翻译文件，返回 ``{"name", "description", "configuration_options"}`` 中解析到的部分；
+    解析不出返回 None。结果依赖原始信息，缓存按文件 mtime 与输入摘要校验。"""
+    preamble = _gz_preamble(name, description, version)
+    digest = hashlib.sha256(f"{_CACHE_PROTOCOL}\0{preamble}".encode("utf-8")).hexdigest()
     cache_file = _CACHE_DIR / f"{translation_path.stem}.json"
     if cache_file.exists() and cache_file.stat().st_mtime >= translation_path.stat().st_mtime:
         try:
-            return json.loads(cache_file.read_text(encoding="utf-8"))
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            if isinstance(cached, dict) and cached.get("digest") == digest:
+                return cached.get("result")
         except (OSError, ValueError):
             pass
 
@@ -44,19 +82,17 @@ def resolve_translation(translation_path: Path) -> list[dict] | None:
         text = translation_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    result = run_lua_snippet(text, timeout=_TIMEOUT)
-    if not isinstance(result, dict):
-        return None
-    options = result.get("configuration_options")
-    if not isinstance(options, list):
+    parsed = _parse_result(run_lua_snippet(preamble + text, timeout=_TIMEOUT))
+    if parsed is None:
         return None
 
     try:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps(options, ensure_ascii=False), encoding="utf-8")
+        cache_file.write_text(json.dumps({"digest": digest, "result": parsed}, ensure_ascii=False),
+                              encoding="utf-8")
     except (OSError, TypeError, ValueError):
         pass
-    return options
+    return parsed
 
 
 def apply_translation(config_options: list[ModConfigOption], translation: list[dict]) -> None:
