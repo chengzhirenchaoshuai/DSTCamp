@@ -36,6 +36,7 @@ from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, section_card
 from dstools.shared import app_settings
+from dstools.shared.frpc_log import FrpcOutputLog
 from dstools.shared.resource_paths import data_dir
 from dstools.shared.server_ports import stable_path_key
 
@@ -508,7 +509,7 @@ class LoliaPanel(QWidget):
         existing = self._reconcile_once(key, config_path)
         if existing is not None and existing.status not in (FrpcStatus.CRASHED, FrpcStatus.STOPPED):
             return  # 已在运行/启停中；崩溃或已停止的才重新拉起
-        self.frpc.start(key, exe, config_path)
+        self.frpc.start(key, exe, config_path, log=FrpcOutputLog(cluster.path, f"Lolia {shard.name}"))
 
     def stop_frpc_for_shard(self, cluster, shard, on_done=None) -> None:
         # 单个世界停服时不停 frpc（同自建节点），下次开服直接可用

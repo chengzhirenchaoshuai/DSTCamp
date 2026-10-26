@@ -31,6 +31,7 @@ from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, PillTabBar, ToggleSwitch, section_card
 from dstools.shared import app_settings
 from dstools.qt.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping
+from dstools.shared.frpc_log import FrpcOutputLog
 from dstools.shared.resource_paths import data_dir
 from dstools.shared.server_ports import stable_path_key
 
@@ -892,7 +893,7 @@ class SelfHostPanel(QWidget):
         existing = self._reconcile_once(cluster)
         if existing is not None and existing.status not in (FrpcStatus.CRASHED, FrpcStatus.STOPPED):
             return  # 已在运行/启停中；崩溃或已停止的才重新拉起
-        self.frpc.start(cluster.path, exe, config_path)
+        self.frpc.start(cluster.path, exe, config_path, log=FrpcOutputLog(cluster.path, "自建"))
 
     def stop_frpc_for_shard(self, cluster, shard, on_done=None) -> None:
         if on_done:
@@ -1070,7 +1071,7 @@ class SelfHostPanel(QWidget):
         config_path = self._frpc_config_path(cluster.path)
         exe = _frpc_exe_path()
         if config_path.exists() and frpc_tool.ensure(exe, lambda: self._maybe_start_after_restart(cluster, None)):
-            self.frpc.start(cluster.path, exe, config_path)
+            self.frpc.start(cluster.path, exe, config_path, log=FrpcOutputLog(cluster.path, "自建"))
         if on_done:
             on_done()
 

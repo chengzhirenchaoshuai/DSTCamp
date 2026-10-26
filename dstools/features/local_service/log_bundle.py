@@ -31,6 +31,8 @@ _STEAMCMD_LOG_TAIL_BYTES = 256 * 1024
 # 实测日志里账号信息只以这两种形式出现：Logging in user '<用户名>'、[U:1:<SteamID>]
 _STEAMCMD_USER_RE = re.compile(r"(Logging in user ')[^']*(')")
 _STEAMCMD_STEAMID_RE = re.compile(r"\[U:1:[1-9]\d*\]")
+_FRPC_LOG_TAIL_BYTES = 512 * 1024
+_NAT_LABELS = {"sakura": "樱花", "lolia": "Lolia", "selfhost": "自建 frp"}
 
 
 def default_log_output_dir() -> Path:
@@ -136,23 +138,42 @@ def _steamcmd_log_entries() -> list[tuple[str, str]]:
     account = get_steamcmd_account()
     entries = []
     for name in _STEAMCMD_LOGS:
-        path = root.parent / "logs" / name
-        try:
-            with path.open("rb") as file:
-                size = file.seek(0, 2)
-                file.seek(max(0, size - _STEAMCMD_LOG_TAIL_BYTES))
-                data = file.read()
-        except OSError:
-            continue
-        text = data.decode("utf-8", errors="replace")
-        if size > _STEAMCMD_LOG_TAIL_BYTES:
-            text = text.split("\n", 1)[-1]  # 截断处的半行丢掉
-        entries.append((f"SteamCMD/{name}", _redact_steamcmd_log(text, account)))
+        text = _read_tail(root.parent / "logs" / name, _STEAMCMD_LOG_TAIL_BYTES)
+        if text is not None:
+            entries.append((f"SteamCMD/{name}", _redact_steamcmd_log(text, account)))
     return entries
 
 
-def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | None = None) -> Path:
-    """打包一个服务器存档的当前日志、近期错误日志和安全配置文件。"""
+def _read_tail(path: Path, limit: int) -> str | None:
+    """读文件末尾至多 limit 字节，读不到返回 None。"""
+    try:
+        with path.open("rb") as file:
+            size = file.seek(0, 2)
+            file.seek(max(0, size - limit))
+            data = file.read()
+    except OSError:
+        return None
+    text = data.decode("utf-8", errors="replace")
+    if size > limit:
+        text = text.split("\n", 1)[-1]  # 截断处的半行丢掉
+    return text
+
+
+def _nat_summary(shard_names, nat_owners) -> list[str]:
+    """穿透方式与大厅加速开关，写进 manifest。nat_owners 为 {世界名: 映射归属}，由界面按实际映射算好。"""
+    from dstools.shared.app_settings import get_lobby_accel_enabled
+
+    if nat_owners is None:
+        nat = "未知"
+    else:
+        parts = [f"{name}={_NAT_LABELS.get(nat_owners.get(name), '未映射')}" for name in shard_names]
+        nat = "、".join(parts) or "未知"
+    return [f"内网穿透：{nat}", f"大厅加速：{'已开启' if get_lobby_accel_enabled() else '未开启'}"]
+
+
+def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | None = None,
+                      nat_owners: dict[str, str | None] | None = None) -> Path:
+    """打包一个服务器存档的当前日志、近期错误日志、frpc 输出和安全配置文件。"""
     cluster_path = Path(cluster_path)
     if not cluster_path.is_dir():
         raise FileNotFoundError(f"服务器存档不存在：{cluster_path}")
@@ -185,16 +206,27 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
         f"生成时间：{_dt.datetime.now().isoformat(timespec='seconds')}",
         f"存档目录：{cluster_path}",
         f"世界：{'、'.join(shard_names) or '未识别'}",
-        "说明：已跳过 cluster_token、管理员列表等敏感文件；SteamCMD 日志已去掉账号与 SteamID，不含登录凭据。",
+        *_nat_summary(shard_names, nat_owners),
+        "说明：已跳过 cluster_token、管理员列表等敏感文件；SteamCMD 日志已去掉账号与 SteamID，不含登录凭据；"
+        "frpc 日志已去掉樱花 Token。",
         "",
     ]
+    from dstools.shared.frpc_log import frpc_log_path
+
+    tails = _steamcmd_log_entries()
+    frpc_text = _read_tail(frpc_log_path(cluster_path), _FRPC_LOG_TAIL_BYTES)
+    if frpc_text is not None:
+        tails.append(("DSTCamp/frpc.log", frpc_text))
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for source, arcname in files:
             archive.write(source, arcname)
             manifest.append(f"{arcname} ({source.stat().st_size} bytes)")
-        for arcname, text in _steamcmd_log_entries():
+        for arcname, text in tails:
             archive.writestr(arcname, text)
             manifest.append(f"{arcname}（末尾 {len(text.encode('utf-8'))} bytes）")
+        if frpc_text is None:
+            # 接管上次运行遗留的 frpc 时没有输出管道，这种情况也没有记录
+            manifest.append("DSTCamp/frpc.log：没有记录（本存档没由 DSTCamp 启动过 frpc，或只接管过遗留的 frpc 进程）")
         archive.writestr("manifest.txt", "\n".join(manifest) + "\n")
         archive.writestr("mod_list.txt", _extract_mod_list(files))
     return zip_path

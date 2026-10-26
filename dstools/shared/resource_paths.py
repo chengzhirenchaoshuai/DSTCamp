@@ -7,7 +7,8 @@
     settings.json   全部用户设置
     cache/          可随时清空、按需重建（可在设置中改位置，须为纯 ASCII 路径）：
                     mod_full_resolve、modinfo_static、mod_versions、mod_chs_translation、mod_icons/<平台>、legacy_v1_read、
-                    world_mod_icons、character_icons、connection_log、lobby_accel_mihomo、runtime/{ktools,ktech_jobs}、
+                    world_mod_icons、character_icons、connection_log、frpc_log（frpc 输出，日志包会收录）、
+                    lobby_accel_mihomo、runtime/{ktools,ktech_jobs}、
                     steamcmd（内置 SteamCMD 及其自更新组件、日志和登录缓存，清空后下次使用重新释放并需重新登录）
     data/           需要保留的用户数据：background、player_registry、port_backups、auto_restart、updates、
                     runtime_tools（长驻工具的解压副本）、tools（按需下载或从工具包导入的工具，见 tool_store.py）、

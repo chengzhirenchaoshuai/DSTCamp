@@ -8,6 +8,8 @@ import time
 from enum import Enum
 from pathlib import Path
 
+from dstools.shared.frpc_log import FrpcOutputLog
+
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -37,6 +39,8 @@ class FrpcProcess:
         self.proc: subprocess.Popen | None = None
         self.error: str | None = None
         self._out_queue: "queue.Queue[str]" = queue.Queue()
+        # 输出同时落盘供日志包收录；Token 在命令行里，写入前替换掉
+        self._log = FrpcOutputLog(cluster_path, f"樱花 {shard_name}", secrets=(token,))
 
     def start(self) -> None:
         # 被杀软隔离/删除时 Popen 抛 FileNotFoundError，提前检查并记录可读的失败原因
@@ -58,14 +62,22 @@ class FrpcProcess:
             self.error = f"启动失败：{exc}"
             return
         self.status = FrpcStatus.RUNNING
+        self._log.started()
         threading.Thread(target=self._read_loop, daemon=True).start()
 
     def _read_loop(self) -> None:
         try:
             for line in self.proc.stdout:
-                self._out_queue.put(line.rstrip("\n"))
+                line = line.rstrip("\n")
+                self._out_queue.put(line)
+                self._log.line(line)
         except (OSError, ValueError):
             pass
+        try:
+            code = self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            code = None
+        self._log.exited(code)
 
     def read_available_lines(self) -> list[str]:
         lines = []

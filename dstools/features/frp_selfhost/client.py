@@ -16,6 +16,8 @@ import time
 from enum import Enum
 from pathlib import Path
 
+from dstools.shared.frpc_log import FrpcOutputLog
+
 IS_WINDOWS = sys.platform == "win32"
 _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
 _SECURITY_BLOCK_WINERROR = 225  # "操作无法成功完成，因为文件包含病毒或潜在的垃圾软件"
@@ -115,9 +117,11 @@ def build_frpc_toml(server_host: str, server_port: int, token: str, proxies: lis
 class FrpcProcess:
     """一个存档的 frpc.exe 子进程（无优雅关闭指令，直接 terminate → kill）。
 
-    ``adopted_pid`` 不为 None 表示认领来的孤儿进程：没有 Popen 句柄和 stdout，状态与终止都按 PID 操作。"""
+    ``adopted_pid`` 不为 None 表示认领来的孤儿进程：没有 Popen 句柄和 stdout，状态与终止都按 PID 操作。
+    ``log`` 给出时把输出同时落盘，供日志包收录。"""
 
-    def __init__(self, cluster_path: Path, frpc_exe: Path, config_path: Path, *, adopted_pid: int | None = None):
+    def __init__(self, cluster_path: Path, frpc_exe: Path, config_path: Path, *, adopted_pid: int | None = None,
+                 log: FrpcOutputLog | None = None):
         self.cluster_path = cluster_path
         self.frpc_exe = frpc_exe
         self.config_path = config_path
@@ -126,6 +130,7 @@ class FrpcProcess:
         self.error: str | None = None
         self.blocked = False  # 文件被安全软件隔离或拦截，界面据此引导添加 Defender 排除项
         self._adopted_pid = adopted_pid
+        self._log = log
         self._out_queue: "queue.Queue[str]" = queue.Queue()
 
     def start(self) -> None:
@@ -150,14 +155,25 @@ class FrpcProcess:
             self.blocked = isinstance(exc, FileNotFoundError) or getattr(exc, "winerror", None) == _SECURITY_BLOCK_WINERROR
             return
         self.status = FrpcStatus.RUNNING
+        if self._log:
+            self._log.started()
         threading.Thread(target=self._read_loop, daemon=True).start()
 
     def _read_loop(self) -> None:
         try:
             for line in self.proc.stdout:
-                self._out_queue.put(line.rstrip("\n"))
+                line = line.rstrip("\n")
+                self._out_queue.put(line)
+                if self._log:
+                    self._log.line(line)
         except (OSError, ValueError):
             pass
+        if self._log:
+            try:
+                code = self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                code = None
+            self._log.exited(code)
 
     def read_available_lines(self) -> list[str]:
         if self._adopted_pid is not None:
@@ -220,8 +236,9 @@ class FrpcManager:
     def __init__(self):
         self._procs: dict[str, FrpcProcess] = {}
 
-    def start(self, cluster_path: Path, frpc_exe: Path, config_path: Path) -> FrpcProcess:
-        proc = FrpcProcess(cluster_path, frpc_exe, config_path)
+    def start(self, cluster_path: Path, frpc_exe: Path, config_path: Path,
+              log: FrpcOutputLog | None = None) -> FrpcProcess:
+        proc = FrpcProcess(cluster_path, frpc_exe, config_path, log=log)
         proc.start()
         self._procs[str(cluster_path)] = proc
         return proc

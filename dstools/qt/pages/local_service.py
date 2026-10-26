@@ -3492,9 +3492,11 @@ class LocalServicePage(Page):
             return
         self._logs_btn.setEnabled(False)
         shard_names = [s.name for s in cluster.shards]
+        # 映射归属要问穿透页的控件状态，在界面线程算好
+        nat_owners = {s.name: self.ctx.mapping_owner(cluster, s) for s in cluster.shards}
 
         def work():
-            zip_path = create_log_bundle(cluster.path, shard_names)
+            zip_path = create_log_bundle(cluster.path, shard_names, nat_owners=nat_owners)
             return zip_path, copy_file_to_clipboard(zip_path)
 
         def done(result) -> None:
