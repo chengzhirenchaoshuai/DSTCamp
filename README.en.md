@@ -18,7 +18,7 @@
   <a href="#-features">Features</a> ·
   <a href="#-storage-layout">Storage</a> ·
   <a href="#-development">Development</a> ·
-  <a href="#176-changes">Changelog</a> ·
+  <a href="#177-changes">Changelog</a> ·
   <a href="README.md">中文</a>
 </p>
 
@@ -107,9 +107,28 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.7.6 changes
+## 1.7.7 changes
 
 ### ✨ New features
+
+- The Mod list shows Chinese names provided by Chinese++ Pro; search matches both the Chinese and original names.
+- Log bundles include frpc output and note each world's tunnel type, to help diagnose disconnects.
+
+### 🐞 Fixes
+
+- Dedicated servers installed in a Steam library were mistaken for SteamCMD installs.
+- SteamCMD updates stayed stuck after a 0x6 failure: the stuck manifest is now cleared before the next update, keeping downloaded progress.
+- Mod configuration options translated by Chinese++ Pro were missing the original name and showed an empty version.
+- After cleanup tools deleted temporary files, background tasks kept popping up "Failed to start embedded python interpreter!"; a banner now asks you to restart DSTCamp.
+
+Thanks to @Lovedmo for fixing the SteamCMD issues (#3).
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.7.6)</strong></summary>
+
+### 1.7.6
+
+#### ✨ New features
 
 - **Unsaved-change reminders and Discard changes**: the Mod and World Settings pages mark unsaved changes with a dot and a note, and gain "Discard changes"; "Apply" in a Mod's configuration is now written together with "Save Changes".
 - **Clearer token messages**: registration conflicts are explained in plain words with action buttons; a save's own new token is added to the token pool on start, and you are prompted to add spare tokens when none are left.
@@ -119,15 +138,12 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 - **The Mod page's "Custom" filter is renamed "Local Mods"**.
 - **World settings verified for new Mod versions**: Island Adventures Core 1.0.80, Shipwrecked 1.0.63, Beneath the World Below 0.4.16.6, three-in-one 1.2.8.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - With Island Adventures or the three-in-one Mod enabled, starting wrongly warned that some worlds could only be entered through WorldGate.
 - Turning off a Mod made the "Disable client mods" row jump to the top of the list.
 - Window ornaments appeared before the main window when opening.
 - In the English UI, "Set" and "cip.cc" ran together in the public network notice.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.7.5)</strong></summary>
 
 ### 1.7.5
 
