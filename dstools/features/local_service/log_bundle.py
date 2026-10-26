@@ -33,6 +33,14 @@ _STEAMCMD_USER_RE = re.compile(r"(Logging in user ')[^']*(')")
 _STEAMCMD_STEAMID_RE = re.compile(r"\[U:1:[1-9]\d*\]")
 _FRPC_LOG_TAIL_BYTES = 512 * 1024
 _NAT_LABELS = {"sakura": "樱花", "lolia": "Lolia", "selfhost": "自建 frp"}
+# 本机客户端日志：当前一份加最新几份备份，只收与服务器日志同一时段的，每份只留末尾一段
+_CLIENT_LOG_TAIL_BYTES = 512 * 1024
+_MAX_CLIENT_BACKUPS = 2
+# 日志开头的开服时间，如 "Current time: Mon Oct 26 16:24:46 2026"；月份是固定英文缩写，不依赖 locale
+_CURRENT_TIME_RE = re.compile(r"Current time: \w{3} (\w{3}) +(\d{1,2}) (\d{1,2}):(\d{2}):(\d{2}) (\d{4})")
+# 每行开头的运行时长，如 "[02:23:26]: "
+_ELAPSED_RE = re.compile(r"^\[(\d+):(\d{2}):(\d{2})\]:", re.MULTILINE)
+_MONTHS = ("Jan","Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 def default_log_output_dir() -> Path:
@@ -159,6 +167,64 @@ def _read_tail(path: Path, limit: int) -> str | None:
     return text
 
 
+def _log_span(path: Path) -> tuple[float, float] | None:
+    """日志覆盖的时段（本地时间戳）：开头记录的启动时间，加上最后一行的运行时长。读不出返回 None。
+    备份日志的修改时间是下次启动轮换时才写的，晚于真正结束，所以不用修改时间当结束。"""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as stream:
+            head = stream.read(16 * 1024)
+    except OSError:
+        return None
+    match = _CURRENT_TIME_RE.search(head)
+    if not match or match.group(1) not in _MONTHS:
+        return None
+    month = _MONTHS.index(match.group(1)) + 1
+    day, hour, minute, second, year = (int(g) for g in match.groups()[1:])
+    try:
+        start = _dt.datetime(year, month, day, hour, minute, second).timestamp()
+    except ValueError:
+        return None
+    elapsed = _ELAPSED_RE.findall(_read_tail(path, 64 * 1024) or "")
+    if not elapsed:
+        return start, start
+    h, m, s = (int(g) for g in elapsed[-1])
+    return start, start + h * 3600 + m * 60 + s
+
+
+def _client_log_entries(cluster_path: Path, files: list[tuple[Path, str]]) -> list[tuple[str, str]]:
+    """本机客户端日志末尾，返回 [(包内路径, 内容)]。
+
+    客户端日志在 Klei 根目录（Steam 版 DoNotStarveTogether、WeGame 版 DoNotStarveTogetherRail），
+    存档在根目录下或其中的用户 ID 目录下；历次游戏在下次启动时轮换到 backup/client_log。
+    只收与某一份已收服务器日志时段重叠的（当前一份加最新几份备份），开服机上没人玩或玩的是别的时段就不收。"""
+    root = next((d for d in (cluster_path.parent, cluster_path.parent.parent)
+                 if (d / "client_log.txt").is_file()), None)
+    if root is None:
+        return []
+    server_spans = [span for source, arcname in files if "server_log" in arcname
+                    if (span := _log_span(source)) is not None]
+
+    def overlaps(path: Path) -> bool:
+        span = _log_span(path)
+        if span is None:
+            return False
+        return any(span[0] <= end and start <= span[1] for start, end in server_spans)
+
+    try:
+        backups = sorted((p for p in (root / "backup" / "client_log").glob("client_log_*.txt") if p.is_file()),
+                         key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        backups = []
+    candidates = [(root / "client_log.txt", "Client/client_log.txt")] if overlaps(root / "client_log.txt") else []
+    candidates += [(p, f"Client/backup/{p.name}") for p in backups if overlaps(p)][:_MAX_CLIENT_BACKUPS]
+    entries = []
+    for path, arcname in candidates:
+        text = _read_tail(path, _CLIENT_LOG_TAIL_BYTES)
+        if text is not None:
+            entries.append((arcname, text))
+    return entries
+
+
 def _nat_summary(shard_names, nat_owners) -> list[str]:
     """穿透方式与大厅加速开关，写进 manifest。nat_owners 为 {世界名: 映射归属}，由界面按实际映射算好。"""
     from dstools.shared.app_settings import get_lobby_accel_enabled
@@ -208,7 +274,7 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
         f"世界：{'、'.join(shard_names) or '未识别'}",
         *_nat_summary(shard_names, nat_owners),
         "说明：已跳过 cluster_token、管理员列表等敏感文件；SteamCMD 日志已去掉账号与 SteamID，不含登录凭据；"
-        "frpc 日志已去掉樱花 Token。",
+        "frpc 日志已去掉樱花 Token；客户端日志不含聊天记录。",
         "",
     ]
     from dstools.shared.frpc_log import frpc_log_path
@@ -217,6 +283,8 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
     frpc_text = _read_tail(frpc_log_path(cluster_path), _FRPC_LOG_TAIL_BYTES)
     if frpc_text is not None:
         tails.append(("DSTCamp/frpc.log", frpc_text))
+    client_tails = _client_log_entries(cluster_path, files)
+    tails.extend(client_tails)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for source, arcname in files:
             archive.write(source, arcname)
@@ -227,6 +295,14 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
         if frpc_text is None:
             # 接管上次运行遗留的 frpc 时没有输出管道，这种情况也没有记录
             manifest.append("DSTCamp/frpc.log：没有记录（本存档没由 DSTCamp 启动过 frpc，或只接管过遗留的 frpc 进程）")
+        if not client_tails:
+            manifest.append("Client/：本机没有与服务器日志同一时段的客户端日志")
+        manifest += [
+            "",
+            "Client/ 只有开服这台电脑的客户端日志（不含聊天记录）。其他玩家的客户端日志在他们自己电脑的"
+            "「文档\\Klei\\DoNotStarveTogether\\client_log.txt」（WeGame 版为 DoNotStarveTogetherRail），"
+            "需要单独发送；断线后先别重开游戏，重开会把它轮换到 backup\\client_log。",
+        ]
         archive.writestr("manifest.txt", "\n".join(manifest) + "\n")
         archive.writestr("mod_list.txt", _extract_mod_list(files))
     return zip_path
