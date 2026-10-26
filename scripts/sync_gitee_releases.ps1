@@ -7,7 +7,9 @@ $owner = 'orange-blade'
 $repo = 'DSTCamp'
 $githubRepo = 'chengzhirenchaoshuai/DSTCamp'
 $keepCount = 3
-$tokenPath = Join-Path $PSScriptRoot '..\reference\gitee_token.txt'
+# 令牌放在项目外的密钥目录（不进 Git），可用环境变量 DSTCAMP_KEY_DIR 改位置
+$keyDir = if ($env:DSTCAMP_KEY_DIR) { $env:DSTCAMP_KEY_DIR } else { 'F:\AI\mywork\ProjectKey\DSTCamp' }
+$tokenPath = Join-Path $keyDir 'gitee_token.txt'
 
 if (-not (Test-Path -LiteralPath $tokenPath -PathType Leaf)) {
     throw "未找到 Gitee 令牌文件：$tokenPath"

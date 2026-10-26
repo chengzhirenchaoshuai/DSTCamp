@@ -2,7 +2,7 @@
 
 清单里的 sha256 决定程序会安装什么，而清单可能来自 Gitee/GitHub，也可能来自蓝奏云等网盘的离线包；
 有了签名，断网导入时也能确认清单出自发布者。签名放在清单自己的 ``signature`` 字段，
-对去掉该字段后的规范化 JSON 签名。私钥只在发布机的 reference/update_signing_key.pem，不进 Git。
+对去掉该字段后的规范化 JSON 签名。私钥只在发布机项目外的密钥目录（见 scripts/build_exe.py 的 _project_key_dir()），不进 Git。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import base64
 import json
 from pathlib import Path
 
-# 与 reference/update_signing_key.pem 配对的公钥（32 字节原始格式）
+# 与密钥目录里 update_signing_key.pem 配对的公钥（32 字节原始格式）
 PUBLIC_KEY_HEX = "05eaa6e9e54bbcee6e8a6342972b489154942d970edaa7c7715b996951df1e76"
 SIGNATURE_FIELD = "signature"
 

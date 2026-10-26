@@ -46,7 +46,7 @@ python scripts/build_exe.py
 - 构建只收固定资源白名单、在 `build/` 暂存，禁止包含缓存、持久数据、安全材料和 `reference/`。打包后实际启动 EXE；冒烟测试不能替代 GUI、Steam、frpc 或游戏内验证。验证 EXE 与 `sha256.json` 后再提交、推送、打 `vX.Y.Z` 标签并创建 Release。
 - 发布构建用 `python scripts/build_exe.py --patch-from <近几个正式版的 DSTCamp-X.Y.Z.exe>` 生成增量补丁（旧版 EXE 不能放在 `release/` 里，构建会清空它），`.hdiff` 与 EXE、`sha256.json` 一起上传为 Release 附件；没有对应补丁的旧版客户端自动下载整包。
 - 正式构建开始前自动运行 `reference/dev_scripts/audit_world_settings.py`，世界设置登记表没跟上游戏或已适配 Mod 的更新时中止：按报告更新登记表与 `MOD_VERIFIED_VERSIONS`，再用 `--snapshot` 存快照；确认先不处理才加 `--skip-world-audit`。
-- `sha256.json` 必须用 `reference/update_signing_key.pem`（Ed25519，不进 Git，务必另行备份）签名，客户端只认带有效签名的清单；`--unsigned` 只用于自测。私钥丢失后已装客户端无法再自动更新。
+- 密钥放项目外的 `F:\AI\mywork\ProjectKey\DSTCamp\`（可用环境变量 `DSTCAMP_KEY_DIR` 改），不放进项目目录。`sha256.json` 必须用其中的 `update_signing_key.pem`（Ed25519，不进 Git，务必另行备份）签名，客户端只认带有效签名的清单；`--unsigned` 只用于自测。私钥丢失后已装客户端无法再自动更新。
 - `release/offline/` 下的完整包、补丁包（以及工具包）只传蓝奏云等网盘，不传 GitHub/Gitee；用户在「关于 → 手动更新 → 从文件导入」安装。
 - 按需下载的工具登记在 `shared/tool_store.py`（大小与 SHA-256 写死，有测试核对 `tools/`）。换工具版本时升 `TOOLS_RELEASE_TAG`，运行 `python scripts/make_tools_release.py`（在构建 EXE 之后），把 `release/tools-N/` 上传为 GitHub 标签 `tools-N` 的 Release 并标记为非 latest（`gh release create --latest=false`），且要在依赖它的版本发行版之前创建：1.7.1 及更早的客户端用 `releases/latest` 检查更新。网盘工具包 `DSTCamp-tools-N.zip` 放进蓝奏云「手动更新」分享文件夹的根目录（蓝奏云不能单独分享子文件夹），另外单独分享一份，把链接和密码填进 `tool_store.TOOLS_LANZOU_URL`/`TOOLS_LANZOU_PASSWORD`（下载失败时直接打开）。
 
@@ -64,7 +64,7 @@ python scripts/build_exe.py
 - 说明不能含表情符号（同步脚本已自动去掉）和"代理"等字样，否则整段被替换为"内容可能含有违规信息"；改用"TUN 虚拟网卡"等说法。
 - 同步后用 `GET /api/v5/repos/orange-blade/DSTCamp/releases/tags/vX.Y.Z` 回读说明与附件，被替换时改写后 `PATCH .../releases/{id}`。
 - 社区版附件单文件不超过 100 MB、单仓库附件总量 1 GB（同步脚本保留 3 个版本和最新的 `tools-N`），EXE 不能涨过 100 MB。
-- 本机没有 git 凭据，`git push gitee` 会卡住：用临时 `GIT_ASKPASS` 读 `reference/gitee_token.txt`（用户名 `orange-blade`），令牌不写进 URL、命令行或配置。
+- 本机没有 git 凭据，`git push gitee` 会卡住：用临时 `GIT_ASKPASS` 读密钥目录里的 `gitee_token.txt`（用户名 `orange-blade`），令牌不写进 URL、命令行或配置。
 
 ## 关键约束
 

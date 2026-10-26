@@ -3,7 +3,7 @@
 用 ``--patch-from 旧版EXE ...`` 为这些正式发布过的旧版各生成一个增量补丁（HDiffPatch），
 一并写进 sha256 清单，旧版客户端自动更新时只需下载补丁。
 
-清单用 reference/update_signing_key.pem 签名（客户端只认带有效签名的清单）；开发自测可用 ``--unsigned``。
+清单用项目外密钥目录（见 _project_key_dir()）里的 update_signing_key.pem 签名（客户端只认带有效签名的清单）；开发自测可用 ``--unsigned``。
 release/offline/ 下另出供蓝奏云等网盘兜底的离线包：完整包（EXE + 清单）与补丁包（各补丁 + 清单），
 用户下载后在"关于 → 手动更新 → 从文件导入"安装。它们不上传到 GitHub/Gitee。
 """
@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -289,9 +290,14 @@ def _check_world_settings_audit(project_root: Path) -> None:
                          "确认这次先不处理可加 --skip-world-audit")
 
 
+def _project_key_dir() -> Path:
+    """发布机上存放密钥的目录（项目外，不进 Git）；可用环境变量 DSTCAMP_KEY_DIR 改位置。"""
+    return Path(os.environ.get("DSTCAMP_KEY_DIR") or r"F:\AI\mywork\ProjectKey\DSTCamp")
+
+
 def build(patch_from: list[Path], *, signed: bool = True, world_audit: bool = True) -> None:
     release_dir = Path(__file__).resolve().parents[1] / "release"
-    signing_key = release_dir.parent / "reference" / "update_signing_key.pem" if signed else None
+    signing_key = _project_key_dir() / "update_signing_key.pem" if signed else None
     if signing_key is not None and not signing_key.is_file():
         raise SystemExit(f"找不到更新签名私钥：{signing_key}（开发自测可加 --unsigned，正式发布必须签名）")
     if signed and world_audit:
