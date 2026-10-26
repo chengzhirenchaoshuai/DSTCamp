@@ -36,15 +36,43 @@ def find_translation_file(workshop_id: str, platform: Platform = Platform.STEAM,
     return path if path.exists() else None
 
 
-def _gz_preamble(name: str, description: str, version: str) -> str:
-    """按翻译文件里的 gz_* 约定传入原始 name/description/version。原始 configuration_options 是静态解析
-    结果、已不是 Lua 原表，只给空表：用到它的 3 份文件只是据此补"[故障]"前缀，缺了不影响翻译本身。"""
+def _lua_scalar(value) -> str | None:
+    """只转换标量；表等复杂取值（如 Configs Extended 的集合）翻译文件用不到，返回 None 跳过。"""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return _lua_value(value)
+    return None
+
+
+def _lua_config_options(config_options) -> str:
+    """把已解析的配置项还原成 Lua 表，只含翻译文件会读的 name/label/hover/default/options。"""
+    entries = []
+    for opt in config_options or ():
+        fields = [f"name = {_lua_value(opt.name)}", f"label = {_lua_value(opt.label)}",
+                  f"hover = {_lua_value(opt.hover)}"]
+        default = _lua_scalar(opt.default)
+        if default is not None:
+            fields.append(f"default = {default}")
+        choices = []
+        for choice in opt.choices:
+            data = _lua_scalar(choice.get("data"))
+            parts = [f"description = {_lua_value(str(choice.get('description') or ''))}"]
+            if data is not None:
+                parts.append(f"data = {data}")
+            choices.append("{" + ", ".join(parts) + "}")
+        fields.append("options = {" + ", ".join(choices) + "}")
+        entries.append("{" + ", ".join(fields) + "}")
+    return "{" + ",\n".join(entries) + "}"
+
+
+def _gz_preamble(name: str, description: str, version: str, config_options=()) -> str:
+    """按翻译文件里的 gz_* 约定传入原始 name/description/version/configuration_options。
+    有的翻译按原英文标题在原始配置项里找 section_N 键（如 3193922031 的分组标题），传空表就对不上。"""
     return (
         "gz_start = true\n"
         f"gz_modname = {_lua_value(name)}\n"
         f"gz_description = {_lua_value(description)}\n"
         f"gz_modversion = {_lua_value(version)}\n"
-        "gz_configuration_options = {}\n"
+        f"gz_configuration_options = {_lua_config_options(config_options)}\n"
     )
 
 
@@ -64,12 +92,16 @@ def _parse_result(result) -> dict | None:
 
 
 def resolve_translation(translation_path: Path, name: str = "", description: str = "",
-                        version: str = "") -> dict | None:
+                        version: str = "", config_options=None) -> dict | None:
     """沙箱执行翻译文件，返回 ``{"name", "description", "configuration_options"}`` 中解析到的部分；
-    解析不出返回 None。结果依赖原始信息，缓存按文件 mtime 与输入摘要校验。"""
-    preamble = _gz_preamble(name, description, version)
+    解析不出返回 None。结果依赖原始信息，缓存按文件 mtime 与输入摘要校验。
+
+    config_options 为已解析的原始配置项：配置弹窗传完整解析结果；列表取名称时不传（只用 name），
+    两种调用各用一份缓存，免得原始配置项不同而互相顶掉。"""
+    preamble = _gz_preamble(name, description, version, config_options)
     digest = hashlib.sha256(f"{_CACHE_PROTOCOL}\0{preamble}".encode("utf-8")).hexdigest()
-    cache_file = _CACHE_DIR / f"{translation_path.stem}.json"
+    variant = ".cfg" if config_options is not None else ""
+    cache_file = _CACHE_DIR / f"{translation_path.stem}{variant}.json"
     if cache_file.exists() and cache_file.stat().st_mtime >= translation_path.stat().st_mtime:
         try:
             cached = json.loads(cache_file.read_text(encoding="utf-8"))

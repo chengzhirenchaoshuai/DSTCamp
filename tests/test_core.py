@@ -1509,6 +1509,7 @@ def test_mod_version_resolution():
 def test_chs_translation_uses_original_mod_info():
     """Chinese++ Pro 翻译文件按 gz_* 约定拿到原名/原简介/版本，拼出名称；变更原始信息后缓存失效。"""
     from dstools.features.mod import chs_translation
+    from dstools.features.mod.parser import ModConfigOption
 
     with tempfile.TemporaryDirectory() as tmp:
         old_cache_dir = chs_translation._CACHE_DIR
@@ -1520,15 +1521,22 @@ def test_chs_translation_uses_original_mod_info():
                 'if gz_start then n, d, v = gz_modname, gz_description, gz_modversion\n'
                 'else local m = KnownModIndex:InitializeModInfo("workshop-1") or {}\n'
                 '  n, d, v = m.name or "", m.description or "", m.version or "" end\n'
+                # 分组标题按原英文在原始配置项里找 section_N 键（同 3193922031 的翻译文件）
+                'local sec\n'
+                'for _, o in ipairs(gz_configuration_options or {}) do\n'
+                '  if o.label == "Title" then sec = o.name end end\n'
                 'return {name = n .. "(测试)", description = d:gsub("Hello", "你好"),\n'
-                '  configuration_options = {{name = "ver", label = "Version: " .. v}}}',
+                '  configuration_options = {{name = "ver", label = "Version: " .. v}, {name = sec, label = "标题"}}}',
                 encoding="utf-8",
             )
             # 原名含引号和反斜杠，注入的 Lua 字面量必须正确转义
-            result = chs_translation.resolve_translation(path, 'A "B" \\C', "Hello\nworld", "1.2")
+            result = chs_translation.resolve_translation(
+                path, 'A "B" \\C', "Hello\nworld", "1.2",
+                [ModConfigOption(name="section_1", label="Title", is_header=True)])
             assert result["name"] == 'A "B" \\C(测试)'
             assert result["description"] == "你好\nworld"
             assert result["configuration_options"][0]["label"] == "Version: 1.2"
+            assert result["configuration_options"][1]["name"] == "section_1"
             # 缓存与原始信息绑定：版本变化后重新解析
             changed = chs_translation.resolve_translation(path, "X", "", "2.0")
             assert changed["name"] == "X(测试)"

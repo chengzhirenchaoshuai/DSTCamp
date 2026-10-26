@@ -66,7 +66,7 @@ def _resolve_mod_config(page, workshop_id: str, mod_info) -> bool:
         path = chs_translation.find_translation_file(workshop_id, platform, wegame_dir)
         if path:
             translation = chs_translation.resolve_translation(
-                path, mod_info.name, mod_info.description, mod_info.version)
+                path, mod_info.name, mod_info.description, mod_info.version, mod_info.config_options)
             if translation and translation.get("configuration_options"):
                 chs_translation.apply_translation(mod_info.config_options,
                                                   translation["configuration_options"])
