@@ -1537,6 +1537,33 @@ def test_chs_translation_uses_original_mod_info():
             chs_translation._CACHE_DIR = old_cache_dir
 
 
+def test_damaged_bundle_skips_self_spawned_workers():
+    """onefile 解压目录里的 base_library.zip 被清理后，沙箱不再起子进程（否则必弹启动器错误框）。"""
+    import subprocess
+
+    from dstools.features.mod import sandbox
+    from dstools.shared import resource_paths
+
+    spawned = []
+    old_run = subprocess.run
+    had_frozen = hasattr(sys, "frozen")
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "base_library.zip").write_bytes(b"")
+        sys.frozen, sys._MEIPASS = True, tmp
+        subprocess.run = lambda *a, **k: spawned.append(a) or old_run(*a, **k)
+        try:
+            assert not resource_paths.bundled_runtime_damaged()
+            (Path(tmp) / "base_library.zip").unlink()
+            assert resource_paths.bundled_runtime_damaged()
+            assert sandbox.run_lua_snippet("return 1") is None
+            assert spawned == []
+        finally:
+            subprocess.run = old_run
+            del sys._MEIPASS
+            if not had_frozen:
+                del sys.frozen
+
+
 def test_workshop_source_details_parser():
     """源端详情使用宽缓冲区读取，稳定字段偏移必须和 Steam SDK 一致。"""
 

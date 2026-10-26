@@ -410,6 +410,11 @@ def _run_workshop_worker(
     cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     """在短生命周期子进程中运行普通 SteamAPI，避免占用游戏 AppID。"""
+    from dstools.shared.resource_paths import bundled_runtime_damaged
+
+    # 解压目录被清理后 Worker 起不来，还会弹启动器错误框（见 bundled_runtime_damaged）
+    if bundled_runtime_damaged():
+        raise RuntimeError("DSTCamp 的临时运行文件已被清理软件或系统删除，请重启 DSTCamp 后重试")
     # 查询中途退出程序时 events.jsonl 仍被占用，删不掉就留给下次启动清理，不打印报错
     with tempfile.TemporaryDirectory(prefix=_WORKER_TMP_PREFIX, ignore_cleanup_errors=True) as tmp:
         root = Path(tmp)

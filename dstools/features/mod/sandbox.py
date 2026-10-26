@@ -129,6 +129,11 @@ def run_lua_snippet(lua_code: str, timeout: float = DEFAULT_TIMEOUT) -> Any:
     """
     import json
 
+    from dstools.shared.resource_paths import bundled_runtime_damaged
+
+    # 解压目录被清理后 Worker 必定起不来，还会弹启动器错误框；直接当作解析失败
+    if bundled_runtime_damaged():
+        return None
     try:
         proc = subprocess.run(
             _worker_command(),

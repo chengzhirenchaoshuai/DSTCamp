@@ -20,6 +20,7 @@
 """
 
 import hashlib
+import logging
 import lzma
 import os
 import secrets
@@ -35,6 +36,26 @@ def bundled_resource_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
     return Path(__file__).parent.parent.parent
+
+
+_bundle_damage_logged = False
+
+
+def bundled_runtime_damaged() -> bool:
+    """onefile 运行中，解压目录（_MEI）里的 base_library.zip 被清理软件或存储感知删掉时返回 True。
+
+    主进程早已加载完、不受影响；但用 sys.executable 重启自身的 Worker 复用这个目录，Python 初始化必失败，
+    窗口版启动器还会弹出 "Failed to start embedded python interpreter!" 错误框（已用正式版复现）。
+    运行中 DLL/pyd 被占用删不掉，这个 zip 没被占用。只有重启 DSTCamp 才会重新解压。
+    """
+    global _bundle_damage_logged
+    if not getattr(sys, "frozen", False) or (Path(sys._MEIPASS) / "base_library.zip").is_file():
+        return False
+    if not _bundle_damage_logged:
+        _bundle_damage_logged = True
+        logging.getLogger(__name__).warning("临时解压目录已被清理（缺 base_library.zip），停止启动 Worker 子进程：%s",
+                                            sys._MEIPASS)
+    return True
 
 
 def exe_dir() -> Path:

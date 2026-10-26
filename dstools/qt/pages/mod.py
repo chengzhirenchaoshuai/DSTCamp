@@ -61,7 +61,7 @@ from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar
 from dstools.shared import app_settings, tex_convert
-from dstools.shared.resource_paths import bundled_resource_dir
+from dstools.shared.resource_paths import bundled_resource_dir, bundled_runtime_damaged
 
 _FILTER_DEBOUNCE_MS = 150
 # 工坊更新状态的复用有效期（秒）；更新、清理等操作后会立即作废
@@ -229,6 +229,8 @@ class ModPage(Page):
         root.addWidget(self._local_banner)
         self._wegame_banner = Banner()
         root.addWidget(self._wegame_banner)
+        self._bundle_banner = Banner()
+        root.addWidget(self._bundle_banner)
         self._runtime_banner = Banner()
         self._runtime_banner.set_clickable(True)
         self._runtime_banner.clicked.connect(lambda: self.window().install_vcredist())
@@ -881,6 +883,7 @@ class ModPage(Page):
         self._update_enabled_count()
         self._refresh_workshop_update_button_state()
         self._render_list()
+        self._refresh_runtime_banner()  # 解压目录可能在运行中被清理，每次加载列表都重查
         platform, wegame_dir = result["platform"], result["wegame_client_mods_dir"]
 
         def apply_icons(icons: dict) -> None:
@@ -964,6 +967,7 @@ class ModPage(Page):
                   lambda _exc: None)
 
     def _refresh_runtime_banner(self) -> None:
+        self._bundle_banner.set_text(t("mod.bundle_damaged_banner") if bundled_runtime_damaged() else "")
         problem, bad_file = tex_convert.ktech_runtime_problem()
         if problem == "missing":
             text = t("mod.ktech_runtime_missing_banner")
@@ -1231,6 +1235,7 @@ class ModPage(Page):
             return
         if not mod_info.config_options and not mod_info.unsupported_schema:
             return
+        self._refresh_runtime_banner()  # 动态配置靠沙箱，解析不了时横幅说明原因
         if mod_info.client_only:
             # 纯客户端 Mod 的配置只在游戏客户端（不进存档），即它的默认配置
             self._open_default_config(workshop_id)
