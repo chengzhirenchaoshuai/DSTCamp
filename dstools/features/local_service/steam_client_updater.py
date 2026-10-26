@@ -151,7 +151,7 @@ class SteamAppSnapshot:
         )
 
 
-def _parse_scalar_manifest(path: Path) -> dict[str, str]:
+def parse_scalar_manifest(path: Path) -> dict[str, str]:
     """读取 appmanifest 标量字段，字段名按不区分大小写处理。"""
     values: dict[str, str] = {}
     try:
@@ -279,7 +279,7 @@ def snapshot_app(
                 return SteamAppSnapshot(app_id, None, candidate, None, None, None, None, None)
         return SteamAppSnapshot(app_id, None, None, None, None, None, None, None)
     path = manifests[0]
-    values = _parse_scalar_manifest(path)
+    values = parse_scalar_manifest(path)
     install_dir = values.get("installdir")
     library_root = path.parent.parent
     resolved_install = (
@@ -296,7 +296,7 @@ def snapshot_from_manifest(
 ) -> SteamAppSnapshot:
     """按给定的实际安装目录读 manifest；SteamCMD 的安装目录不在 steamapps/common 下，由调用方给出。"""
     if values is None:
-        values = _parse_scalar_manifest(path)
+        values = parse_scalar_manifest(path)
     return SteamAppSnapshot(
         app_id=app_id,
         manifest_path=path,
