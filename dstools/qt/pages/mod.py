@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from dstools.features.local_service import luajit_injector
 from dstools.features.local_service.dedicated_server import detect_external_shard_processes, find_bin64_dir
+from dstools.features.mod import chs_translation
 from dstools.features.mod.cache import load_cached_result, save_result
 from dstools.features.mod.config_memory import recall, recall_for, remember
 from dstools.features.mod.icons import get_cached_mod_icon_path, get_mod_icon_path, load_mod_icon_image
@@ -930,17 +931,37 @@ class ModPage(Page):
                 return resolved
 
             def done(resolved: dict) -> None:
-                if gen != self._refresh_gen or not resolved:
+                if gen != self._refresh_gen:
                     return
                 for wid, normalized in resolved.items():
                     info = self._mod_infos.get(wid)
                     if info is not None:
                         apply_local_version(info, normalized)
-                self.ctx.mod_catalog.publish(platform, self._mod_infos, self._mod_paths, self._icon_imgs, wegame_dir)
+                if resolved:
+                    self.ctx.mod_catalog.publish(platform, self._mod_infos, self._mod_paths, self._icon_imgs,
+                                                 wegame_dir)
+                    self._render_list()
+                self._refresh_chs_names(gen, platform, wegame_dir)
+
+            run_async(work, done, lambda _exc: self._refresh_chs_names(gen, platform, wegame_dir))
+        else:
+            self._refresh_chs_names(gen, platform, wegame_dir)
+        self._refresh_main_workshop_status(gen)
+
+    def _refresh_chs_names(self, gen: int, platform, wegame_dir) -> None:
+        """后台取 Chinese++ Pro 的 Mod 中文名称。翻译要拿原名拼接，须在版本解析写回最终名称之后运行。"""
+        if gen != self._refresh_gen:
+            return
+        infos = dict(self._mod_infos)
+
+        def done(names: dict) -> None:
+            if gen != self._refresh_gen:
+                return
+            if chs_translation.set_display_names(names):
                 self._render_list()
 
-            run_async(work, done, lambda _exc: None)
-        self._refresh_main_workshop_status(gen)
+        run_async(lambda: chs_translation.resolve_display_names(infos, platform, wegame_dir), done,
+                  lambda _exc: None)
 
     def _refresh_runtime_banner(self) -> None:
         problem, bad_file = tex_convert.ktech_runtime_problem()

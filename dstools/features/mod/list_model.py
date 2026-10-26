@@ -78,12 +78,14 @@ def localize_mod_name(mod_id: str, name: str) -> str:
 
         if get_lang() != "zh":
             return name
+        from dstools.features.mod.chs_translation import display_name
         from dstools.features.world.mod_settings import MOD_DISPLAY_NAMES
 
         display = MOD_DISPLAY_NAMES.get(mod_id) or MOD_DISPLAY_NAMES.get(
             str(mod_id).removeprefix("workshop-")
         )
-        return (display.get("zh") if display else "") or name
+        # 自带登记表优先，其次是用户订阅的汉化 Mod Chinese++ Pro 给出的名称
+        return (display.get("zh") if display else "") or display_name(mod_id) or name
     except Exception:
         return name
 
@@ -170,13 +172,14 @@ def build_mod_rows(
             platform != Platform.STEAM or not is_custom_steam_mod_id(mod_id)
         ):
             continue
-        name = localize_mod_name(
-            mod_id, info.name if info else getattr(mod, "name", "")
-        )
+        raw_name = info.name if info else getattr(mod, "name", "")
+        name = localize_mod_name(mod_id, raw_name)
+        # 显示译名时原名也要能搜到
         if (
             needle
             and needle not in str(mod_id).casefold()
             and needle not in (name or "").casefold()
+            and needle not in (raw_name or "").casefold()
         ):
             continue
         numeric_id = str(mod_id).removeprefix("workshop-")

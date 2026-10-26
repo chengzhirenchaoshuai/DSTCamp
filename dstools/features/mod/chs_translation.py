@@ -125,3 +125,49 @@ def apply_translation(config_options: list[ModConfigOption], translation: list[d
                 if tc.get("hover"):
                     choice["hover"] = tc["hover"]
                 break
+
+
+# 已解析出的中文名称（Mod ID → 名称）：Mod 页加载后在后台填充、界面线程整体替换，localize_mod_name 读取
+_display_names: dict[str, str] = {}
+
+
+def display_name(mod_id: str) -> str:
+    """Chinese++ Pro 给出的 Mod 名称，没有翻译或尚未解析时返回空串。"""
+    return _display_names.get(str(mod_id), "")
+
+
+def set_display_names(names: dict[str, str]) -> bool:
+    """整体替换名称表（只在界面线程调用），返回是否有变化；退订 Chinese++ Pro 后重新加载即清空。"""
+    global _display_names
+    if names == _display_names:
+        return False
+    _display_names = dict(names)
+    return True
+
+
+def resolve_display_names(mod_infos: dict, platform: Platform = Platform.STEAM,
+                          wegame_client_mods_dir: Path | None = None) -> dict[str, str]:
+    """后台批量解析已安装 Mod 的中文名称。有缓存时只读文件，首次每份翻译约一次沙箱子进程。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    chs_folder = find_mod_folder(CHS_PRO_WORKSHOP_ID, platform, wegame_client_mods_dir)
+    if not chs_folder:
+        return {}
+    info_dir = chs_folder / "scripts" / "info_chs"
+    targets = []
+    for mod_id, info in mod_infos.items():
+        if info is None or not str(mod_id).startswith("workshop-"):
+            continue
+        path = info_dir / f"{mod_id}.lua"
+        if path.is_file():
+            targets.append((mod_id, path, info))
+
+    def resolve(target):
+        mod_id, path, info = target
+        result = resolve_translation(path, info.name, info.description, info.version)
+        # 少数译名带换行（原名与中文分两行），列表只有一行，收成空格
+        name = " ".join(str((result or {}).get("name", "")).split())
+        return mod_id, name
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        return {mod_id: name for mod_id, name in pool.map(resolve, targets) if name}
