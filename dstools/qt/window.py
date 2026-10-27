@@ -230,8 +230,6 @@ class MenuStrip(QWidget):
         self._font_settings_action.setText(t("theme.font_settings"))
         self._minimize_action.setText(t("settings.minimize_on_close_label"))
         self._scenario_action.setText(t("settings.scenario_label"))
-        self._advanced_menu.setTitle(t("settings.advanced_menu"))
-        self._steam_backend_action.setText(t("settings.steam_backend_label"))
         self._defender_action.setText(t("settings.defender_label"))
         self._cache_dir_action.setText(t("settings.cache_dir_menu"))
         self._lang_menu.setTitle(t("settings.language_label"))
@@ -321,14 +319,6 @@ class MenuStrip(QWidget):
         scenario.triggered.connect(self._window.show_scenario_dialog)
         menu.addAction(scenario)
         self._scenario_action = scenario
-        # 场景已经决定了 Steam 通道，单独指定通道的少数情况收进"高级"
-        advanced_menu = FrostedMenu(t("settings.advanced_menu"), self)
-        steam_backend = QAction(t("settings.steam_backend_label"), self)
-        steam_backend.triggered.connect(self._window.show_steam_backend_dialog)
-        advanced_menu.addAction(steam_backend)
-        menu.addMenu(advanced_menu)
-        self._advanced_menu = advanced_menu
-        self._steam_backend_action = steam_backend
         defender = QAction(t("settings.defender_label"), self)
         defender.triggered.connect(self._window.show_defender_dialog)
         menu.addAction(defender)
@@ -914,11 +904,8 @@ class MainWindow(QWidget):
 
         WindowsDefenderDialog(self).exec()
 
-    def show_steam_backend_dialog(self) -> None:
-        # 通道切换牵涉开服程序和运行状态，交给本地服务页处理（页面构造时已检测好开服程序）
-        self.pages["local"].choose_backend()
-
     def show_scenario_dialog(self) -> None:
+        # 场景即 Steam 通道，切换牵涉开服程序和运行状态，交给本地服务页处理（页面构造时已检测好开服程序）
         self.pages["local"].choose_scenario()
 
     def run_startup_checks(self) -> None:

@@ -67,7 +67,7 @@ python -m dstools.qt.app
 
 本地用 Steam 客户端开服的玩家不需要这一节，界面里也不会出现相关内容。
 
-在小规格 Windows 云服务器上，不想常驻 Steam 客户端时，可以改用内置的 SteamCMD：「设置 → 选择 Steam 客户端…」里选 SteamCMD。之后由 SteamCMD 安装、更新独立专服，下载、更新、清理工坊 Mod（支持按 ID 下载、启动前检查 Mod 更新），可匿名或登录 Steam 账号（只保存用户名）。切换后本地服务页会显示「Steam 通道」一行，随时可以改回 Steam 客户端。
+在小规格 Windows 云服务器上，不想常驻 Steam 客户端时，首次启动时选「在云服务器上开服」即可改用内置的 SteamCMD（之后可在「设置 → 开服场景…」中更改）。之后由 SteamCMD 安装、更新独立专服，下载、更新、清理工坊 Mod（支持按 ID 下载、启动前检查 Mod 更新），可匿名或登录 Steam 账号（只保存用户名）。本地服务页的「SteamCMD」一行显示登录状态，点「设置…」可更换 steamcmd.exe 或登录账号。
 
 ## 🗂️ 数据目录
 

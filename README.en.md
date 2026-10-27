@@ -65,7 +65,7 @@ python -m dstools.qt.app
 
 If you host locally with the Steam client, you can skip this section -- none of it shows up in the UI.
 
-On a small Windows cloud server where you'd rather not keep the Steam client running, switch to the bundled SteamCMD: "Settings → Choose Steam Client..." → SteamCMD. SteamCMD then installs and updates the Dedicated Server and downloads, updates and cleans up Workshop Mods (download by ID, Mod update check before launch), anonymously or with a Steam account (only the username is saved). After switching, a "Steam channel" row appears on the Local Server page, and you can switch back to the Steam client at any time.
+On a small Windows cloud server where you'd rather not keep the Steam client running, pick "Host on a cloud server" on first launch to use the bundled SteamCMD (change it later under "Settings → Hosting Setup..."). SteamCMD then installs and updates the Dedicated Server and downloads, updates and cleans up Workshop Mods (download by ID, Mod update check before launch), anonymously or with a Steam account (only the username is saved). The "SteamCMD" row on the Local Server page shows the login status; click "Settings..." to use another steamcmd.exe or sign in.
 
 ## 🗂️ Storage layout
 

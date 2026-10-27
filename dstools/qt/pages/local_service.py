@@ -660,35 +660,22 @@ class _SteamcmdLoginDialog(dialogs.Dialog):
         super().reject()
 
 
-class _SteamBackendDialog(dialogs.Dialog):
-    """"切换通道"窗口：Steam 客户端 / SteamCMD 单选，选 SteamCMD 时在这里指定 steamcmd.exe 和登录账号，
-    点"保存"才生效。"""
+class _SteamcmdSettingsDialog(dialogs.Dialog):
+    """云服务器场景的「SteamCMD 设置」窗口：指定 steamcmd.exe 和登录账号，点"保存"才生效。
+    切换 Steam 客户端 / SteamCMD 由「开服场景」负责，这里不再提供。"""
 
-    def __init__(self, parent, current: SteamBackend, steamcmd: Path | None, account: str):
+    def __init__(self, parent, steamcmd: Path | None, account: str):
         super().__init__(parent, t("local.backend_title"), "md", confirm_text=t("local.runtime_mode_save_btn"))
-        self.result_backend = current
         self.result_steamcmd = steamcmd
         self.result_account = account
         self._logged_in_with: Path | None = None
-        group = QButtonGroup(self)
-        self._radios: dict[SteamBackend, QRadioButton] = {}
-        for backend, name_key, desc_key in (
-                (SteamBackend.CLIENT, "local.backend_client", "local.backend_desc_client"),
-                (SteamBackend.STEAMCMD, "local.backend_steamcmd", "local.backend_desc_steamcmd")):
-            radio = QRadioButton(t(name_key))
-            radio.setFont(theme.font("FONT_SIZE_BASE", bold=True))
-            group.addButton(radio)
-            self._radios[backend] = radio
-            self.body.addWidget(radio)
-            desc = self.text_label(t(desc_key), muted=True)
-            desc.setContentsMargins(24, 0, 0, 0)
-            self.body.addWidget(desc)
+        self.body.addWidget(self.text_label(t("local.backend_note"), muted=True))
 
         # 默认用内置版本，只显示位置；自选 steamcmd.exe 收在勾选项里，大多数用户用不到。
         # 完整路径太长，正文用占位写法，悬停看完整路径，「打开位置」直接打开所在文件夹
         self._bundled_label = QWidget()
         bundled_row = QHBoxLayout(self._bundled_label)
-        bundled_row.setContentsMargins(24, 0, 0, 0)
+        bundled_row.setContentsMargins(0, 0, 0, 0)
         bundled_path = str(steamcmd_updater.bundled_steamcmd_path())
         # 文案里的 {{缓存目录}} 是转义花括号，带参数调用 t() 才会经 format 还原成单个花括号
         bundled_text = self.text_label(t("local.backend_steamcmd_bundled", path=bundled_path), muted=True, wrap=False)
@@ -704,13 +691,10 @@ class _SteamBackendDialog(dialogs.Dialog):
         self._custom_check.setChecked(steamcmd is not None)
         self._custom_check.toggled.connect(self._sync_path_enabled)
         self._custom_check.toggled.connect(self._adopt_cached_login)
-        custom_row = QHBoxLayout()
-        custom_row.setContentsMargins(24, 0, 0, 0)
-        custom_row.addWidget(self._custom_check)
-        self.body.addLayout(custom_row)
+        self.body.addWidget(self._custom_check)
         self._path_box = QWidget()
         path_row = QHBoxLayout(self._path_box)
-        path_row.setContentsMargins(48, 0, 0, 0)
+        path_row.setContentsMargins(24, 0, 0, 0)
         self._path_edit = QLineEdit(str(steamcmd) if steamcmd else "")
         self._path_edit.setPlaceholderText(t("local.backend_steamcmd_placeholder"))
         self._path_edit.editingFinished.connect(self._adopt_cached_login)
@@ -722,7 +706,6 @@ class _SteamBackendDialog(dialogs.Dialog):
 
         # 账号下拉框：这份 SteamCMD 保存着登录的账号 + 匿名，随时切换；新账号经「登录新账号…」加入
         account_row = QHBoxLayout()
-        account_row.setContentsMargins(24, 0, 0, 0)
         self._account_combo = QComboBox()
         self._account_combo.activated.connect(
             lambda _index: self._set_account(self._account_combo.currentData() or ""))
@@ -732,18 +715,12 @@ class _SteamBackendDialog(dialogs.Dialog):
         account_row.addWidget(self._account_combo, 1)
         account_row.addWidget(self._login_btn)
         self.body.addLayout(account_row)
-        self.body.addWidget(self.text_label(t("local.backend_note"), muted=True))
 
-        self._radios[SteamBackend.STEAMCMD].toggled.connect(self._sync_path_enabled)
-        self._radios[current].setChecked(True)
         self._set_account(account)
         self.add_buttons()
 
     def _sync_path_enabled(self) -> None:
-        enabled = self._radios[SteamBackend.STEAMCMD].isChecked()
         custom = self._custom_check.isChecked()
-        for widget in (self._bundled_label, self._custom_check, self._path_box, self._login_btn, self._account_combo):
-            widget.setEnabled(enabled)
         # 勾选自选时才出现路径框，内置版本的位置说明随之隐藏
         self._path_box.setVisible(custom)
         self._bundled_label.setVisible(not custom)
@@ -861,13 +838,10 @@ class _SteamBackendDialog(dialogs.Dialog):
             self._adopt_cached_login()
 
     def accept_if_valid(self) -> None:
-        backend = next(b for b, radio in self._radios.items() if radio.isChecked())
-        if backend is SteamBackend.STEAMCMD:
-            picked = self._steamcmd_from_edit()
-            if picked is None or not self._confirm_relogin(picked[0]):
-                return
-            self.result_steamcmd = picked[1]
-        self.result_backend = backend
+        picked = self._steamcmd_from_edit()
+        if picked is None or not self._confirm_relogin(picked[0]):
+            return
+        self.result_steamcmd = picked[1]
         self.accept()
 
 
@@ -1061,7 +1035,7 @@ class LocalServicePage(Page):
         layout.addStretch(1)
         backend_btn = QPushButton(t("local.backend_btn"))
         backend_btn.setFont(theme.font("FONT_SIZE_SM"))
-        backend_btn.clicked.connect(self._choose_backend)
+        backend_btn.clicked.connect(self._configure_steamcmd)
         layout.addWidget(backend_btn)
         return row, backend_label, backend_btn
 
@@ -1401,7 +1375,7 @@ class LocalServicePage(Page):
         if is_wegame:
             backend_reason = wegame_reason
         elif self._steam_update_running:
-            backend_reason = t("local.backend_update_running")
+            backend_reason = t("local.backend_settings_update_running")
         else:
             backend_reason = ""
         _set_button_state(self._backend_btn, not backend_reason, backend_reason)
@@ -1434,27 +1408,18 @@ class LocalServicePage(Page):
         self._update_runtime_btns_state(self.get_cluster())
         self.ctx.server_runtime_changed.emit()
 
-    def choose_backend(self) -> None:
-        """「设置 → 高级 → 选择 Steam 客户端」入口：页面上的「切换通道」按钮在更新期间置灰，这里同样拦下。"""
-        if self._steam_update_running:
-            dialogs.show_warning(self.window(), t("local.backend_title"), t("local.backend_update_running"))
-            return
-        self._choose_backend()
-
-    def _choose_backend(self) -> None:
-        # 换通道会换开服程序（SteamCMD 固定用独立专服），和「切换程序」一样运行中不允许
+    def _configure_steamcmd(self) -> None:
+        """「SteamCMD 设置」：换了 steamcmd.exe 时工坊目录跟着换，与切换通道一样运行中不允许，并提议复制已下载的 Mod。"""
         if self._runtime_switch_blocked():
             return
-        dialog = _SteamBackendDialog(self.window(), get_backend(), steamcmd_updater.custom_steamcmd_path(),
-                                     get_steamcmd_account())
+        dialog = _SteamcmdSettingsDialog(self.window(), steamcmd_updater.custom_steamcmd_path(), get_steamcmd_account())
         if not dialog.exec():
             return
         from dstools.features.mod.parser import find_workshop_dir
-        previous_workshop = find_workshop_dir()  # 切换前所在通道（Steam 库或原来那份 SteamCMD）的工坊内容目录
-        if dialog.result_backend is SteamBackend.STEAMCMD:
-            set_steamcmd_path(dialog.result_steamcmd)
-            set_steamcmd_account(dialog.result_account)
-        self._apply_backend(dialog.result_backend, previous_workshop)
+        previous_workshop = find_workshop_dir()  # 改设置前那份 SteamCMD 的工坊内容目录
+        set_steamcmd_path(dialog.result_steamcmd)
+        set_steamcmd_account(dialog.result_account)
+        self._apply_backend(SteamBackend.STEAMCMD, previous_workshop)
 
     def _apply_backend(self, backend: SteamBackend, previous_workshop: Path | None) -> None:
         changed = backend is not get_backend()
@@ -1466,8 +1431,8 @@ class LocalServicePage(Page):
             self._offer_workshop_transfer(previous_workshop)
 
     def choose_scenario(self, first_run: bool = False) -> None:
-        """「设置 → 开服场景」与首次启动弹窗：场景就是 Steam 通道，切换走与「选择 Steam 客户端」相同的流程，
-        SteamCMD 程序位置和账号沿用已保存的。首次启动也要保存一次通道，之后不再弹窗。"""
+        """「设置 → 开服场景」与首次启动弹窗：场景就是 Steam 通道（唯一的切换入口），
+        SteamCMD 程序位置和账号沿用已保存的（之后在「SteamCMD 设置」里改）。首次启动也要保存一次通道，之后不再弹窗。"""
         if not first_run and self._steam_update_running:
             dialogs.show_warning(self.window(), t("local.scenario_title"), t("local.backend_update_running"))
             return
@@ -1538,7 +1503,7 @@ class LocalServicePage(Page):
 
     def _refresh_backend_label(self) -> None:
         steamcmd = get_backend() is SteamBackend.STEAMCMD
-        text, expired = t("local.backend_client"), False
+        text, expired = "", False
         if steamcmd:
             account = get_steamcmd_account()
             # 只算路径不释放程序：内置版尚未释放时也不会有失效记录
@@ -1559,7 +1524,7 @@ class LocalServicePage(Page):
         self._backend_label.setText(text)
         self._backend_label.setStyleSheet(f"color: {theme.hex('ERROR')};" if expired else "")
         # SteamCMD 通道固定用独立专服，「开服程序」一行没有可选的，隐藏；
-        # Steam 客户端通道隐藏「Steam 通道」一行，改用 SteamCMD 的入口在「设置 → 开服场景」，本地开服用户不用看到它
+        # Steam 客户端通道隐藏「SteamCMD」一行，改用 SteamCMD 的入口在「设置 → 开服场景」，本地开服用户不用看到它
         self._mode_row.setVisible(not steamcmd)
         self._backend_row.setVisible(steamcmd)
 
