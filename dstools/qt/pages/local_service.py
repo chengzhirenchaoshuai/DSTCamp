@@ -290,129 +290,14 @@ class _RollbackDialog(dialogs.Dialog):
             dialogs.show_warning(self.page.window(), t("local.rollback_title"), t("local.rollback_none_running"))
 
 
-class _ModeTableCell(QFrame):
-    """"切换程序"表格的单元格：只画右/下边框（外框由表格画），点击时回调选中整行。"""
-
-    def __init__(self, right: bool, bottom: bool, on_click=None):
-        super().__init__()
-        self.setObjectName("modeTableCell")
-        self._edges = (int(right), int(bottom))
-        self._on_click = on_click
-        if on_click:
-            self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.row = QHBoxLayout(self)
-        self.row.setContentsMargins(8, 7, 8, 7)
-        self.row.setSpacing(4)
-
-    def set_background(self, color: str) -> None:
-        right, bottom = self._edges
-        self.setStyleSheet(f"QFrame#modeTableCell {{ border-style: solid; border-color: {theme.hex('CARD_BORDER')}; "
-                           f"border-width: 0 {right}px {bottom}px 0; background: {color}; }}")
-
-    def mousePressEvent(self, event) -> None:
-        if self._on_click:
-            self._on_click()
-        super().mousePressEvent(event)
-
-
-class _RuntimeModeDialog(dialogs.Dialog):
-    """"切换程序"窗口：当前程序 / 两种程序单选 / 安装状态，点"保存"才生效。"""
-
-    _MODES = ((RuntimeMode.CLIENT, "local.runtime_mode_desc_client"),
-              (RuntimeMode.DEDICATED, "local.runtime_mode_desc_dedicated"))
-
-    def __init__(self, parent, current: RuntimeMode, current_text: str, names: dict, installed: dict):
-        super().__init__(parent, t("local.runtime_mode_title"), "lg", confirm_text=t("local.runtime_mode_save_btn"))
-        self.result_mode = current
-        esc = html.escape
-        accent, heading = theme.hex("ACCENT"), theme.hex("HEADING")
-        current_label = QLabel(f'{esc(t("local.runtime_mode_current_label"))}'
-                               f'<span style="color:{accent}; font-weight:bold;">{esc(current_text)}</span>')
-        current_label.setFont(theme.font("FONT_SIZE_BASE"))
-        self.body.addWidget(current_label)
-
-        # 表格：表头浅底，单元格带边框；选中行浅色底、模式名强调色，整行可点
-        table = QFrame()
-        table.setObjectName("modeTable")
-        table.setStyleSheet(f"QFrame#modeTable {{ border: 1px solid {theme.hex('CARD_BORDER')}; }}")
-        grid = QGridLayout(table)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(0)
-        grid.setColumnStretch(1, 1)
-        for col, key in enumerate(("local.runtime_mode_col_mode", "local.runtime_mode_col_desc")):
-            header = _ModeTableCell(right=col == 0, bottom=True)
-            header.set_background(theme.hex("CARD_BG_ALT"))
-            label = QLabel(t(key))
-            label.setFont(theme.font("FONT_SIZE_BASE", bold=True))
-            label.setStyleSheet(f"color: {heading};")
-            header.row.addWidget(label)
-            grid.addWidget(header, 0, col)
-
-        group = QButtonGroup(self)
-        self._rows: dict[RuntimeMode, tuple[QRadioButton, list[_ModeTableCell]]] = {}
-        for index, (mode, desc_key) in enumerate(self._MODES, start=1):
-            last = index == len(self._MODES)
-            radio = QRadioButton(names[mode])
-            radio.setFont(theme.font("FONT_SIZE_BASE", bold=True))
-            group.addButton(radio)
-            name_cell = _ModeTableCell(right=True, bottom=not last, on_click=radio.click)
-            name_cell.row.addWidget(radio)
-            if mode is current:
-                tag = QLabel(t("local.runtime_mode_current_tag"))
-                tag.setFont(theme.font("FONT_SIZE_BASE"))
-                tag.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
-                name_cell.row.addWidget(tag)
-            name_cell.row.addStretch()
-            desc_cell = _ModeTableCell(right=False, bottom=not last, on_click=radio.click)
-            desc = QLabel(t(desc_key))
-            desc.setWordWrap(True)
-            desc.setFont(theme.font("FONT_SIZE_BASE"))
-            desc_cell.row.addWidget(desc, 1)
-            grid.addWidget(name_cell, index, 0)
-            grid.addWidget(desc_cell, index, 1)
-            self._rows[mode] = (radio, [name_cell, desc_cell])
-            radio.toggled.connect(self._restyle_rows)
-            radio.setChecked(mode is current)
-        self._restyle_rows()
-        self.body.addSpacing(4)
-        self.body.addWidget(table)
-        self.body.addWidget(self.text_label(t("local.runtime_mode_note"), muted=True))
-
-        status_rows = []
-        for kind in RuntimeKind:
-            ok = installed[kind]
-            # 没装某一种是正常情况（一般只用游戏专服），不算错误：灰色不加粗，不用红色
-            color = theme.hex("SUCCESS" if ok else "TEXT_MUTED")
-            weight = "bold" if ok else "normal"
-            state = t("local.runtime_installed") if ok else t("local.runtime_not_installed")
-            status_rows.append(f'<tr><td nowrap style="padding:3px 16px 3px 0;">{esc(t(_RUNTIME_KIND_KEYS[kind]))}</td>'
-                               f'<td style="padding:3px 0; color:{color}; font-weight:{weight};">● {esc(state)}</td></tr>')
-        status_label = QLabel(f'<div style="color:{heading}; font-weight:bold;">{esc(t("local.runtime_install_status"))}</div>'
-                              f'<table cellspacing="0" cellpadding="0" style="margin-top:4px;">{"".join(status_rows)}</table>')
-        status_label.setFont(theme.font("FONT_SIZE_BASE"))
-        self.body.addSpacing(4)
-        self.body.addWidget(status_label)
-        self.add_buttons()
-
-    def _restyle_rows(self) -> None:
-        for radio, cells in self._rows.values():
-            checked = radio.isChecked()
-            for cell in cells:
-                cell.set_background(theme.hex("PRIMARY_LIGHT") if checked else "transparent")
-            radio.setStyleSheet(f"color: {theme.hex('ACCENT' if checked else 'HEADING')};")
-
-    def accept_if_valid(self) -> None:
-        self.result_mode = next(mode for mode, (radio, _cells) in self._rows.items() if radio.isChecked())
-        self.accept()
-
-
-class _ScenarioCard(QFrame):
-    """开服场景的一张选项卡：单选标题（可带"推荐""当前"标签）、要点列表、补充说明，整张卡片可点。
+class _OptionCard(QFrame):
+    """单选窗口里的一张选项卡：单选标题（可带"推荐""当前"标签）、要点列表、一行补充说明，整张卡片可点。
     选中与否只换边框和底色，边框宽度不变，切换时内容不跳动。"""
 
-    def __init__(self, title: str, points: str, hint: str, *, recommended: bool, current: bool):
+    def __init__(self, title: str, points: str, hint: str, *, recommended: bool, current: bool,
+                 hint_color: str = "TEXT_MUTED"):
         super().__init__()
-        self.setObjectName("scenarioCard")
+        self.setObjectName("optionCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 8, 14, 9)
@@ -461,13 +346,13 @@ class _ScenarioCard(QFrame):
         hint_label = QLabel(hint)
         hint_label.setWordWrap(True)
         hint_label.setFont(theme.font("FONT_SIZE_SM"))
-        hint_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')}; background: transparent;")
+        hint_label.setStyleSheet(f"color: {theme.hex(hint_color)}; background: transparent;")
         details.addWidget(hint_label)
         layout.addLayout(details)
 
     def set_selected(self, selected: bool) -> None:
         border, background = ("PRIMARY", "PRIMARY_LIGHT") if selected else ("CARD_BORDER", "CARD_BG")
-        self.setStyleSheet(f"QFrame#scenarioCard {{ border: 2px solid {theme.hex(border)}; border-radius: 10px; "
+        self.setStyleSheet(f"QFrame#optionCard {{ border: 2px solid {theme.hex(border)}; border-radius: 10px; "
                            f"background: {theme.hex(background)}; }}")
         self.radio.setStyleSheet(f"color: {theme.hex('ACCENT' if selected else 'HEADING')};")
 
@@ -476,7 +361,68 @@ class _ScenarioCard(QFrame):
         super().mousePressEvent(event)
 
 
-class _UsageScenarioDialog(dialogs.Dialog):
+class _OptionCardsDialog(dialogs.Dialog):
+    """选项卡单选窗口的公共部分（开服场景、切换程序共用）：卡片互斥选中、选中样式、显示后收紧高度。"""
+
+    def _add_cards(self, cards: list, current) -> None:
+        """cards 为 [(选项值, _OptionCard)]，按顺序加入正文，选中 current 对应的一张。"""
+        group = QButtonGroup(self)
+        self._cards = dict(cards)
+        for value, card in cards:
+            group.addButton(card.radio)
+            card.radio.toggled.connect(self._restyle_cards)
+            card.radio.setChecked(value == current)
+            self.body.addWidget(card)
+        self._restyle_cards()
+
+    def _selected(self):
+        return next(value for value, card in self._cards.items() if card.radio.isChecked())
+
+    def _restyle_cards(self) -> None:
+        for card in self._cards.values():
+            card.set_selected(card.radio.isChecked())
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # 自动换行的文字首次排版按较窄宽度估高，窗口底部多出空白：显示后按实际宽度收紧到内容高度
+        QTimer.singleShot(0, self._fit_height)
+
+    def _fit_height(self) -> None:
+        layout = self.layout()
+        if layout.hasHeightForWidth():
+            self.resize(self.width(), layout.heightForWidth(self.width()))
+
+
+class _RuntimeModeDialog(_OptionCardsDialog):
+    """"切换程序"窗口：游戏专服 / 独立专服两张选项卡，卡片底部标明本机是否已安装，点"保存"才生效。"""
+
+    _MODES = ((RuntimeMode.CLIENT, RuntimeKind.CLIENT, "local.runtime_mode_client_points"),
+              (RuntimeMode.DEDICATED, RuntimeKind.DEDICATED, "local.runtime_mode_dedicated_points"))
+
+    def __init__(self, parent, current: RuntimeMode, installed: dict):
+        super().__init__(parent, t("local.runtime_mode_title"), "lg", confirm_text=t("local.runtime_mode_save_btn"))
+        self.result_mode = current
+        self.body.addWidget(self.heading_label(t("local.runtime_mode_heading")))
+        self.body.addWidget(self.text_label(t("local.runtime_mode_intro"), muted=True))
+        cards = []
+        for mode, kind, points_key in self._MODES:
+            ok = installed[kind]
+            # 没装某一种是正常情况（一般只用游戏专服），不算错误：已安装用绿色，未安装用灰色
+            card = _OptionCard(t(_RUNTIME_KIND_KEYS[kind]), t(points_key),
+                               t("local.runtime_installed" if ok else "local.runtime_not_installed"),
+                               recommended=mode is RuntimeMode.CLIENT, current=mode is current,
+                               hint_color="SUCCESS" if ok else "TEXT_MUTED")
+            cards.append((mode, card))
+        self._add_cards(cards, current)
+        self.body.addWidget(self.text_label(t("local.runtime_mode_note"), muted=True))
+        self.add_buttons()
+
+    def accept_if_valid(self) -> None:
+        self.result_mode = self._selected()
+        self.accept()
+
+
+class _UsageScenarioDialog(_OptionCardsDialog):
     """"开服场景"窗口：自己电脑 / 云服务器两张选项卡二选一。
     首次启动时没有"取消"，关掉窗口（含按 Esc）也按当前选中的场景处理。"""
 
@@ -492,19 +438,10 @@ class _UsageScenarioDialog(dialogs.Dialog):
         self._first_run = first_run
         self.body.addWidget(self.heading_label(t("local.scenario_heading")))
         self.body.addWidget(self.text_label(t("local.scenario_intro"), muted=True))
-
-        group = QButtonGroup(self)
-        self._cards: dict[UsageScenario, _ScenarioCard] = {}
-        for scenario, title_key, points_key, hint_key in self._SCENARIOS:
-            card = _ScenarioCard(t(title_key), t(points_key), t(hint_key),
-                                 recommended=scenario is UsageScenario.LOCAL,
-                                 current=scenario is current and not first_run)
-            group.addButton(card.radio)
-            card.radio.toggled.connect(self._restyle_cards)
-            card.radio.setChecked(scenario is current)
-            self._cards[scenario] = card
-            self.body.addWidget(card)
-        self._restyle_cards()
+        self._add_cards([(scenario, _OptionCard(t(title_key), t(points_key), t(hint_key),
+                                                recommended=scenario is UsageScenario.LOCAL,
+                                                current=scenario is current and not first_run))
+                         for scenario, title_key, points_key, hint_key in self._SCENARIOS], current)
         self.body.addWidget(self.text_label(t("local.scenario_note"), muted=True))
         if first_run:
             confirm = QPushButton(self._confirm_text)
@@ -514,22 +451,8 @@ class _UsageScenarioDialog(dialogs.Dialog):
         else:
             self.add_buttons()
 
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        # 自动换行的文字首次排版按较窄宽度估高，窗口底部多出空白：显示后按实际宽度收紧到内容高度
-        QTimer.singleShot(0, self._fit_height)
-
-    def _fit_height(self) -> None:
-        layout = self.layout()
-        if layout.hasHeightForWidth():
-            self.resize(self.width(), layout.heightForWidth(self.width()))
-
-    def _restyle_cards(self) -> None:
-        for card in self._cards.values():
-            card.set_selected(card.radio.isChecked())
-
     def accept_if_valid(self) -> None:
-        self.result_scenario = next(s for s, card in self._cards.items() if card.radio.isChecked())
+        self.result_scenario = self._selected()
         self.accept()
 
     def reject(self) -> None:
@@ -1536,10 +1459,7 @@ class LocalServicePage(Page):
             return
         installed = {kind: find_runtime_of_kind(kind) is not None for kind in RuntimeKind}
         current = self._runtime_resolution.mode if self._runtime_resolution else get_runtime_mode()
-        names = {RuntimeMode.CLIENT: t("local.runtime_mode_client"),
-                 RuntimeMode.DEDICATED: t("local.runtime_mode_dedicated")}
-        current_text = self._runtime_mode_text(self._runtime_resolution) if self._runtime_resolution else names[current]
-        dialog = _RuntimeModeDialog(self.window(), current, current_text, names, installed)
+        dialog = _RuntimeModeDialog(self.window(), current, installed)
         if not dialog.exec() or dialog.result_mode is current:
             return
         set_runtime_mode(dialog.result_mode)
