@@ -24,7 +24,7 @@ from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtGui import QFontMetrics, QGuiApplication
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QProgressBar, QRadioButton, QSizePolicy, QSplitter, QTextEdit, QVBoxLayout, QWidget,
+    QProgressBar, QRadioButton, QSizePolicy, QSplitter, QStyle, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from dstools.features.cluster_config.config_manager import (
@@ -406,55 +406,108 @@ class _RuntimeModeDialog(dialogs.Dialog):
         self.accept()
 
 
+class _ScenarioCard(QFrame):
+    """开服场景的一张选项卡：单选标题（可带"推荐""当前"标签）、要点列表、补充说明，整张卡片可点。
+    选中与否只换边框和底色，边框宽度不变，切换时内容不跳动。"""
+
+    def __init__(self, title: str, points: str, hint: str, *, recommended: bool, current: bool):
+        super().__init__()
+        self.setObjectName("scenarioCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
+
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        self.radio = QRadioButton(title)
+        self.radio.setFont(theme.font("FONT_SIZE_MD", bold=True))
+        head.addWidget(self.radio)
+        if current:
+            tag = QLabel(t("local.runtime_mode_current_tag"))
+            tag.setFont(theme.font("FONT_SIZE_SM"))
+            tag.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
+            head.addWidget(tag)
+        head.addStretch(1)
+        if recommended:
+            badge = QLabel(t("local.scenario_recommended"))
+            badge.setFont(theme.font("FONT_SIZE_SM", bold=True))
+            badge.setStyleSheet(f"color: {theme.hex('ACCENT')}; border: 1px solid {theme.hex('ACCENT')}; "
+                                "border-radius: 9px; padding: 1px 10px; background: transparent;")
+            head.addWidget(badge)
+        layout.addLayout(head)
+
+        # 要点与说明对齐到标题文字起点（跳过单选圆点）
+        style = self.radio.style()
+        indent = (style.pixelMetric(QStyle.PixelMetric.PM_ExclusiveIndicatorWidth)
+                  + style.pixelMetric(QStyle.PixelMetric.PM_RadioButtonLabelSpacing))
+        details = QVBoxLayout()
+        details.setContentsMargins(indent, 0, 0, 0)
+        details.setSpacing(3)
+        for point in points.split("\n"):
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            dot = QLabel("•")
+            dot.setFont(theme.font("FONT_SIZE_BASE"))
+            dot.setStyleSheet(f"color: {theme.hex('ACCENT')}; background: transparent;")
+            dot.setAlignment(Qt.AlignmentFlag.AlignTop)
+            text = QLabel(point)
+            text.setWordWrap(True)
+            text.setFont(theme.font("FONT_SIZE_BASE"))
+            text.setStyleSheet("background: transparent;")
+            row.addWidget(dot)
+            row.addWidget(text, 1)
+            details.addLayout(row)
+        hint_label = QLabel(hint)
+        hint_label.setWordWrap(True)
+        hint_label.setFont(theme.font("FONT_SIZE_SM"))
+        hint_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')}; background: transparent;")
+        details.addSpacing(2)
+        details.addWidget(hint_label)
+        layout.addLayout(details)
+
+    def set_selected(self, selected: bool) -> None:
+        border, background = ("PRIMARY", "PRIMARY_LIGHT") if selected else ("CARD_BORDER", "CARD_BG")
+        self.setStyleSheet(f"QFrame#scenarioCard {{ border: 2px solid {theme.hex(border)}; border-radius: 10px; "
+                           f"background: {theme.hex(background)}; }}")
+        self.radio.setStyleSheet(f"color: {theme.hex('ACCENT' if selected else 'HEADING')};")
+
+    def mousePressEvent(self, event) -> None:
+        self.radio.click()
+        super().mousePressEvent(event)
+
+
 class _UsageScenarioDialog(dialogs.Dialog):
-    """"开服场景"窗口：自己电脑 / 云服务器二选一，表格样式与"切换程序"一致。
+    """"开服场景"窗口：自己电脑 / 云服务器两张选项卡二选一。
     首次启动时没有"取消"，关掉窗口（含按 Esc）也按当前选中的场景处理。"""
 
-    _SCENARIOS = ((UsageScenario.LOCAL, "local.scenario_local", "local.scenario_local_desc"),
-                  (UsageScenario.CLOUD, "local.scenario_cloud", "local.scenario_cloud_desc"))
+    _SCENARIOS = (
+        (UsageScenario.LOCAL, "local.scenario_local", "local.scenario_local_points", "local.scenario_local_hint"),
+        (UsageScenario.CLOUD, "local.scenario_cloud", "local.scenario_cloud_points", "local.scenario_cloud_hint"),
+    )
 
     def __init__(self, parent, current: UsageScenario, first_run: bool):
-        super().__init__(parent, t("local.scenario_title"), "lg",
+        super().__init__(parent, t("local.scenario_title"), "md",
                          confirm_text=t("dlg.confirm_btn") if first_run else t("local.runtime_mode_save_btn"))
         self.result_scenario = current
         self._first_run = first_run
-        self.body.addWidget(self.text_label(t("local.scenario_intro"), size_key="FONT_SIZE_BASE"))
-
-        table = QFrame()
-        table.setObjectName("modeTable")
-        table.setStyleSheet(f"QFrame#modeTable {{ border: 1px solid {theme.hex('CARD_BORDER')}; }}")
-        grid = QGridLayout(table)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(0)
-        grid.setColumnStretch(1, 1)
-        group = QButtonGroup(self)
-        self._rows: dict[UsageScenario, tuple[QRadioButton, list[_ModeTableCell]]] = {}
-        for index, (scenario, name_key, desc_key) in enumerate(self._SCENARIOS):
-            last = index == len(self._SCENARIOS) - 1
-            radio = QRadioButton(t(name_key))
-            radio.setFont(theme.font("FONT_SIZE_BASE", bold=True))
-            group.addButton(radio)
-            name_cell = _ModeTableCell(right=True, bottom=not last, on_click=radio.click)
-            name_cell.row.addWidget(radio)
-            if scenario is current and not first_run:
-                tag = QLabel(t("local.runtime_mode_current_tag"))
-                tag.setFont(theme.font("FONT_SIZE_BASE"))
-                tag.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
-                name_cell.row.addWidget(tag)
-            name_cell.row.addStretch()
-            desc_cell = _ModeTableCell(right=False, bottom=not last, on_click=radio.click)
-            desc = QLabel(t(desc_key))
-            desc.setWordWrap(True)
-            desc.setFont(theme.font("FONT_SIZE_BASE"))
-            desc_cell.row.addWidget(desc, 1)
-            grid.addWidget(name_cell, index, 0)
-            grid.addWidget(desc_cell, index, 1)
-            self._rows[scenario] = (radio, [name_cell, desc_cell])
-            radio.toggled.connect(self._restyle_rows)
-            radio.setChecked(scenario is current)
-        self._restyle_rows()
+        self.body.addWidget(self.heading_label(t("local.scenario_heading")))
+        self.body.addWidget(self.text_label(t("local.scenario_intro"), muted=True))
         self.body.addSpacing(4)
-        self.body.addWidget(table)
+
+        group = QButtonGroup(self)
+        self._cards: dict[UsageScenario, _ScenarioCard] = {}
+        for scenario, title_key, points_key, hint_key in self._SCENARIOS:
+            card = _ScenarioCard(t(title_key), t(points_key), t(hint_key),
+                                 recommended=scenario is UsageScenario.LOCAL,
+                                 current=scenario is current and not first_run)
+            group.addButton(card.radio)
+            card.radio.toggled.connect(self._restyle_cards)
+            card.radio.setChecked(scenario is current)
+            self._cards[scenario] = card
+            self.body.addWidget(card)
+        self._restyle_cards()
+        self.body.addSpacing(2)
         self.body.addWidget(self.text_label(t("local.scenario_note"), muted=True))
         if first_run:
             confirm = QPushButton(self._confirm_text)
@@ -464,10 +517,12 @@ class _UsageScenarioDialog(dialogs.Dialog):
         else:
             self.add_buttons()
 
-    _restyle_rows = _RuntimeModeDialog._restyle_rows
+    def _restyle_cards(self) -> None:
+        for card in self._cards.values():
+            card.set_selected(card.radio.isChecked())
 
     def accept_if_valid(self) -> None:
-        self.result_scenario = next(s for s, (radio, _cells) in self._rows.items() if radio.isChecked())
+        self.result_scenario = next(s for s, card in self._cards.items() if card.radio.isChecked())
         self.accept()
 
     def reject(self) -> None:
