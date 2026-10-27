@@ -292,10 +292,11 @@ class _RollbackDialog(dialogs.Dialog):
 
 class _OptionCard(QFrame):
     """单选窗口里的一张选项卡：单选标题（后面可跟一个小标签，右侧可带"推荐"）、要点列表、可选的一行补充说明，
-    整张卡片可点。选中与否只换边框和底色，边框宽度不变，切换时内容不跳动。"""
+    右下角可放一个状态文字（与最后一条要点同行，不额外占高度），整张卡片可点。
+    选中与否只换边框和底色，边框宽度不变，切换时内容不跳动。"""
 
     def __init__(self, title: str, points: str, hint: str = "", *, recommended: bool, tag: str = "",
-                 tag_color: str = "TEXT_MUTED"):
+                 corner: str = "", corner_color: str = "TEXT_MUTED"):
         super().__init__()
         self.setObjectName("optionCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -311,7 +312,7 @@ class _OptionCard(QFrame):
         if tag:
             tag_label = QLabel(tag)
             tag_label.setFont(theme.font("FONT_SIZE_SM"))
-            tag_label.setStyleSheet(f"color: {theme.hex(tag_color)};")
+            tag_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
             head.addWidget(tag_label)
         head.addStretch(1)
         if recommended:
@@ -329,7 +330,8 @@ class _OptionCard(QFrame):
         details = QVBoxLayout()
         details.setContentsMargins(indent, 0, 0, 0)
         details.setSpacing(1)
-        for point in points.split("\n"):
+        point_list = points.split("\n")
+        for index, point in enumerate(point_list):
             row = QHBoxLayout()
             row.setSpacing(6)
             dot = QLabel("•")
@@ -342,6 +344,11 @@ class _OptionCard(QFrame):
             text.setStyleSheet("background: transparent;")
             row.addWidget(dot)
             row.addWidget(text, 1)
+            if corner and index == len(point_list) - 1:
+                corner_label = QLabel(corner)
+                corner_label.setFont(theme.font("FONT_SIZE_SM"))
+                corner_label.setStyleSheet(f"color: {theme.hex(corner_color)}; background: transparent;")
+                row.addWidget(corner_label, 0, Qt.AlignmentFlag.AlignBottom)
             details.addLayout(row)
         if hint:
             hint_label = QLabel(hint)
@@ -395,7 +402,7 @@ class _OptionCardsDialog(dialogs.Dialog):
 
 
 class _RuntimeModeDialog(_OptionCardsDialog):
-    """"切换程序"窗口：游戏专服 / 独立专服两张选项卡，标题后标明本机是否已安装，点"保存"才生效。"""
+    """"切换程序"窗口：游戏专服 / 独立专服两张选项卡，右下角标明本机是否已安装，点"保存"才生效。"""
 
     _MODES = ((RuntimeMode.CLIENT, RuntimeKind.CLIENT, "local.runtime_mode_client_points"),
               (RuntimeMode.DEDICATED, RuntimeKind.DEDICATED, "local.runtime_mode_dedicated_points"))
@@ -410,8 +417,9 @@ class _RuntimeModeDialog(_OptionCardsDialog):
             ok = installed[kind]
             # 没装某一种是正常情况（一般只用游戏专服），不算错误：已安装用绿色，未安装用灰色
             card = _OptionCard(t(_RUNTIME_KIND_KEYS[kind]), t(points_key), recommended=mode is RuntimeMode.CLIENT,
-                               tag=t("local.runtime_installed" if ok else "local.runtime_not_installed"),
-                               tag_color="SUCCESS" if ok else "TEXT_MUTED")
+                               tag=t("local.runtime_mode_current_tag") if mode is current else "",
+                               corner=t("local.runtime_installed" if ok else "local.runtime_not_installed"),
+                               corner_color="SUCCESS" if ok else "TEXT_MUTED")
             cards.append((mode, card))
         self._add_cards(cards, current)
         self.body.addWidget(self.text_label(t("local.runtime_mode_note"), muted=True))
