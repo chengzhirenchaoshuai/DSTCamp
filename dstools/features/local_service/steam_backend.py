@@ -1,4 +1,4 @@
-"""Steam 通道（唯一来源）：Steam 客户端或 SteamCMD，由用户在「Steam 通道」里明确切换。
+"""Steam 通道（唯一来源）：Steam 客户端或 SteamCMD，由用户在「开服场景」里明确切换（见 usage_scenario.py）。
 
 专服安装更新、Mod 下载等所有 Steam 相关操作都按这里的选择走，两条路径互不混用，不会因为找不到一种就偷偷换另一种。
 """

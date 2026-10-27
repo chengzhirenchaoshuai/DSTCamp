@@ -34,7 +34,7 @@ from dstools.features.local_service import luajit_injector, luajit_runtime, stea
 from dstools.features.local_service.backup_manager import changed_since_last_backup, create_backup
 from dstools.features.local_service.dedicated_server import (
     ConfDirCrossDriveError, ServerStatus, detect_external_running_clusters,
-    detect_external_shard_processes, find_bin64_dir, is_client_install_dir, is_valid_install_dir,
+    detect_external_shard_processes, find_bin64_dir, is_valid_install_dir,
     resolve_conf_dir_arg,
 )
 from dstools.features.local_service.server_runtime import (
@@ -197,9 +197,8 @@ def _set_button_state(button, enabled: bool, reason: str = "") -> None:
 _RUNTIME_KIND_KEYS = {RuntimeKind.CLIENT: "local.runtime_mode_client", RuntimeKind.DEDICATED: "local.runtime_mode_dedicated"}
 
 
-def _show_not_found_warning(parent, wanted_kind: RuntimeKind | None = None) -> None:
-    """wanted_kind 为 None 表示还没检测过开服程序，按两种都没找到提示。"""
-    body = {None: "local.install_body", RuntimeKind.CLIENT: "local.install_client_body",
+def _show_not_found_warning(parent, wanted_kind: RuntimeKind) -> None:
+    body = {RuntimeKind.CLIENT: "local.install_client_body",
             RuntimeKind.DEDICATED: "local.install_dedicated_body"}[wanted_kind]
     if wanted_kind is not RuntimeKind.CLIENT and get_backend() is SteamBackend.STEAMCMD:
         body = "local.install_dedicated_body_steamcmd"  # SteamCMD 通道直接在本页安装，不用去 Steam 客户端
@@ -1395,9 +1394,9 @@ class LocalServicePage(Page):
             update_reason = t(blocker) if blocker else ""
         _set_button_state(self._steam_update_btn, not update_reason, update_reason)
 
-    def _wanted_runtime_kind(self) -> RuntimeKind | None:
-        resolution = self._runtime_resolution
-        return resolution.wanted_kind if resolution is not None else None
+    def _wanted_runtime_kind(self) -> RuntimeKind:
+        # 页面构造时已同步检测过开服程序，这里兜底只为防御
+        return (self._runtime_resolution or resolve_runtime()).wanted_kind
 
     def _runtime_switch_blocked(self) -> bool:
         """正在运行的程序文件、mods 和 LuaJIT 副本都属于当前开服程序，运行中不允许切换。"""
@@ -1413,7 +1412,7 @@ class LocalServicePage(Page):
         self.ctx.server_runtime_changed.emit()
 
     def _configure_steamcmd(self) -> None:
-        """「SteamCMD 设置」：换了 steamcmd.exe 时工坊目录跟着换，与切换通道一样运行中不允许，并提议复制已下载的 Mod。"""
+        """「SteamCMD 设置」：换了 steamcmd.exe 时工坊目录跟着换，与切换开服场景一样运行中不允许，并提议复制已下载的 Mod。"""
         if self._runtime_switch_blocked():
             return
         dialog = _SteamcmdSettingsDialog(self.window(), steamcmd_updater.custom_steamcmd_path(), get_steamcmd_account())
@@ -1562,21 +1561,12 @@ class LocalServicePage(Page):
             dialogs.show_warning(self.window(), t("local.install_title"), t(key))
             return
         wanted = self._wanted_runtime_kind()
-        if wanted is None:
-            # 自动模式下手动选目录，等于明确指定了用哪种程序开服。
-            kind = (RuntimeKind.CLIENT if is_client_install_dir(path)
-                    else RuntimeKind.DEDICATED if is_valid_install_dir(path) else None)
-            invalid_key = "local.install_invalid_dir"
-        else:
-            kind = wanted if accepts_install_dir(wanted, path) else None
+        if not accepts_install_dir(wanted, path):
             invalid_key = ("local.install_invalid_client_dir" if wanted is RuntimeKind.CLIENT
                            else "local.install_invalid_dedicated_dir")
-        if kind is None:
             dialogs.show_warning(self.window(), t("local.install_title"), t(invalid_key))
             return
-        remember_install_dir(kind, path)
-        if wanted is None:
-            set_runtime_mode(RuntimeMode(kind.value))
+        remember_install_dir(wanted, path)
         self._on_runtime_changed()
         self._validate_adopted_dir()
 
@@ -1587,7 +1577,7 @@ class LocalServicePage(Page):
             self._on_steam_update_clicked()
 
     def _runtime_app_id(self) -> str:
-        """当前开服程序对应的 Steam App；未检测到时按模式要求的那种引导安装（自动模式引导装独立专服）。"""
+        """当前开服程序对应的 Steam App；未检测到时按选项要求的那种引导安装。"""
         if self._runtime is not None:
             return self._runtime.app_id
         if self._wanted_runtime_kind() is RuntimeKind.CLIENT:
