@@ -236,8 +236,9 @@ def show_info(parent, title: str, text: str) -> None:
     MessageDialog(parent, "info", title, text, _ok_buttons(), default=True).ask()
 
 
-def show_warning(parent, title: str, text: str) -> None:
-    MessageDialog(parent, "warning", title, text, _ok_buttons(), default=True).ask()
+def show_warning(parent, title: str, text: str, min_width: int = 0) -> None:
+    MessageDialog(parent, "warning", title, text, _ok_buttons(), default=True,
+                  size=width_tier(min_width)).ask()
 
 
 def show_error(parent, title: str, text: str, min_width: int = 0) -> None:
