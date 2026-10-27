@@ -513,6 +513,16 @@ class _UsageScenarioDialog(dialogs.Dialog):
         else:
             self.add_buttons()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # 自动换行的文字首次排版按较窄宽度估高，窗口底部多出空白：显示后按实际宽度收紧到内容高度
+        QTimer.singleShot(0, self._fit_height)
+
+    def _fit_height(self) -> None:
+        layout = self.layout()
+        if layout.hasHeightForWidth():
+            self.resize(self.width(), layout.heightForWidth(self.width()))
+
     def _restyle_cards(self) -> None:
         for card in self._cards.values():
             card.set_selected(card.radio.isChecked())
