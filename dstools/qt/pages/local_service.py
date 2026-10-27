@@ -291,11 +291,11 @@ class _RollbackDialog(dialogs.Dialog):
 
 
 class _OptionCard(QFrame):
-    """单选窗口里的一张选项卡：单选标题（可带"推荐""当前"标签）、要点列表、一行补充说明，整张卡片可点。
-    选中与否只换边框和底色，边框宽度不变，切换时内容不跳动。"""
+    """单选窗口里的一张选项卡：单选标题（后面可跟一个小标签，右侧可带"推荐"）、要点列表、可选的一行补充说明，
+    整张卡片可点。选中与否只换边框和底色，边框宽度不变，切换时内容不跳动。"""
 
-    def __init__(self, title: str, points: str, hint: str, *, recommended: bool, current: bool,
-                 hint_color: str = "TEXT_MUTED"):
+    def __init__(self, title: str, points: str, hint: str = "", *, recommended: bool, tag: str = "",
+                 tag_color: str = "TEXT_MUTED"):
         super().__init__()
         self.setObjectName("optionCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -308,11 +308,11 @@ class _OptionCard(QFrame):
         self.radio = QRadioButton(title)
         self.radio.setFont(theme.font("FONT_SIZE_MD", bold=True))
         head.addWidget(self.radio)
-        if current:
-            tag = QLabel(t("local.runtime_mode_current_tag"))
-            tag.setFont(theme.font("FONT_SIZE_SM"))
-            tag.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
-            head.addWidget(tag)
+        if tag:
+            tag_label = QLabel(tag)
+            tag_label.setFont(theme.font("FONT_SIZE_SM"))
+            tag_label.setStyleSheet(f"color: {theme.hex(tag_color)};")
+            head.addWidget(tag_label)
         head.addStretch(1)
         if recommended:
             badge = QLabel(t("local.scenario_recommended"))
@@ -343,11 +343,12 @@ class _OptionCard(QFrame):
             row.addWidget(dot)
             row.addWidget(text, 1)
             details.addLayout(row)
-        hint_label = QLabel(hint)
-        hint_label.setWordWrap(True)
-        hint_label.setFont(theme.font("FONT_SIZE_SM"))
-        hint_label.setStyleSheet(f"color: {theme.hex(hint_color)}; background: transparent;")
-        details.addWidget(hint_label)
+        if hint:
+            hint_label = QLabel(hint)
+            hint_label.setWordWrap(True)
+            hint_label.setFont(theme.font("FONT_SIZE_SM"))
+            hint_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')}; background: transparent;")
+            details.addWidget(hint_label)
         layout.addLayout(details)
 
     def set_selected(self, selected: bool) -> None:
@@ -394,7 +395,7 @@ class _OptionCardsDialog(dialogs.Dialog):
 
 
 class _RuntimeModeDialog(_OptionCardsDialog):
-    """"切换程序"窗口：游戏专服 / 独立专服两张选项卡，卡片底部标明本机是否已安装，点"保存"才生效。"""
+    """"切换程序"窗口：游戏专服 / 独立专服两张选项卡，标题后标明本机是否已安装，点"保存"才生效。"""
 
     _MODES = ((RuntimeMode.CLIENT, RuntimeKind.CLIENT, "local.runtime_mode_client_points"),
               (RuntimeMode.DEDICATED, RuntimeKind.DEDICATED, "local.runtime_mode_dedicated_points"))
@@ -408,10 +409,9 @@ class _RuntimeModeDialog(_OptionCardsDialog):
         for mode, kind, points_key in self._MODES:
             ok = installed[kind]
             # 没装某一种是正常情况（一般只用游戏专服），不算错误：已安装用绿色，未安装用灰色
-            card = _OptionCard(t(_RUNTIME_KIND_KEYS[kind]), t(points_key),
-                               t("local.runtime_installed" if ok else "local.runtime_not_installed"),
-                               recommended=mode is RuntimeMode.CLIENT, current=mode is current,
-                               hint_color="SUCCESS" if ok else "TEXT_MUTED")
+            card = _OptionCard(t(_RUNTIME_KIND_KEYS[kind]), t(points_key), recommended=mode is RuntimeMode.CLIENT,
+                               tag=t("local.runtime_installed" if ok else "local.runtime_not_installed"),
+                               tag_color="SUCCESS" if ok else "TEXT_MUTED")
             cards.append((mode, card))
         self._add_cards(cards, current)
         self.body.addWidget(self.text_label(t("local.runtime_mode_note"), muted=True))
@@ -440,7 +440,8 @@ class _UsageScenarioDialog(_OptionCardsDialog):
         self.body.addWidget(self.text_label(t("local.scenario_intro"), muted=True))
         self._add_cards([(scenario, _OptionCard(t(title_key), t(points_key), t(hint_key),
                                                 recommended=scenario is UsageScenario.LOCAL,
-                                                current=scenario is current and not first_run))
+                                                tag=t("local.runtime_mode_current_tag")
+                                                if scenario is current and not first_run else ""))
                          for scenario, title_key, points_key, hint_key in self._SCENARIOS], current)
         self.body.addWidget(self.text_label(t("local.scenario_note"), muted=True))
         if first_run:
