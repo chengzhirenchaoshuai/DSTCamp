@@ -230,6 +230,7 @@ class MenuStrip(QWidget):
         self._font_settings_action.setText(t("theme.font_settings"))
         self._minimize_action.setText(t("settings.minimize_on_close_label"))
         self._scenario_action.setText(t("settings.scenario_label"))
+        self._klei_root_action.setText(t("settings.klei_root_menu"))
         self._defender_action.setText(t("settings.defender_label"))
         self._cache_dir_action.setText(t("settings.cache_dir_menu"))
         self._lang_menu.setTitle(t("settings.language_label"))
@@ -319,6 +320,10 @@ class MenuStrip(QWidget):
         scenario.triggered.connect(self._window.show_scenario_dialog)
         menu.addAction(scenario)
         self._scenario_action = scenario
+        klei_root = QAction(t("settings.klei_root_menu"), self)
+        klei_root.triggered.connect(self._window.show_klei_root_dialog)
+        menu.addAction(klei_root)
+        self._klei_root_action = klei_root
         defender = QAction(t("settings.defender_label"), self)
         defender.triggered.connect(self._window.show_defender_dialog)
         menu.addAction(defender)
@@ -919,6 +924,11 @@ class MainWindow(QWidget):
 
         if self.ctx.platform == Platform.STEAM and not scenario_chosen():
             self.pages["local"].choose_scenario(first_run=True)
+
+    def show_klei_root_dialog(self) -> None:
+        from dstools.qt.settings_dialogs import KleiRootDialog
+
+        KleiRootDialog(self).exec()
 
     def show_cache_dir_dialog(self) -> None:
         from dstools.qt.settings_dialogs import CacheDirDialog

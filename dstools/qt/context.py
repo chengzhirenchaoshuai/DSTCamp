@@ -135,10 +135,12 @@ class AppContext(QObject):
         if self._selected is not None:
             set_last_cluster_path(str(self._selected.path))
 
-    def refresh_env(self) -> None:
-        """重新扫描环境（F5/刷新全部）：保持选中同一个存档，广播 env 与 cluster 变化。"""
+    def refresh_env(self, rediscover_root: bool = False) -> None:
+        """重新扫描环境（F5/刷新全部）：保持选中同一个存档，广播 env 与 cluster 变化。
+        rediscover_root：手动指定或恢复了存档根目录，重新查找根目录（平时沿用已找到的）。"""
         previous = self._selected.path if self._selected else None
-        self.env = discover_environment(self.env.klei_root, self.env.wegame_klei_root)
+        klei_root = None if rediscover_root else self.env.klei_root
+        self.env = discover_environment(klei_root, self.env.wegame_klei_root)
         self._restore_selection(previous)
         self.env_changed.emit()
         self.cluster_changed.emit(self._selected)

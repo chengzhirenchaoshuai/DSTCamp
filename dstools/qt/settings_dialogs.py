@@ -17,8 +17,10 @@ from dstools.qt import dialogs
 from dstools.qt.theme import FONT_SIZE_LEVELS, freetype_engine_active, theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import ToggleSwitch, section_card
+from dstools.shared.discovery import auto_klei_root, list_clusters
 from dstools.shared.app_settings import (
-    get_custom_bg_opacity, get_remind_update_enabled, set_cache_dir_override,
+    get_custom_bg_opacity, get_klei_root_override, get_remind_update_enabled, set_cache_dir_override,
+    set_klei_root_override,
     set_custom_bg_opacity, set_remind_update_enabled,
 )
 from dstools.shared.custom_background import (
@@ -585,6 +587,101 @@ class CacheDirDialog(dialogs.Dialog):
             self.accept()
             if hasattr(window, "restart_app"):
                 window.restart_app()
+
+
+class KleiRootDialog(dialogs.Dialog):
+    """"服务器存档目录"：展示当前目录（自动找到或手动指定），可更改、恢复自动、打开目录，改完立即重新扫描。
+    只影响根目录下的服务器存档；游戏客户端的账号和本地存档始终在默认位置（见 DSTEnvironment.client_klei_root）。"""
+
+    def __init__(self, window):
+        super().__init__(window, t("settings.klei_root_label"), 620)
+        self._window = window
+        heading = QLabel(t("settings.klei_root_current"))
+        heading.setFont(theme.font("FONT_SIZE_BASE", bold=True))
+        self.body.addWidget(heading)
+        self._path_edit = QLineEdit()
+        self._path_edit.setReadOnly(True)
+        self._path_edit.setFont(theme.font("FONT_SIZE_SM"))
+        self.body.addWidget(self._path_edit)
+        self._source_label = self.text_label("", muted=True, size_key="FONT_SIZE_SM")
+        self.body.addWidget(self._source_label)
+        self.body.addWidget(self.text_label(t("settings.klei_root_hint"), muted=True, size_key="FONT_SIZE_SM"))
+
+        actions = QHBoxLayout()
+        change_btn = QPushButton(t("settings.klei_root_change"))
+        change_btn.clicked.connect(self._on_change)
+        self._reset_btn = QPushButton(t("settings.klei_root_reset"))
+        self._reset_btn.clicked.connect(self._on_reset)
+        open_btn = QPushButton(t("settings.klei_root_open"))
+        open_btn.clicked.connect(self._on_open)
+        close_btn = dialogs.style_button(QPushButton(t("dlg.close_btn")), "secondary")
+        close_btn.clicked.connect(self.accept)
+        actions.addStretch()
+        actions.addWidget(change_btn)
+        actions.addWidget(self._reset_btn)
+        actions.addWidget(open_btn)
+        actions.addSpacing(12)
+        actions.addWidget(close_btn)
+        self.body.addLayout(actions)
+        self._refresh()
+
+    @staticmethod
+    def _current() -> Path | None:
+        return get_klei_root_override() or auto_klei_root()
+
+    def _refresh(self) -> None:
+        override = get_klei_root_override()
+        current = self._current()
+        self._path_edit.setText(str(current) if current else t("env.not_found"))
+        self._source_label.setText(t("settings.klei_root_custom" if override else "settings.klei_root_auto"))
+        self._reset_btn.setEnabled(override is not None)
+
+    def _blocked(self) -> bool:
+        """正在运行的世界用的是当前目录下的存档，运行中不允许换目录。"""
+        if self._window.ctx.manager.running():
+            dialogs.show_warning(self, t("settings.klei_root_label"), t("settings.klei_root_running"))
+            return True
+        return False
+
+    def _on_change(self) -> None:
+        if self._blocked():
+            return
+        current = self._current()
+        initial = current if current is not None and current.is_dir() else Path.home()
+        chosen = QFileDialog.getExistingDirectory(self, t("settings.klei_root_picker_title"), str(initial))
+        if not chosen:
+            return
+        path = Path(chosen)
+        if (path / "cluster.ini").exists():
+            # 选到了某个存档文件夹本身：根目录应是它的上一级
+            dialogs.show_warning(self, t("settings.klei_root_label"),
+                                 t("settings.klei_root_is_cluster", parent=str(path.parent)))
+            return
+        if not list_clusters(path) and not dialogs.ask_yes_no(
+                self, t("settings.klei_root_label"), t("settings.klei_root_empty_confirm", path=str(path))):
+            return
+        auto = auto_klei_root()
+        # 选的就是自动找到的目录：等于恢复自动，不另存
+        set_klei_root_override(None if auto is not None and path == auto else path)
+        self._apply()
+
+    def _on_reset(self) -> None:
+        if self._blocked():
+            return
+        set_klei_root_override(None)
+        self._apply()
+
+    def _apply(self) -> None:
+        self._window.ctx.refresh_env(rediscover_root=True)
+        self._refresh()
+
+    def _on_open(self) -> None:
+        current = self._current()
+        if current is None or not current.is_dir():
+            dialogs.show_warning(self, t("settings.klei_root_label"),
+                                 t("settings.klei_root_not_found", path=str(current or "")))
+            return
+        os.startfile(str(current))
 
 
 class ManualUpdateDialog(dialogs.Dialog):
