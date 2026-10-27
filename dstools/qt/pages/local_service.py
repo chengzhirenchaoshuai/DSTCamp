@@ -487,7 +487,7 @@ class _UsageScenarioDialog(dialogs.Dialog):
     )
 
     def __init__(self, parent, current: UsageScenario, first_run: bool):
-        super().__init__(parent, t("local.scenario_title"), "md",
+        super().__init__(parent, t("local.scenario_title"), "lg",
                          confirm_text=t("dlg.confirm_btn") if first_run else t("local.runtime_mode_save_btn"))
         self.result_scenario = current
         self._first_run = first_run
