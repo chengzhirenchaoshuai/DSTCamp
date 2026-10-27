@@ -1,7 +1,8 @@
 """开服程序（运行时）的唯一来源，由"开服程序"选项（server_runtime_mode）决定：
+游戏客户端 / 独立专服二选一，固定使用指定的一种，找不到如实报告，绝不偷偷换另一种。
 
-- 自动：优先用游戏客户端自带的开服程序（与游戏同步更新、不用另装），没有游戏本体才用独立专服；
-- 游戏客户端 / 独立专服：固定使用指定的一种，找不到如实报告，绝不偷偷换另一种。
+没选过（或旧版本存的"自动"）时按本机情况定一次并保存：有游戏本体用游戏专服（与游戏同步更新、不用另装），
+只有独立专服用独立专服，都没有按游戏专服提示安装。之后装卸程序不会自动改选项。
 
 开服目录、mods、更新用 App ID、LuaJIT 副本位置、Steam API DLL 都从 resolve_runtime() 派生，
 业务代码不得直接调用 find_dedicated_server_dir() 等探测函数（有测试守护）。
@@ -24,7 +25,6 @@ _CLIENT_DIR_NAME = "Don't Starve Together"
 
 
 class RuntimeMode(str, Enum):
-    AUTO = "auto"
     CLIENT = "client"
     DEDICATED = "dedicated"
 
@@ -66,27 +66,28 @@ class ServerRuntime:
 
 @dataclass(frozen=True)
 class RuntimeResolution:
-    """开服程序选项与实际选中的程序；指定了某种程序但没找到时 runtime 为 None。"""
+    """开服程序选项与实际选中的程序；指定的程序没找到时 runtime 为 None。"""
 
     mode: RuntimeMode
     runtime: ServerRuntime | None
 
     @property
-    def wanted_kind(self) -> RuntimeKind | None:
-        """指定模式下要求的程序类型；自动模式为 None。"""
-        if self.mode is RuntimeMode.CLIENT:
-            return RuntimeKind.CLIENT
-        if self.mode is RuntimeMode.DEDICATED:
-            return RuntimeKind.DEDICATED
-        return None
+    def wanted_kind(self) -> RuntimeKind:
+        return RuntimeKind.CLIENT if self.mode is RuntimeMode.CLIENT else RuntimeKind.DEDICATED
 
 
 def get_runtime_mode() -> RuntimeMode:
+    """开服程序选项；没选过或是旧版本的"自动"时按本机情况定一次并保存（见模块说明）。"""
     migrate_runtime_settings()
     try:
-        return RuntimeMode(app_settings.get_server_runtime_mode() or RuntimeMode.AUTO.value)
+        return RuntimeMode(app_settings.get_server_runtime_mode())
     except ValueError:
-        return RuntimeMode.AUTO
+        pass
+    # 只看 Steam 库：SteamCMD 通道固定用独立专服、不读这个选项，选项只对 Steam 客户端通道有意义
+    mode = (RuntimeMode.DEDICATED if find_client_install_dir() is None and find_dedicated_server_dir() is not None
+            else RuntimeMode.CLIENT)
+    set_runtime_mode(mode)
+    return mode
 
 
 def set_runtime_mode(mode: RuntimeMode) -> None:
@@ -149,13 +150,7 @@ def resolve_runtime(mode: RuntimeMode | None = None) -> RuntimeResolution:
     """按开服程序选项选出实际开服程序。"""
     migrate_runtime_settings()  # SteamCMD 通道不读开服程序选项，迁移不能只放在 get_runtime_mode 里
     mode = effective_runtime_mode() if mode is None else RuntimeMode(mode)
-    if mode is RuntimeMode.AUTO:
-        runtime = (find_runtime_of_kind(RuntimeKind.CLIENT)
-                   or find_runtime_of_kind(RuntimeKind.DEDICATED))
-    else:
-        resolution = RuntimeResolution(mode, None)
-        runtime = find_runtime_of_kind(resolution.wanted_kind)
-    return RuntimeResolution(mode, runtime)
+    return RuntimeResolution(mode, find_runtime_of_kind(RuntimeResolution(mode, None).wanted_kind))
 
 
 def current_runtime() -> ServerRuntime | None:

@@ -14,7 +14,7 @@ from _harness import run  # noqa: E402
 
 from dstools.features.local_service import dedicated_server, server_runtime  # noqa: E402
 from dstools.features.local_service.server_runtime import (  # noqa: E402
-    RuntimeKind, RuntimeMode, resolve_runtime, set_runtime_mode,
+    RuntimeKind, RuntimeMode, get_runtime_mode, resolve_runtime, set_runtime_mode,
 )
 from dstools.shared import app_settings  # noqa: E402
 
@@ -36,15 +36,16 @@ def test_mode_resolution_and_migration() -> None:
         libraries = [library]
         with patch.object(server_runtime, "find_all_steam_libraries", return_value=libraries), \
                 patch.object(dedicated_server, "find_all_steam_libraries", return_value=libraries):
-            # 只有客户端：自动模式用客户端；指定独立专服时如实报告未找到，不偷偷换成客户端。
-            auto = resolve_runtime(RuntimeMode.AUTO)
-            assert auto.runtime.kind is RuntimeKind.CLIENT and auto.runtime.install_dir == client
-            assert auto.runtime.app_id == "322330" and auto.runtime.mods_dir == client / "mods"
+            # 没选过、有游戏本体：定为游戏专服并保存；指定独立专服时如实报告未找到，不偷偷换成客户端。
+            runtime = resolve_runtime().runtime
+            assert runtime.kind is RuntimeKind.CLIENT and runtime.install_dir == client
+            assert runtime.app_id == "322330" and runtime.mods_dir == client / "mods"
+            assert app_settings.get_server_runtime_mode() == RuntimeMode.CLIENT.value
             assert resolve_runtime(RuntimeMode.DEDICATED).runtime is None
 
-            # 两者都在：自动优先游戏专服；指定独立专服时用独立专服。
+            # 之后装了独立专服：已定的选项不变；指定独立专服时用独立专服。
             dedicated = _make_install(common, "Don't Starve Together Dedicated Server", client=False)
-            assert resolve_runtime(RuntimeMode.AUTO).runtime.install_dir == client
+            assert resolve_runtime().runtime.install_dir == client
             assert resolve_runtime(RuntimeMode.DEDICATED).runtime.install_dir == dedicated
             assert resolve_runtime(RuntimeMode.DEDICATED).runtime.app_id == "343050"
 
@@ -102,7 +103,7 @@ def test_usage_scenario_migration() -> None:
         with patch.object(server_runtime, "find_all_steam_libraries", return_value=libraries), \
                 patch.object(dedicated_server, "find_all_steam_libraries", return_value=libraries), \
                 patch.object(steam_client_updater, "find_steam_executable", return_value=library / "steam.exe"):
-            # 新用户（设置为空）：什么都不改，留给启动弹窗选场景；自动模式直接用游戏专服
+            # 新用户（设置为空）：什么都不改，留给启动弹窗选场景；开服程序用到时再按本机情况定
             app_settings.save_settings({})
             migrate_usage_scenario()
             assert not scenario_chosen() and app_settings.get_server_runtime_mode() is None
@@ -113,9 +114,17 @@ def test_usage_scenario_migration() -> None:
             assert app_settings.get_server_runtime_mode() == RuntimeMode.DEDICATED.value
             assert resolve_runtime().runtime.install_dir == dedicated
             assert app_settings.get_steam_backend() == "client"
-            set_runtime_mode(RuntimeMode.AUTO)
+            set_runtime_mode(RuntimeMode.CLIENT)
             migrate_usage_scenario()
-            assert app_settings.get_server_runtime_mode() == RuntimeMode.AUTO.value
+            assert app_settings.get_server_runtime_mode() == RuntimeMode.CLIENT.value
+
+            # 旧版本存的"自动"已去掉：有游戏本体定为游戏专服，只有独立专服定为独立专服，定下后保存
+            app_settings.save_settings({"server_runtime_mode": "auto"})
+            assert get_runtime_mode() is RuntimeMode.CLIENT
+            with patch.object(server_runtime, "find_client_install_dir", return_value=None):
+                app_settings.save_settings({"server_runtime_mode": "auto"})
+                assert get_runtime_mode() is RuntimeMode.DEDICATED
+            assert app_settings.get_server_runtime_mode() == RuntimeMode.DEDICATED.value
 
 
 # 业务代码只能经 server_runtime 取开服程序目录。白名单：探测函数自身（dedicated_server/server_runtime）、

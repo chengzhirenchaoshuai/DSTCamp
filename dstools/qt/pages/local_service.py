@@ -39,7 +39,7 @@ from dstools.features.local_service.dedicated_server import (
 )
 from dstools.features.local_service.server_runtime import (
     RuntimeKind, RuntimeMode, accepts_install_dir, dedicated_dir_wrong_channel, find_runtime_of_kind,
-    remember_install_dir,
+    get_runtime_mode, remember_install_dir,
     resolve_runtime, set_runtime_mode,
 )
 from dstools.features.local_service.log_bundle import create_log_bundle
@@ -198,7 +198,7 @@ _RUNTIME_KIND_KEYS = {RuntimeKind.CLIENT: "local.runtime_mode_client", RuntimeKi
 
 
 def _show_not_found_warning(parent, wanted_kind: RuntimeKind | None = None) -> None:
-    """wanted_kind 为 None 表示自动模式（两种都没找到）。"""
+    """wanted_kind 为 None 表示还没检测过开服程序，按两种都没找到提示。"""
     body = {None: "local.install_body", RuntimeKind.CLIENT: "local.install_client_body",
             RuntimeKind.DEDICATED: "local.install_dedicated_body"}[wanted_kind]
     if wanted_kind is not RuntimeKind.CLIENT and get_backend() is SteamBackend.STEAMCMD:
@@ -317,10 +317,9 @@ class _ModeTableCell(QFrame):
 
 
 class _RuntimeModeDialog(dialogs.Dialog):
-    """"切换程序"窗口：当前程序 / 三种模式单选 / 安装状态，点"保存"才生效。"""
+    """"切换程序"窗口：当前程序 / 两种程序单选 / 安装状态，点"保存"才生效。"""
 
-    _MODES = ((RuntimeMode.AUTO, "local.runtime_mode_desc_auto"),
-              (RuntimeMode.CLIENT, "local.runtime_mode_desc_client"),
+    _MODES = ((RuntimeMode.CLIENT, "local.runtime_mode_desc_client"),
               (RuntimeMode.DEDICATED, "local.runtime_mode_desc_dedicated"))
 
     def __init__(self, parent, current: RuntimeMode, current_text: str, names: dict, installed: dict):
@@ -1349,10 +1348,6 @@ class LocalServicePage(Page):
 
     @staticmethod
     def _runtime_mode_text(resolution) -> str:
-        if resolution.mode is RuntimeMode.AUTO:
-            if resolution.runtime is None:
-                return t("local.runtime_mode_auto_none")
-            return t("local.runtime_mode_auto_current", kind=t(_RUNTIME_KIND_KEYS[resolution.runtime.kind]))
         name = t(_RUNTIME_KIND_KEYS[resolution.wanted_kind])
         return name if resolution.runtime is not None else t("local.runtime_mode_missing", mode=name)
 
@@ -1529,9 +1524,8 @@ class LocalServicePage(Page):
         if self._runtime_switch_blocked():
             return
         installed = {kind: find_runtime_of_kind(kind) is not None for kind in RuntimeKind}
-        current = self._runtime_resolution.mode if self._runtime_resolution else RuntimeMode.AUTO
-        names = {RuntimeMode.AUTO: t("local.runtime_mode_auto"),
-                 RuntimeMode.CLIENT: t("local.runtime_mode_client"),
+        current = self._runtime_resolution.mode if self._runtime_resolution else get_runtime_mode()
+        names = {RuntimeMode.CLIENT: t("local.runtime_mode_client"),
                  RuntimeMode.DEDICATED: t("local.runtime_mode_dedicated")}
         current_text = self._runtime_mode_text(self._runtime_resolution) if self._runtime_resolution else names[current]
         dialog = _RuntimeModeDialog(self.window(), current, current_text, names, installed)

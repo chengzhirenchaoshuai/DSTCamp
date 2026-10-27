@@ -12,7 +12,7 @@ from __future__ import annotations
 from enum import Enum
 
 from dstools.features.local_service.server_runtime import (
-    RuntimeKind, RuntimeMode, find_runtime_of_kind, get_runtime_mode, set_runtime_mode,
+    RuntimeKind, RuntimeMode, find_runtime_of_kind, migrate_runtime_settings, set_runtime_mode,
 )
 from dstools.features.local_service.steam_backend import SteamBackend, get_backend, set_backend
 from dstools.shared import app_settings
@@ -44,14 +44,16 @@ def suggested_scenario() -> UsageScenario:
 def migrate_usage_scenario() -> None:
     """引入开服场景时对老用户的一次性迁移；须在启动早期、写入任何设置之前调用（靠设置文件是否为空区分新老用户）。
 
-    - "自动"模式改为优先游戏专服后，原来自动选中独立专服的老用户固定为"独立专服"：
+    - 旧版"自动"优先独立专服，现已去掉"自动"、没选过的优先游戏专服；原来自动选中独立专服的老用户固定为"独立专服"：
       不悄悄换开服程序，否则放在专服 mods 里的 Mod、LuaJIT 副本都会像是丢了；
     - 没选过 Steam 通道但本机有 Steam 的老用户直接定为自己电脑，不再弹窗；找不到 Steam 的照常弹窗确认。
     """
     if app_settings.get_usage_scenario_migrated():
         return
     if app_settings.load_settings():
-        if (get_backend() is SteamBackend.CLIENT and get_runtime_mode() is RuntimeMode.AUTO
+        migrate_runtime_settings()
+        # 读原始值：get_runtime_mode() 会把"自动"按新规则（优先游戏专服）定下来，这里要按旧规则判断
+        if (get_backend() is SteamBackend.CLIENT and app_settings.get_server_runtime_mode() in (None, "auto")
                 and find_runtime_of_kind(RuntimeKind.DEDICATED) is not None
                 and find_runtime_of_kind(RuntimeKind.CLIENT) is not None):
             set_runtime_mode(RuntimeMode.DEDICATED)
