@@ -525,7 +525,6 @@ class ModPage(Page):
         can_create = bool(client_mods_dir and client_mods_dir.is_dir())
         runtime = self._runtime() if c and c.platform != Platform.WEGAME else None
         client_runtime = bool(runtime and runtime.is_client)
-        self._sync_btn.setToolTip(t("mod.sync_client_runtime_hint") if client_runtime else "")
         self._sync_btn.setText(t("local.remove_junction_btn") if self._sync_already_linked else t("local.sync_mods_btn"))
         self._sync_check_gen += 1
         gen = self._sync_check_gen
@@ -1684,7 +1683,9 @@ class ModPage(Page):
         self._download_by_id_btn.setVisible(steamcmd)
         # 这两个按钮操作的是游戏客户端的 mods 目录，SteamCMD 通道一般没有客户端，专服直接读 SteamCMD 工坊目录
         self._location_change_btn.setVisible(not steamcmd)
-        self._sync_btn.setVisible(not steamcmd)
+        # 游戏专服直接读游戏本体的 mods，用不到联接，按钮隐藏；只有独立专服和 WeGame 需要
+        runtime = self._runtime() if self.ctx.platform == Platform.STEAM else None
+        self._sync_btn.setVisible(not steamcmd and not (runtime and runtime.is_client))
 
     def _open_steamcmd_cleanup_dialog(self) -> None:
         from dstools.qt.steamcmd_mod_cleanup_dialog import SteamcmdModCleanupDialog
