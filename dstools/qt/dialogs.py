@@ -155,7 +155,6 @@ class MessageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setFixedWidth(DIALOG_WIDTHS.get(size, DIALOG_WIDTHS["sm"]))
         self.result_value = escape
         self._escape = escape
 
@@ -200,6 +199,12 @@ class MessageDialog(QDialog):
         for label, value, variant in right:
             row.addWidget(self._make_button(label, value, variant, default))
         root.addLayout(row)
+        # 固定宽度放不下按钮行时按钮会被挤窄、文字截断（如三个长按钮）：换到能放下的最小档位
+        width = DIALOG_WIDTHS.get(size, DIALOG_WIDTHS["sm"])
+        needed = row.sizeHint().width() + DIALOG_MARGINS[0] + DIALOG_MARGINS[2]
+        if needed > width:
+            width = next((w for w in sorted(DIALOG_WIDTHS.values()) if w >= needed), needed)
+        self.setFixedWidth(width)
 
     def _make_button(self, label: str, value, variant: str, default) -> QPushButton:
         button = style_button(QPushButton(label), variant)
