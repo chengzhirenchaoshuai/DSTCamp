@@ -834,7 +834,7 @@ def test_restart_prepares_legacy_after_stop() -> None:
         service._update_restart_all_btn_state = lambda _cluster: None
 
         with patch.object(local_page.luajit_injector, "needs_regeneration", return_value=False), \
-                patch.object(local_page, "resolve_conf_dir_arg", return_value=None):
+                patch.object(local_page, "resolve_storage_args", return_value=[]):
             service._restart_shards(cluster, [shard])
 
         assert events == [

@@ -33,9 +33,9 @@ from dstools.features.cluster_config.config_manager import (
 from dstools.features.local_service import luajit_injector, luajit_runtime, steam_client_updater, steamcmd_updater
 from dstools.features.local_service.backup_manager import changed_since_last_backup, create_backup
 from dstools.features.local_service.dedicated_server import (
-    ConfDirCrossDriveError, ServerStatus, detect_external_running_clusters,
+    ServerStatus, detect_external_running_clusters,
     detect_external_shard_processes, find_bin64_dir, is_valid_install_dir,
-    resolve_conf_dir_arg,
+    resolve_storage_args,
 )
 from dstools.features.local_service.server_runtime import (
     RuntimeKind, RuntimeMode, accepts_install_dir, dedicated_dir_wrong_channel, find_runtime_of_kind,
@@ -2704,20 +2704,15 @@ class LocalServicePage(Page):
                 _show_not_found_warning(self.window(), self._wanted_runtime_kind())
                 self._release_token_reservation_if_stopped(cluster.path)
                 return
-        try:
-            conf_dir_arg = resolve_conf_dir_arg(self.ctx.env.klei_root)
-        except ConfDirCrossDriveError:
-            self._release_token_reservation_if_stopped(cluster.path)
-            dialogs.show_error(self.window(), t("local.install_title"), t("local.confdir_cross_drive_error"))
-            return
+        storage_args = resolve_storage_args(self.ctx.env.klei_root)
         # 已开启 LuaJIT 模式时副本过期就直接更新，不再询问：取消只会中止启动，没有别的选择。
         if luajit_injector.needs_regeneration(self._install_dir):
             self._launching_keys.add((str(cluster.path), shard.name))
-            self._regenerate_luajit_then_start(cluster, [shard], conf_dir_arg)
+            self._regenerate_luajit_then_start(cluster, [shard], storage_args)
             return
-        self._continue_start_shard(cluster, shard, conf_dir_arg)
+        self._continue_start_shard(cluster, shard, storage_args)
 
-    def _regenerate_luajit_then_start(self, cluster, shards, conf_dir_arg, on_success=None, on_failure=None) -> None:
+    def _regenerate_luajit_then_start(self, cluster, shards, storage_args, on_success=None, on_failure=None) -> None:
         bin64_dir = find_bin64_dir(self._install_dir)
         log_dialog = dialogs.LogDialog(self.window(), t("local.luajit_regenerate_title"))
         log_dialog.append(t("local.luajit_log_preparing"))
@@ -2736,7 +2731,7 @@ class LocalServicePage(Page):
                         on_success()
                     else:
                         for target in shards:
-                            self._continue_start_shard(cluster, target, conf_dir_arg)
+                            self._continue_start_shard(cluster, target, storage_args)
                         if len(shards) > 1:
                             self._select_master_console_tab(cluster)
                 else:
@@ -2758,7 +2753,7 @@ class LocalServicePage(Page):
 
         run_async_with_log(work, log_dialog.append, done, error)
 
-    def _continue_start_shard(self, cluster, shard, conf_dir_arg) -> None:
+    def _continue_start_shard(self, cluster, shard, storage_args) -> None:
         self._save_extra_args()
         is_master = load_shard_config(shard.path).shard.get("is_master", True)
         from dstools.features.mod.parser import find_shared_ugc_directory
@@ -2766,7 +2761,7 @@ class LocalServicePage(Page):
         bin64_override = luajit_injector.resolve_launch_bin64_dir(self._install_dir)
         try:
             proc = self.manager.start(
-                cluster.name, cluster.path, shard.name, self._install_dir, conf_dir_arg, is_master,
+                cluster.name, cluster.path, shard.name, self._install_dir, storage_args, is_master,
                 str(ugc_directory) if ugc_directory else None, bin64_override=bin64_override,
                 extra_args=get_dedicated_server_extra_args())
         except (OSError, ValueError) as exc:
@@ -2870,11 +2865,7 @@ class LocalServicePage(Page):
             if self._install_dir is None:
                 _show_not_found_warning(self.window(), self._wanted_runtime_kind())
                 return
-        try:
-            conf_dir_arg = resolve_conf_dir_arg(self.ctx.env.klei_root)
-        except ConfDirCrossDriveError:
-            dialogs.show_error(self.window(), t("local.install_title"), t("local.confdir_cross_drive_error"))
-            return
+        storage_args = resolve_storage_args(self.ctx.env.klei_root)
 
         def clear_pending():
             self._restarting_keys.difference_update(keys)
@@ -2886,7 +2877,7 @@ class LocalServicePage(Page):
                 if not self._prepare_legacy_mods_for_start(cluster):
                     return
                 for target in targets:
-                    self._continue_start_shard(cluster, target, conf_dir_arg)
+                    self._continue_start_shard(cluster, target, storage_args)
                 if any(load_shard_config(target.path).shard.get("is_master", True) for target in targets):
                     self._select_master_console_tab(cluster)
             finally:
@@ -2897,7 +2888,7 @@ class LocalServicePage(Page):
 
         if luajit_injector.needs_regeneration(self._install_dir):
             self._restarting_keys.update(keys)
-            self._regenerate_luajit_then_start(cluster, targets, conf_dir_arg, on_success=stop_then_start, on_failure=clear_pending)
+            self._regenerate_luajit_then_start(cluster, targets, storage_args, on_success=stop_then_start, on_failure=clear_pending)
             return
         self._restarting_keys.update(keys)
         stop_then_start()
@@ -2976,18 +2967,13 @@ class LocalServicePage(Page):
                 _show_not_found_warning(self.window(), self._wanted_runtime_kind())
                 self._release_token_reservation_if_stopped(c.path)
                 return
-        try:
-            conf_dir_arg = resolve_conf_dir_arg(self.ctx.env.klei_root)
-        except ConfDirCrossDriveError:
-            self._release_token_reservation_if_stopped(c.path)
-            dialogs.show_error(self.window(), t("local.install_title"), t("local.confdir_cross_drive_error"))
-            return
+        storage_args = resolve_storage_args(self.ctx.env.klei_root)
         if luajit_injector.needs_regeneration(self._install_dir):
             self._launching_keys.update((str(c.path), s.name) for s in targets)
-            self._regenerate_luajit_then_start(c, targets, conf_dir_arg)
+            self._regenerate_luajit_then_start(c, targets, storage_args)
         else:
             for s in targets:
-                self._continue_start_shard(c, s, conf_dir_arg)
+                self._continue_start_shard(c, s, storage_args)
         self._select_master_console_tab(c)
 
     def _select_master_console_tab(self, cluster) -> None:

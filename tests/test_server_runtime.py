@@ -151,5 +151,16 @@ def test_runtime_single_source() -> None:
     assert not offenders, "绕过 server_runtime 直接探测开服目录：\n" + "\n".join(offenders)
 
 
+def test_storage_args() -> None:
+    # 默认位置不传参数；其他位置（含跨盘）按官方写法拆成上级目录绝对路径 + 不含斜杠的文件夹名
+    with tempfile.TemporaryDirectory() as tmp:
+        documents = Path(tmp) / "Documents"
+        with patch.object(dedicated_server, "get_documents_dir", return_value=documents):
+            assert dedicated_server.resolve_storage_args(documents / "Klei" / "DoNotStarveTogether") == []
+            custom = Path(tmp) / "Servers" / "DST Saves"
+            assert dedicated_server.resolve_storage_args(custom) == [
+                "-persistent_storage_root", str(custom.parent), "-conf_dir", "DST Saves"]
+
+
 if __name__ == "__main__":
     run(globals())

@@ -1,4 +1,4 @@
-"""专用服务器安装目录发现、conf_dir 计算与进程管理（不依赖界面）。
+"""专用服务器安装目录发现、存档根目录启动参数计算与进程管理（不依赖界面）。
 
 子进程 stdout/stdin 走管道，不弹控制台窗口，输出由界面层展示。
 """
@@ -36,7 +36,7 @@ _BIN_DIRS = {64: "bin64", 32: "bin"}
 
 
 # ── "文档"特殊文件夹 ──────────────────────────────────────────────
-# -conf_dir 的隐式基准是 Windows "文档"特殊文件夹下的 Klei\，"文档"可能被重定向到其他盘，必须读真实值
+# 专服默认的 persistent_storage_root 是 Windows "文档"特殊文件夹下的 Klei\，"文档"可能被重定向到其他盘，必须读真实值
 
 def get_documents_dir() -> Path:
     """返回真实的"文档"特殊文件夹路径，取不到（非 Windows/注册表读取失败）时退回 ~/Documents。"""
@@ -196,30 +196,25 @@ def find_steamcmd_server_dir() -> Path | None:
     return None
 
 
-# ── -conf_dir 计算 ────────────────────────────────────────────────
+# ── 存档根目录参数 ────────────────────────────────────────────────
 
-class ConfDirCrossDriveError(Exception):
-    """klei_root 和 <文档目录>/Klei 不在同一个盘符，-conf_dir 只能表达同盘符的
-    相对路径（游戏引擎本身的限制，与 Windows 相对路径无法跨盘符一致）。"""
+def resolve_storage_args(klei_root: Path) -> list[str]:
+    """存档根目录对应的启动参数。默认位置（<文档目录>/Klei/DoNotStarveTogether）不传；
+    否则按官方写法拆成 -persistent_storage_root <上级目录绝对路径> -conf_dir <文件夹名>。
 
-
-def resolve_conf_dir_arg(klei_root: Path) -> str | None:
-    """默认情况（klei_root 就是 <文档目录>/Klei/DoNotStarveTogether）返回 None，
-    不需要传 -conf_dir；否则返回相对于 <文档目录>/Klei 的相对路径。"""
-    base = get_documents_dir() / "Klei"
-    default_root = base / "DoNotStarveTogether"
+    坑：官方说明 -conf_dir 只能是文件夹名、不能含斜杠，-persistent_storage_root 要绝对路径，
+    最终目录为 <persistent_storage_root>/<conf_dir>；不能把相对路径整个塞进 -conf_dir（也无法跨盘）。"""
+    default_root = get_documents_dir() / "Klei" / "DoNotStarveTogether"
     try:
         if klei_root.resolve() == default_root.resolve():
-            return None
+            return []
     except OSError:
         pass
-    try:
-        return os.path.relpath(klei_root, base)
-    except ValueError as e:
-        raise ConfDirCrossDriveError(str(klei_root)) from e
+    root = klei_root.absolute()
+    return ["-persistent_storage_root", str(root.parent), "-conf_dir", root.name]
 
 
-def build_launch_args(cluster_name: str, shard_name: str, conf_dir_arg: str | None,
+def build_launch_args(cluster_name: str, shard_name: str, storage_args: list[str],
                        ugc_directory: str | None = None,
                        extra_args: str = "") -> list[str]:
     """ugc_directory 用 Steam 的 steamapps/workshop（见 parser.find_shared_ugc_directory），
@@ -227,8 +222,8 @@ def build_launch_args(cluster_name: str, shard_name: str, conf_dir_arg: str | No
     args = ["-console", "-cluster", cluster_name, "-shard", shard_name]
     if ugc_directory:
         args = args + ["-ugc_directory", ugc_directory]
-    if conf_dir_arg:
-        args = ["-conf_dir", conf_dir_arg] + args
+    if storage_args:
+        args = list(storage_args) + args
     if extra_args.strip():
         try:
             parsed = shlex.split(extra_args, posix=False)
@@ -318,14 +313,14 @@ class ServerProcess:
     发送控制台命令、优雅/强制关闭。"""
 
     def __init__(self, cluster_name: str, shard_name: str, cluster_path: Path,
-                 install_dir: Path, conf_dir_arg: str | None, is_master: bool = True,
+                 install_dir: Path, storage_args: list[str], is_master: bool = True,
                  ugc_directory: str | None = None, bin64_override: Path | None = None,
                  extra_args: str = ""):
         self.cluster_name = cluster_name
         self.shard_name = shard_name
         self.cluster_path = cluster_path
         self.install_dir = install_dir
-        self.conf_dir_arg = conf_dir_arg
+        self.storage_args = storage_args
         self.is_master = is_master
         self.ugc_directory = ugc_directory
         self.extra_args = extra_args
@@ -377,7 +372,7 @@ class ServerProcess:
             else self.install_dir / _BIN_DIRS[bitness]
         exe = bin64_dir / _EXE_NAMES[bitness]
         args = build_launch_args(
-            self.cluster_name, self.shard_name, self.conf_dir_arg,
+            self.cluster_name, self.shard_name, self.storage_args,
             self.ugc_directory, self.extra_args
         )
         # 专服没有窗口，拿不到前台时间片加成；提到"高于正常"，避免和同机
@@ -544,7 +539,7 @@ class ServerManager:
         return (str(cluster_path), shard_name)
 
     def start(self, cluster_name: str, cluster_path: Path, shard_name: str,
-              install_dir: Path, conf_dir_arg: str | None, is_master: bool = True,
+              install_dir: Path, storage_args: list[str], is_master: bool = True,
               ugc_directory: str | None = None, bin64_override: Path | None = None,
               extra_args: str = "") -> ServerProcess:
         existing = self.get(cluster_path, shard_name)
@@ -553,7 +548,7 @@ class ServerManager:
             # UI 已经会禁用重复启动，但“全部启动”/未来其它调用方不能只靠
             # 按钮状态兜底，否则旧进程引用会被覆盖并变成停不掉的孤儿。
             return existing
-        proc = ServerProcess(cluster_name, shard_name, cluster_path, install_dir, conf_dir_arg,
+        proc = ServerProcess(cluster_name, shard_name, cluster_path, install_dir, storage_args,
                              is_master, ugc_directory, bin64_override, extra_args)
         proc.start()
         self._procs[self._key(cluster_path, shard_name)] = proc

@@ -24,7 +24,7 @@ from dstools.features.local_service.auto_restart import (
     CRASH_RESTART_DELAY, MAX_CRASH_RESTARTS, TOKEN_BUSY_RECHECK, TOKEN_WAIT_LIMIT, CrashBudget, append_log,
     is_restartable,
 )
-from dstools.features.local_service.dedicated_server import ConfDirCrossDriveError, resolve_conf_dir_arg
+from dstools.features.local_service.dedicated_server import resolve_storage_args
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE, ordered_shards
 from dstools.i18n import t
 from dstools.shared.app_settings import (
@@ -191,11 +191,7 @@ class AutoRestartController(QObject):
         if page._steamcmd_update_running():
             self._give_up(cluster, state, t("local.auto_restart_reason_steamcmd_update"))
             return
-        try:
-            conf_dir_arg = resolve_conf_dir_arg(page.ctx.env.klei_root)
-        except ConfDirCrossDriveError:
-            self._give_up(cluster, state, t("local.confdir_cross_drive_error"))
-            return
+        storage_args = resolve_storage_args(page.ctx.env.klei_root)
         if luajit_injector.needs_regeneration(page._install_dir):
             self._give_up(cluster, state, t("local.auto_restart_reason_luajit"))
             return
@@ -215,7 +211,7 @@ class AutoRestartController(QObject):
             self._log(cluster, f"第 {state.attempts} 次拉起 {'、'.join(s.name for s in targets)}，"
                                f"令牌 {token_fingerprint(token)[:8] if token else '-'}，距崩溃 {self._elapsed(state)}")
             for shard in targets:
-                page._continue_start_shard(cluster, shard, conf_dir_arg)
+                page._continue_start_shard(cluster, shard, storage_args)
             page._select_master_console_tab(cluster)
 
         page.ctx.ensure_lobby_accel(cluster, after_accel)

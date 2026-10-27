@@ -410,7 +410,7 @@ def test_auto_restart_controller_flow() -> None:
                 patch.object(controller_module, "load_cluster_config",
                              return_value=SimpleNamespace(network={})), \
                 patch.object(controller_module.luajit_injector, "needs_regeneration", return_value=False), \
-                patch.object(controller_module, "resolve_conf_dir_arg", return_value=None):
+                patch.object(controller_module, "resolve_storage_args", return_value=[]):
             controller = controller_module.AutoRestartController.__new__(controller_module.AutoRestartController)
             controller_module.QObject.__init__(controller)
             controller._page, controller._states = page, {}
