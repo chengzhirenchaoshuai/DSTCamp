@@ -415,8 +415,8 @@ class _ScenarioCard(QFrame):
         self.setObjectName("scenarioCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(14, 8, 14, 9)
+        layout.setSpacing(4)
 
         head = QHBoxLayout()
         head.setSpacing(8)
@@ -443,7 +443,7 @@ class _ScenarioCard(QFrame):
                   + style.pixelMetric(QStyle.PixelMetric.PM_RadioButtonLabelSpacing))
         details = QVBoxLayout()
         details.setContentsMargins(indent, 0, 0, 0)
-        details.setSpacing(3)
+        details.setSpacing(1)
         for point in points.split("\n"):
             row = QHBoxLayout()
             row.setSpacing(6)
@@ -462,7 +462,6 @@ class _ScenarioCard(QFrame):
         hint_label.setWordWrap(True)
         hint_label.setFont(theme.font("FONT_SIZE_SM"))
         hint_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')}; background: transparent;")
-        details.addSpacing(2)
         details.addWidget(hint_label)
         layout.addLayout(details)
 
@@ -493,7 +492,6 @@ class _UsageScenarioDialog(dialogs.Dialog):
         self._first_run = first_run
         self.body.addWidget(self.heading_label(t("local.scenario_heading")))
         self.body.addWidget(self.text_label(t("local.scenario_intro"), muted=True))
-        self.body.addSpacing(4)
 
         group = QButtonGroup(self)
         self._cards: dict[UsageScenario, _ScenarioCard] = {}
@@ -507,7 +505,6 @@ class _UsageScenarioDialog(dialogs.Dialog):
             self._cards[scenario] = card
             self.body.addWidget(card)
         self._restyle_cards()
-        self.body.addSpacing(2)
         self.body.addWidget(self.text_label(t("local.scenario_note"), muted=True))
         if first_run:
             confirm = QPushButton(self._confirm_text)
