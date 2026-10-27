@@ -1,6 +1,6 @@
 """开服程序（运行时）的唯一来源，由"开服程序"选项（server_runtime_mode）决定：
 
-- 自动：装了独立专服就用它，否则用游戏客户端自带的开服程序；
+- 自动：优先用游戏客户端自带的开服程序（与游戏同步更新、不用另装），没有游戏本体才用独立专服；
 - 游戏客户端 / 独立专服：固定使用指定的一种，找不到如实报告，绝不偷偷换另一种。
 
 开服目录、mods、更新用 App ID、LuaJIT 副本位置、Steam API DLL 都从 resolve_runtime() 派生，
@@ -150,8 +150,8 @@ def resolve_runtime(mode: RuntimeMode | None = None) -> RuntimeResolution:
     migrate_runtime_settings()  # SteamCMD 通道不读开服程序选项，迁移不能只放在 get_runtime_mode 里
     mode = effective_runtime_mode() if mode is None else RuntimeMode(mode)
     if mode is RuntimeMode.AUTO:
-        runtime = (find_runtime_of_kind(RuntimeKind.DEDICATED)
-                   or find_runtime_of_kind(RuntimeKind.CLIENT))
+        runtime = (find_runtime_of_kind(RuntimeKind.CLIENT)
+                   or find_runtime_of_kind(RuntimeKind.DEDICATED))
     else:
         resolution = RuntimeResolution(mode, None)
         runtime = find_runtime_of_kind(resolution.wanted_kind)

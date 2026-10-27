@@ -42,11 +42,11 @@ def test_mode_resolution_and_migration() -> None:
             assert auto.runtime.app_id == "322330" and auto.runtime.mods_dir == client / "mods"
             assert resolve_runtime(RuntimeMode.DEDICATED).runtime is None
 
-            # 两者都在：自动优先独立专服；指定客户端时用客户端。
+            # 两者都在：自动优先游戏专服；指定独立专服时用独立专服。
             dedicated = _make_install(common, "Don't Starve Together Dedicated Server", client=False)
-            assert resolve_runtime(RuntimeMode.AUTO).runtime.install_dir == dedicated
-            assert resolve_runtime(RuntimeMode.AUTO).runtime.app_id == "343050"
-            assert resolve_runtime(RuntimeMode.CLIENT).runtime.install_dir == client
+            assert resolve_runtime(RuntimeMode.AUTO).runtime.install_dir == client
+            assert resolve_runtime(RuntimeMode.DEDICATED).runtime.install_dir == dedicated
+            assert resolve_runtime(RuntimeMode.DEDICATED).runtime.app_id == "343050"
 
             # 旧版本把客户端目录存在专服路径里：迁移成客户端路径 + 客户端模式。
             app_settings.set_dedicated_server_path(client)
@@ -87,6 +87,35 @@ def test_mode_resolution_and_migration() -> None:
             assert resolve_runtime().runtime.install_dir == client
             set_runtime_mode(RuntimeMode.DEDICATED)
             assert resolve_runtime().runtime.install_dir == dedicated
+
+
+def test_usage_scenario_migration() -> None:
+    from dstools.features.local_service import steam_client_updater
+    from dstools.features.local_service.usage_scenario import migrate_usage_scenario, scenario_chosen
+
+    with tempfile.TemporaryDirectory() as tmp:
+        library = Path(tmp)
+        common = library / "steamapps" / "common"
+        _make_install(common, "Don't Starve Together", client=True)
+        dedicated = _make_install(common, "Don't Starve Together Dedicated Server", client=False)
+        libraries = [library]
+        with patch.object(server_runtime, "find_all_steam_libraries", return_value=libraries), \
+                patch.object(dedicated_server, "find_all_steam_libraries", return_value=libraries), \
+                patch.object(steam_client_updater, "find_steam_executable", return_value=library / "steam.exe"):
+            # 新用户（设置为空）：什么都不改，留给启动弹窗选场景；自动模式直接用游戏专服
+            app_settings.save_settings({})
+            migrate_usage_scenario()
+            assert not scenario_chosen() and app_settings.get_server_runtime_mode() is None
+
+            # 老用户原来自动选中独立专服：固定为独立专服；有 Steam 直接定为自己电脑，不再弹窗；只迁移一次
+            app_settings.save_settings({"theme_name": "gray"})
+            migrate_usage_scenario()
+            assert app_settings.get_server_runtime_mode() == RuntimeMode.DEDICATED.value
+            assert resolve_runtime().runtime.install_dir == dedicated
+            assert app_settings.get_steam_backend() == "client"
+            set_runtime_mode(RuntimeMode.AUTO)
+            migrate_usage_scenario()
+            assert app_settings.get_server_runtime_mode() == RuntimeMode.AUTO.value
 
 
 # 业务代码只能经 server_runtime 取开服程序目录。白名单：探测函数自身（dedicated_server/server_runtime）、

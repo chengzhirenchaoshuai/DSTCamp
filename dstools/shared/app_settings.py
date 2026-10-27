@@ -14,6 +14,7 @@ _KEY_STEAM_MODS_PATH = "steam_mods_path"
 _KEY_STEAMCMD_PATH = "steamcmd_path"
 _KEY_STEAM_BACKEND = "steam_backend"
 _KEY_STEAMCMD_ACCOUNT = "steamcmd_account"
+_KEY_USAGE_SCENARIO_MIGRATED = "usage_scenario_migrated"
 _KEY_THEME_NAME = "theme_name"
 _DEFAULT_THEME_NAME = "gray"
 _KEY_FONT_STYLE_CHOICE = "font_style_choice"
@@ -226,6 +227,17 @@ def get_steam_backend() -> str | None:
 def set_steam_backend(value: str) -> None:
     data = load_settings()
     data[_KEY_STEAM_BACKEND] = value
+    save_settings(data)
+
+
+def get_usage_scenario_migrated() -> bool:
+    """开服场景迁移（见 features/local_service/usage_scenario.py）是否已做过。"""
+    return bool(load_settings().get(_KEY_USAGE_SCENARIO_MIGRATED))
+
+
+def set_usage_scenario_migrated() -> None:
+    data = load_settings()
+    data[_KEY_USAGE_SCENARIO_MIGRATED] = True
     save_settings(data)
 
 

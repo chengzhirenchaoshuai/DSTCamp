@@ -1326,13 +1326,13 @@ STRINGS = {
         "local.steam_update_running_hint": "有世界正在运行，开服程序文件被占用，Steam 校验/更新可能失败；请先停止所有世界",
         "local.runtime_mode_current_label": "当前开服程序：",
         "local.runtime_mode_current_tag": "（当前）",
-        "local.runtime_mode_desc_auto": "装了独立专服就用它，否则用游戏专服。",
-        "local.runtime_mode_desc_client": "只用《饥荒联机版》游戏本体自带的开服程序，不需要另装工具。",
-        "local.runtime_mode_desc_dedicated": "只用 Steam 工具「Don't Starve Together Dedicated Server」。",
+        "local.runtime_mode_desc_auto": "优先用游戏专服，没装游戏本体时用独立专服。",
+        "local.runtime_mode_desc_client": "（推荐）只用《饥荒联机版》游戏本体自带的开服程序，随游戏一起更新，不需要另装工具。",
+        "local.runtime_mode_desc_dedicated": "只用 Steam 工具「Don't Starve Together Dedicated Server」，要另占约 4.5 GB、单独更新，一般用不到。",
         "local.runtime_mode_note": "一般装了《饥荒联机版》就够了，选「自动」或「游戏专服」都行，不用另外装工具。两种程序开的是同一份存档，切换不影响存档。\n"
                                    "· 游戏专服：游戏本体自带，随游戏一起更新。\n"
                                    "· 独立专服：Steam「库 → 工具」里的免费工具，要另外安装、单独更新，一般用不到。\n"
-                                   "「自动」会优先用已经装好的独立专服；指定某一种后就只用那一种，没装时会提示安装，不会自动换成另一种。",
+                                   "「自动」优先用游戏专服，没装游戏本体时才用独立专服；指定某一种后就只用那一种，没装时会提示安装，不会自动换成另一种。",
         "local.runtime_wegame_hint": "WeGame 存档由 WeGame 客户端开服，不使用这里的开服程序设置",
         "local.luajit_busy_hint": "正在安装/更新/卸载 LuaJIT，请等待完成",
         "local.luajit_uninstall_not_installed_hint": "尚未安装 LuaJIT，无需卸载",
@@ -1348,7 +1348,7 @@ STRINGS = {
         "local.runtime_installed": "已安装",
         "local.install_client_body": "当前开服程序为「游戏专服」（《饥荒联机版》游戏本体自带），但没有检测到通过 Steam 安装的《饥荒联机版》。\n\n请在 Steam 中安装游戏，或用「更换路径」选择游戏安装目录（含 bin64 的那一层）；也可以点击「切换程序」改用独立专服。",
         "local.install_dedicated_body_steamcmd": "当前 Steam 通道为 SteamCMD，还没有检测到独立专服。\n\n点击「程序位置」一行的「通过 SteamCMD 安装」，选择一个文件夹即可下载安装（约 4.5 GB），不需要 Steam 客户端。\n\n已经用 SteamCMD 装过的，也可以用「更换路径」直接选择它的安装目录。",
-        "local.install_dedicated_body": "当前开服程序为「独立专服」，需要 Steam 上的免费工具「Don't Starve Together Dedicated Server」（App ID 343050），但没有检测到已安装。\n\n手动安装步骤：\n1. 打开 Steam 客户端\n2. 顶部菜单栏「库」\n3. 左侧库列表切换到「工具」分类（或者直接搜索工具名称）\n4. 找到「Don't Starve Together Dedicated Server」\n5. 右键点击（或双击后按提示）→ 安装\n\n安装完成后，回到本工具点击「重新检测」按钮，或者用「更换路径」手动选择安装目录。\n\n也可以点击「切换程序」改用游戏专服（游戏本体自带的开服程序）。",
+        "local.install_dedicated_body": "在自己电脑上开服一般不需要独立专服：点击「切换程序」改用游戏专服（游戏本体自带）即可，省下约 4.5 GB 磁盘空间。\n\n当前开服程序为「独立专服」，需要 Steam 上的免费工具「Don't Starve Together Dedicated Server」（App ID 343050），但没有检测到已安装。\n\n手动安装步骤：\n1. 打开 Steam 客户端\n2. 顶部菜单栏「库」\n3. 左侧库列表切换到「工具」分类（或者直接搜索工具名称）\n4. 找到「Don't Starve Together Dedicated Server」\n5. 右键点击（或双击后按提示）→ 安装\n\n安装完成后，回到本工具点击「重新检测」按钮，或者用「更换路径」手动选择安装目录。\n\n也可以点击「切换程序」改用游戏专服（游戏本体自带的开服程序）。",
         "local.install_invalid_client_dir": "所选目录不是《饥荒联机版》游戏安装目录。当前开服程序为「游戏专服」，请选择游戏安装目录，或先点击「切换程序」。",
         "local.install_invalid_dedicated_dir": "所选目录不是独立专服安装目录（Steam 或 SteamCMD 安装，bin64 下有 dontstarve_dedicated_server_nullrenderer_x64.exe）。当前开服程序为「独立专服」，请选择专服安装目录，或先点击「切换程序」。",
         "local.install_not_found": "未检测到",
@@ -3088,13 +3088,13 @@ STRINGS = {
         "local.steam_update_running_hint": "Shards are running and the server program files are in use, so a Steam verify/update may fail -- stop all shards first",
         "local.runtime_mode_current_label": "Current server program: ",
         "local.runtime_mode_current_tag": "(current)",
-        "local.runtime_mode_desc_auto": "Use the Dedicated Server tool if installed, otherwise the Bundled Server.",
-        "local.runtime_mode_desc_client": "Only use the server program bundled with Don't Starve Together itself -- no extra tool needed.",
-        "local.runtime_mode_desc_dedicated": "Only use the Steam tool “Don't Starve Together Dedicated Server”.",
+        "local.runtime_mode_desc_auto": "Prefer the Bundled Server; use the Dedicated Server only when the game isn't installed.",
+        "local.runtime_mode_desc_client": "(Recommended) Only use the server program bundled with Don't Starve Together itself -- updates with the game, no extra tool needed.",
+        "local.runtime_mode_desc_dedicated": "Only use the Steam tool “Don't Starve Together Dedicated Server” -- takes about 4.5 GB more and updates separately; most players don't need it.",
         "local.runtime_mode_note": "Having Don't Starve Together installed is usually enough: pick “Auto” or “Bundled Server”, no extra tool needed. Both programs host the same saves, so switching doesn't affect your worlds.\n"
                                    "· Bundled Server: comes with the game and updates with it.\n"
                                    "· Dedicated Server: a free tool under Steam “Library → Tools”, installed and updated separately; most players don't need it.\n"
-                                   "Auto prefers the Dedicated Server if it's installed. If you pick a specific one, only that one is used; if it's missing you'll be prompted to install it instead of silently switching to the other one.",
+                                   "Auto prefers the Bundled Server and only uses the Dedicated Server when the game isn't installed. If you pick a specific one, only that one is used; if it's missing you'll be prompted to install it instead of silently switching to the other one.",
         "local.runtime_wegame_hint": "WeGame saves are hosted by the WeGame client and don't use these server program settings",
         "local.luajit_busy_hint": "Installing/updating/uninstalling LuaJIT -- please wait for it to finish",
         "local.luajit_uninstall_not_installed_hint": "LuaJIT isn't installed -- nothing to uninstall",
@@ -3110,7 +3110,7 @@ STRINGS = {
         "local.runtime_installed": "installed",
         "local.install_client_body": "The server program is set to “Bundled Server” (shipped with Don't Starve Together itself), but no Steam install of Don't Starve Together was found.\n\nInstall the game in Steam, or use “Change Path” to pick the game install folder (the one containing bin64). You can also click “Switch Program” to use the Dedicated Server tool instead.",
         "local.install_dedicated_body_steamcmd": "The Steam channel is SteamCMD and no Dedicated Server was found yet.\n\nClick “Install via SteamCMD” on the server location row and pick a folder to download it (about 4.5 GB) -- no Steam client needed.\n\nIf you already installed one with SteamCMD, pick its folder with “Change Path”.",
-        "local.install_dedicated_body": "The server program is set to “Dedicated Server”, which needs the free Steam tool “Don't Starve Together Dedicated Server” (App ID 343050), but it wasn't detected.\n\nManual install steps:\n1. Open the Steam client\n2. Top menu bar → “Library”\n3. Switch the library filter to the “Tools” category (or just search for the tool name)\n4. Find “Don't Starve Together Dedicated Server”\n5. Right-click (or double-click and follow the prompt) → Install\n\nOnce installed, come back and click “Re-detect”, or use “Change Path” to pick the install folder manually.\n\nYou can also click “Switch Program” to use the Bundled Server (shipped with the game itself) instead.",
+        "local.install_dedicated_body": "Hosting on your own PC usually doesn't need the Dedicated Server: click “Switch Program” to use the Bundled Server (shipped with the game) and save about 4.5 GB of disk space.\n\nThe server program is set to “Dedicated Server”, which needs the free Steam tool “Don't Starve Together Dedicated Server” (App ID 343050), but it wasn't detected.\n\nManual install steps:\n1. Open the Steam client\n2. Top menu bar → “Library”\n3. Switch the library filter to the “Tools” category (or just search for the tool name)\n4. Find “Don't Starve Together Dedicated Server”\n5. Right-click (or double-click and follow the prompt) → Install\n\nOnce installed, come back and click “Re-detect”, or use “Change Path” to pick the install folder manually.\n\nYou can also click “Switch Program” to use the Bundled Server (shipped with the game itself) instead.",
         "local.install_invalid_client_dir": "That folder isn't a Don't Starve Together game install. The server program is set to “Bundled Server” -- pick the game install folder, or click “Switch Program” first.",
         "local.install_invalid_dedicated_dir": "That folder isn't a Dedicated Server install (installed by Steam or SteamCMD, with dontstarve_dedicated_server_nullrenderer_x64.exe under bin64). The server program is set to “Dedicated Server” -- pick the Dedicated Server folder, or click “Switch Program” first.",
         "local.install_not_found": "Not found",

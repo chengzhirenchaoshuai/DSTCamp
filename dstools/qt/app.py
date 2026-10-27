@@ -62,6 +62,9 @@ def main() -> int:
     cleanup_stale_update_artifacts()
     cleanup_vestigial_external_tools()
     cleanup_stale_worker_dirs()
+    # 开服场景的老用户迁移要在建窗口（会写设置）之前做，靠设置文件是否为空区分新老用户
+    from dstools.features.local_service.usage_scenario import migrate_usage_scenario
+    migrate_usage_scenario()
     # Qt 枚举系统字体时，Fixedsys/Terminal 等老式位图字体 DirectWrite 不支持，会刷一串
     # "CreateFontFaceFromHDC() failed" 警告（从终端启动时可见）。不影响任何显示，屏蔽这一类。
     QLoggingCategory.setFilterRules("qt.qpa.fonts.warning=false")
