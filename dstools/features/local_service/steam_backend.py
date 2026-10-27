@@ -29,13 +29,6 @@ def set_backend(backend: SteamBackend) -> None:
     app_settings.set_steam_backend(SteamBackend(backend).value)
 
 
-def should_suggest_steamcmd() -> bool:
-    """从没选过 Steam 通道、本机也找不到 Steam.exe（典型的云服务器）时推荐改用 SteamCMD。
-    只做推荐，不自动切换：通道决定显示哪些存档、Mod 读哪个目录，悄悄变化会让存档和 Mod 像是丢了。"""
-    from dstools.features.local_service.steam_client_updater import find_steam_executable
-    return app_settings.get_steam_backend() is None and find_steam_executable() is None
-
-
 def steamcmd_unavailable_reason() -> str:
     """找不到可用 steamcmd.exe 时的原因文案键：分清自选的、内置的，非 ASCII 路径单独说明。"""
     custom = steamcmd_updater.custom_steamcmd_path()

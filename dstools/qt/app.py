@@ -78,8 +78,8 @@ def main() -> int:
         QTimer.singleShot(0, lambda: dialogs.show_error(
             window, t("update.title"), t("update.apply_failed", error=update_failure)))
     window.start_update_check()
-    # 延迟到主窗口渲染稳定后再弹缓存目录警告，避免弹窗抢在窗口还没显示完整前出现
-    QTimer.singleShot(500, window.check_cache_dir_on_startup)
+    # 延迟到主窗口渲染稳定后再弹开服场景选择、缓存目录警告，避免弹窗抢在窗口还没显示完整前出现
+    QTimer.singleShot(500, window.run_startup_checks)
     # Mod 配置记忆与游戏客户端同步：启动时静默跑一次（结果写 sync.log），打开 Mod 页时再跑并提示
     from dstools.qt.mod_config_sync import start_sync, sync_if_account_changed
     QTimer.singleShot(2000, lambda: start_sync(window.ctx))

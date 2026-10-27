@@ -229,6 +229,8 @@ class MenuStrip(QWidget):
         self._bg_settings_action.setText(t("theme.custom_bg_settings"))
         self._font_settings_action.setText(t("theme.font_settings"))
         self._minimize_action.setText(t("settings.minimize_on_close_label"))
+        self._scenario_action.setText(t("settings.scenario_label"))
+        self._advanced_menu.setTitle(t("settings.advanced_menu"))
         self._steam_backend_action.setText(t("settings.steam_backend_label"))
         self._defender_action.setText(t("settings.defender_label"))
         self._cache_dir_action.setText(t("settings.cache_dir_menu"))
@@ -315,9 +317,17 @@ class MenuStrip(QWidget):
         menu.addMenu(lang_menu)
         self._lang_menu = lang_menu
         menu.addSeparator()
+        scenario = QAction(t("settings.scenario_label"), self)
+        scenario.triggered.connect(self._window.show_scenario_dialog)
+        menu.addAction(scenario)
+        self._scenario_action = scenario
+        # 场景已经决定了 Steam 通道，单独指定通道的少数情况收进"高级"
+        advanced_menu = FrostedMenu(t("settings.advanced_menu"), self)
         steam_backend = QAction(t("settings.steam_backend_label"), self)
         steam_backend.triggered.connect(self._window.show_steam_backend_dialog)
-        menu.addAction(steam_backend)
+        advanced_menu.addAction(steam_backend)
+        menu.addMenu(advanced_menu)
+        self._advanced_menu = advanced_menu
         self._steam_backend_action = steam_backend
         defender = QAction(t("settings.defender_label"), self)
         defender.triggered.connect(self._window.show_defender_dialog)
@@ -907,6 +917,21 @@ class MainWindow(QWidget):
     def show_steam_backend_dialog(self) -> None:
         # 通道切换牵涉开服程序和运行状态，交给本地服务页处理（页面构造时已检测好开服程序）
         self.pages["local"].choose_backend()
+
+    def show_scenario_dialog(self) -> None:
+        self.pages["local"].choose_scenario()
+
+    def run_startup_checks(self) -> None:
+        """主窗口显示后依次做的启动检查，一个弹窗关掉再出下一个，不叠在一起。"""
+        self.check_usage_scenario_on_startup()
+        self.check_cache_dir_on_startup()
+
+    def check_usage_scenario_on_startup(self) -> None:
+        """还没选过开服场景时弹窗选一次。WeGame 用户不用 Steam 通道，不弹，切到 Steam 后下次启动再问。"""
+        from dstools.features.local_service.usage_scenario import scenario_chosen
+
+        if self.ctx.platform == Platform.STEAM and not scenario_chosen():
+            self.pages["local"].choose_scenario(first_run=True)
 
     def show_cache_dir_dialog(self) -> None:
         from dstools.qt.settings_dialogs import CacheDirDialog

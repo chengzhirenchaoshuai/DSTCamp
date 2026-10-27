@@ -44,7 +44,10 @@ from dstools.features.local_service.server_runtime import (
 )
 from dstools.features.local_service.log_bundle import create_log_bundle
 from dstools.features.local_service.steam_backend import (
-    SteamBackend, get_backend, set_backend, should_suggest_steamcmd, update_blocker,
+    SteamBackend, get_backend, set_backend, update_blocker,
+)
+from dstools.features.local_service.usage_scenario import (
+    UsageScenario, backend_for, current_scenario, suggested_scenario,
 )
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE, STATUS_TEXT_KEYS, ordered_shards, max_rollback_days
 from dstools.features.local_service.auto_restart import TOKEN_HOLD_DURATION, TOKEN_WAIT_LIMIT
@@ -401,6 +404,77 @@ class _RuntimeModeDialog(dialogs.Dialog):
     def accept_if_valid(self) -> None:
         self.result_mode = next(mode for mode, (radio, _cells) in self._rows.items() if radio.isChecked())
         self.accept()
+
+
+class _UsageScenarioDialog(dialogs.Dialog):
+    """"开服场景"窗口：自己电脑 / 云服务器二选一，表格样式与"切换程序"一致。
+    首次启动时没有"取消"，关掉窗口（含按 Esc）也按当前选中的场景处理。"""
+
+    _SCENARIOS = ((UsageScenario.LOCAL, "local.scenario_local", "local.scenario_local_desc"),
+                  (UsageScenario.CLOUD, "local.scenario_cloud", "local.scenario_cloud_desc"))
+
+    def __init__(self, parent, current: UsageScenario, first_run: bool):
+        super().__init__(parent, t("local.scenario_title"), "lg",
+                         confirm_text=t("dlg.confirm_btn") if first_run else t("local.runtime_mode_save_btn"))
+        self.result_scenario = current
+        self._first_run = first_run
+        self.body.addWidget(self.text_label(t("local.scenario_intro"), size_key="FONT_SIZE_BASE"))
+
+        table = QFrame()
+        table.setObjectName("modeTable")
+        table.setStyleSheet(f"QFrame#modeTable {{ border: 1px solid {theme.hex('CARD_BORDER')}; }}")
+        grid = QGridLayout(table)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(0)
+        grid.setColumnStretch(1, 1)
+        group = QButtonGroup(self)
+        self._rows: dict[UsageScenario, tuple[QRadioButton, list[_ModeTableCell]]] = {}
+        for index, (scenario, name_key, desc_key) in enumerate(self._SCENARIOS):
+            last = index == len(self._SCENARIOS) - 1
+            radio = QRadioButton(t(name_key))
+            radio.setFont(theme.font("FONT_SIZE_BASE", bold=True))
+            group.addButton(radio)
+            name_cell = _ModeTableCell(right=True, bottom=not last, on_click=radio.click)
+            name_cell.row.addWidget(radio)
+            if scenario is current and not first_run:
+                tag = QLabel(t("local.runtime_mode_current_tag"))
+                tag.setFont(theme.font("FONT_SIZE_BASE"))
+                tag.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
+                name_cell.row.addWidget(tag)
+            name_cell.row.addStretch()
+            desc_cell = _ModeTableCell(right=False, bottom=not last, on_click=radio.click)
+            desc = QLabel(t(desc_key))
+            desc.setWordWrap(True)
+            desc.setFont(theme.font("FONT_SIZE_BASE"))
+            desc_cell.row.addWidget(desc, 1)
+            grid.addWidget(name_cell, index, 0)
+            grid.addWidget(desc_cell, index, 1)
+            self._rows[scenario] = (radio, [name_cell, desc_cell])
+            radio.toggled.connect(self._restyle_rows)
+            radio.setChecked(scenario is current)
+        self._restyle_rows()
+        self.body.addSpacing(4)
+        self.body.addWidget(table)
+        self.body.addWidget(self.text_label(t("local.scenario_note"), muted=True))
+        if first_run:
+            confirm = QPushButton(self._confirm_text)
+            confirm.clicked.connect(self.accept_if_valid)
+            confirm.setDefault(True)
+            self.add_footer([], [confirm])
+        else:
+            self.add_buttons()
+
+    _restyle_rows = _RuntimeModeDialog._restyle_rows
+
+    def accept_if_valid(self) -> None:
+        self.result_scenario = next(s for s, (radio, _cells) in self._rows.items() if radio.isChecked())
+        self.accept()
+
+    def reject(self) -> None:
+        if self._first_run:
+            self.accept_if_valid()
+        else:
+            super().reject()
 
 
 class _SteamcmdLoginDialog(dialogs.Dialog):
@@ -881,11 +955,6 @@ class LocalServicePage(Page):
 
         self._local_banner = Banner()
         self._other_running_banner = Banner()
-        # 没有 Steam 客户端时推荐 SteamCMD，点击打开通道窗口，在那里保存才切换
-        self._steamcmd_suggest_banner = Banner()
-        self._steamcmd_suggest_banner.set_clickable(True)
-        self._steamcmd_suggest_banner.clicked.connect(self.choose_backend)
-        root.addWidget(self._steamcmd_suggest_banner)
         root.addWidget(self._local_banner)
         root.addWidget(self._other_running_banner)
 
@@ -1109,7 +1178,6 @@ class LocalServicePage(Page):
         c = cluster if cluster is not None else self.get_cluster()
         is_server = bool(c and c.source == SaveSource.SERVER)
         is_wegame = bool(c and c.platform == Platform.WEGAME)
-        self._refresh_steamcmd_suggest()  # 切换 Steam/WeGame 平台也走这里
         self._start_all_btn.setEnabled(is_server and not is_wegame)
         self._update_runtime_btns_state(c)
         self._update_stop_all_btn_state(c)
@@ -1219,7 +1287,6 @@ class LocalServicePage(Page):
         self._install_dir = self._runtime.install_dir if self._runtime else None
         self._mode_label.setText(self._runtime_mode_text(resolution))
         self._refresh_backend_label()
-        self._refresh_steamcmd_suggest()  # 通道窗口保存后、刷新环境（可能刚装好 Steam）后都会经过这里
         self._install_path_label.setText(str(self._install_dir) if self._install_dir else t("local.install_not_found"))
         self._refresh_steam_update_button()
         self._refresh_steam_remote_build_async()
@@ -1249,12 +1316,6 @@ class LocalServicePage(Page):
             self._refresh_backend_label()  # 后台准备可能发现账号登录已失效
 
         run_async(work, finished, finished)
-
-    def _refresh_steamcmd_suggest(self) -> None:
-        """从没选过 Steam 通道、本机又没有 Steam 客户端时显示 SteamCMD 推荐横幅；选过一次（哪边都算）就不再出现。
-        WeGame 用户本来就没有 Steam 客户端，通道也不影响 WeGame 开服，不提示。"""
-        show = self.ctx.platform == Platform.STEAM and should_suggest_steamcmd()
-        self._steamcmd_suggest_banner.set_text(t("local.steamcmd_suggest_banner") if show else "")
 
     def _set_steamcmd_prepare_active(self, active: bool) -> None:
         self._steamcmd_prepare_active = active
@@ -1319,7 +1380,7 @@ class LocalServicePage(Page):
         self.ctx.server_runtime_changed.emit()
 
     def choose_backend(self) -> None:
-        """「设置 → 选择 Steam 客户端」入口：页面上的「切换通道」按钮在更新期间置灰，这里同样拦下。"""
+        """「设置 → 高级 → 选择 Steam 客户端」入口：页面上的「切换通道」按钮在更新期间置灰，这里同样拦下。"""
         if self._steam_update_running:
             dialogs.show_warning(self.window(), t("local.backend_title"), t("local.backend_update_running"))
             return
@@ -1338,13 +1399,34 @@ class LocalServicePage(Page):
         if dialog.result_backend is SteamBackend.STEAMCMD:
             set_steamcmd_path(dialog.result_steamcmd)
             set_steamcmd_account(dialog.result_account)
-        changed = dialog.result_backend is not get_backend()
-        set_backend(dialog.result_backend)
+        self._apply_backend(dialog.result_backend, previous_workshop)
+
+    def _apply_backend(self, backend: SteamBackend, previous_workshop: Path | None) -> None:
+        changed = backend is not get_backend()
+        set_backend(backend)
         self._on_runtime_changed()
         if changed:
             self.ctx.steam_backend_changed()  # SteamCMD 通道不显示本地存档，存档列表随之变化
-        if dialog.result_backend is SteamBackend.STEAMCMD and previous_workshop is not None:
+        if backend is SteamBackend.STEAMCMD and previous_workshop is not None:
             self._offer_workshop_transfer(previous_workshop)
+
+    def choose_scenario(self, first_run: bool = False) -> None:
+        """「设置 → 开服场景」与首次启动弹窗：场景就是 Steam 通道，切换走与「选择 Steam 客户端」相同的流程，
+        SteamCMD 程序位置和账号沿用已保存的。首次启动也要保存一次通道，之后不再弹窗。"""
+        if not first_run and self._steam_update_running:
+            dialogs.show_warning(self.window(), t("local.scenario_title"), t("local.backend_update_running"))
+            return
+        current = suggested_scenario() if first_run else current_scenario()
+        dialog = _UsageScenarioDialog(self.window(), current, first_run)
+        if not dialog.exec() and not first_run:
+            return
+        target = backend_for(dialog.result_scenario)
+        if not first_run and target is get_backend():
+            return
+        if target is not get_backend() and self._runtime_switch_blocked():
+            return
+        from dstools.features.mod.parser import find_workshop_dir
+        self._apply_backend(target, find_workshop_dir())
 
     def _offer_workshop_transfer(self, source: Path) -> None:
         """改用（另一份）SteamCMD 后，原工坊目录里有、现在这份没有的 Mod 提议复制过来，免得重新下载。"""
@@ -1422,7 +1504,7 @@ class LocalServicePage(Page):
         self._backend_label.setText(text)
         self._backend_label.setStyleSheet(f"color: {theme.hex('ERROR')};" if expired else "")
         # SteamCMD 通道固定用独立专服，「开服程序」一行没有可选的，隐藏；
-        # Steam 客户端通道隐藏「Steam 通道」一行，改用 SteamCMD 的入口在「设置 → 选择 Steam 客户端」，本地开服用户不用看到它
+        # Steam 客户端通道隐藏「Steam 通道」一行，改用 SteamCMD 的入口在「设置 → 开服场景」，本地开服用户不用看到它
         self._mode_row.setVisible(not steamcmd)
         self._backend_row.setVisible(steamcmd)
 
