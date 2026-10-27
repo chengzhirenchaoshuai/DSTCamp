@@ -382,10 +382,12 @@ class _RuntimeModeDialog(dialogs.Dialog):
         status_rows = []
         for kind in RuntimeKind:
             ok = installed[kind]
-            color = theme.hex("SUCCESS" if ok else "ERROR")
+            # 没装某一种是正常情况（一般只用游戏专服），不算错误：灰色不加粗，不用红色
+            color = theme.hex("SUCCESS" if ok else "TEXT_MUTED")
+            weight = "bold" if ok else "normal"
             state = t("local.runtime_installed") if ok else t("local.runtime_not_installed")
             status_rows.append(f'<tr><td nowrap style="padding:3px 16px 3px 0;">{esc(t(_RUNTIME_KIND_KEYS[kind]))}</td>'
-                               f'<td style="padding:3px 0; color:{color}; font-weight:bold;">● {esc(state)}</td></tr>')
+                               f'<td style="padding:3px 0; color:{color}; font-weight:{weight};">● {esc(state)}</td></tr>')
         status_label = QLabel(f'<div style="color:{heading}; font-weight:bold;">{esc(t("local.runtime_install_status"))}</div>'
                               f'<table cellspacing="0" cellpadding="0" style="margin-top:4px;">{"".join(status_rows)}</table>')
         status_label.setFont(theme.font("FONT_SIZE_BASE"))
