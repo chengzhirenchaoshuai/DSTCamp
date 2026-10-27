@@ -168,10 +168,14 @@ class Account:
 class DSTEnvironment:
     """DST 环境信息：klei_root 固定是 Steam 版根目录，WeGame 版另记在 wegame_klei_root，
     两边的存档一起放在 clusters 中按 platform 区分。
-    同一平台可能有多个游戏账号（accounts），user_id/wegame_user_id 是各平台的当前账号。"""
+    同一平台可能有多个游戏账号（accounts），user_id/wegame_user_id 是各平台的当前账号。
+
+    klei_root 是 Steam 版服务器存档的根目录（可手动指定）；游戏客户端只认默认位置，
+    账号目录、本地存档、client.ini 都在 client_klei_root 下，未手动指定时两者相同。"""
 
     klei_root: Path | None = None
     wegame_klei_root: Path | None = None
+    client_klei_root: Path | None = None
     user_id: str = ""
     wegame_user_id: str = ""
     clusters: list[Cluster] = field(default_factory=list)

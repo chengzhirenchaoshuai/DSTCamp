@@ -248,6 +248,26 @@ def test_discovery():
             for cluster in env.clusters
         )
 
+        # 手动指定存档根目录：服务器存档从指定目录扫描，账号、本地存档和 client.ini 仍在游戏客户端的默认位置
+        from unittest.mock import patch
+        from dstools.shared.app_settings import set_klei_root_override
+        custom = Path(tmpdir) / "Servers" / "MySaves"
+        (custom / "Remote" / "Master").mkdir(parents=True)
+        (custom / "Remote" / "cluster.ini").write_text("[NETWORK]\n", encoding="utf-8")
+        (custom / "Remote" / "Master" / "server.ini").write_text("[SHARD]\nis_master = true\n", encoding="utf-8")
+        set_klei_root_override(custom)
+        try:
+            with patch.object(discovery, "auto_klei_root", return_value=root), \
+                    patch.object(discovery, "read_active_steam_account", return_value=""), \
+                    patch.object(discovery, "read_steam_login_users", return_value=[]):
+                env = discover_environment(None, root.parent / "missing-wegame")
+        finally:
+            set_klei_root_override(None)
+        assert env.klei_root == custom and env.client_klei_root == root
+        assert [c.name for c in env.clusters if c.source == SaveSource.SERVER] == ["Remote"]
+        assert [c.name for c in env.clusters if c.source == SaveSource.LOCAL] == ["Shared"]
+        assert env.user_id == "123456" and env.client_config == root / "123456" / "client.ini"
+
 
 def test_pick_current_account():
     """多账号时按 手动选择 > Steam 当前登录 > 最近登录 > 最近游玩 > 第一个 选当前账号，且只认给定的账号。"""

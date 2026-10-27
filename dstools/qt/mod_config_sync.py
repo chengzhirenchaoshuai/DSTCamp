@@ -22,9 +22,9 @@ last_states: dict[str, str] = {}
 def game_account(ctx) -> tuple[Path, str] | None:
     """当前 Steam 账号目录与账号 ID；没有时返回 None。"""
     env = ctx.env
-    if not env.klei_root or not env.user_id:
+    if not env.client_klei_root or not env.user_id:
         return None
-    path = Path(env.klei_root) / env.user_id
+    path = Path(env.client_klei_root) / env.user_id
     return (path, env.user_id) if path.is_dir() else None
 
 

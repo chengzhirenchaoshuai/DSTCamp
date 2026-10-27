@@ -11,7 +11,7 @@ from dstools.models import (
     SaveSource,
     Shard,
 )
-from dstools.shared.app_settings import get_selected_account
+from dstools.shared.app_settings import get_klei_root_override, get_selected_account
 from dstools.shared.steam_discovery import read_active_steam_account, read_steam_login_users
 
 # Klei 根目录名：Steam 版 DoNotStarveTogether，WeGame 版 DoNotStarveTogetherRail，两棵独立目录树可并存
@@ -62,6 +62,11 @@ def _is_user_dir(path: Path, known_ids=()) -> bool:
 
 
 def find_klei_root() -> Path | None:
+    """Steam 版存档根目录：手动指定的优先（即使暂时不存在也如实使用，不悄悄换回自动找到的），否则自动查找。"""
+    return get_klei_root_override() or auto_klei_root()
+
+
+def auto_klei_root() -> Path | None:
     """自动发现 Steam 版 Klei DoNotStarveTogether 根目录。"""
     return _find_klei_root_impl(_STEAM_KLEI_FOLDER)
 
@@ -140,24 +145,31 @@ def discover_environment(klei_root: Path | None = None,
                           wegame_klei_root: Path | None = None) -> DSTEnvironment:
     """扫描 Steam 与 WeGame 两棵目录树：根目录下的存档为 SERVER，用户 ID 目录下的为 LOCAL，
     合并到同一列表，用 Cluster.platform 区分。
+
+    Steam 版手动指定了存档根目录时，服务器存档从指定目录扫描；游戏客户端只认默认位置，
+    账号与本地存档仍从自动找到的目录扫描（见 DSTEnvironment.client_klei_root）。
     """
+    override = get_klei_root_override()
     if klei_root is None:
-        klei_root = find_klei_root()
+        klei_root = override or auto_klei_root()
+    client_root = auto_klei_root() if override is not None and klei_root == override else klei_root
     if wegame_klei_root is None:
         wegame_klei_root = find_wegame_klei_root()
 
-    env = DSTEnvironment(klei_root=klei_root, wegame_klei_root=wegame_klei_root)
+    env = DSTEnvironment(klei_root=klei_root, wegame_klei_root=wegame_klei_root, client_klei_root=client_root)
 
-    if klei_root is not None and klei_root.exists():
-        _scan_platform_root(env, klei_root, Platform.STEAM)
+    if any(root is not None and root.exists() for root in (klei_root, client_root)):
+        _scan_platform_root(env, klei_root, Platform.STEAM, user_root=client_root)
     if wegame_klei_root is not None and wegame_klei_root.exists():
-        _scan_platform_root(env, wegame_klei_root, Platform.WEGAME)
+        _scan_platform_root(env, wegame_klei_root, Platform.WEGAME, user_root=wegame_klei_root)
 
     return env
 
 
-def _scan_platform_root(env: DSTEnvironment, root: Path, platform: Platform) -> None:
-    """扫描一个平台的 Klei 根目录，把发现的 Cluster 追加进 env.clusters。"""
+def _scan_platform_root(env: DSTEnvironment, root: Path | None, platform: Platform,
+                        user_root: Path | None) -> None:
+    """扫描一个平台的 Klei 根目录，把发现的 Cluster 追加进 env.clusters。
+    root 下是服务器存档，user_root 下是账号目录与本地存档；任一为 None 或不存在时只扫另一部分。"""
     if platform == Platform.STEAM:
         login_users = read_steam_login_users()
         names = {u.account_id: u.persona_name for u in login_users}
@@ -166,7 +178,8 @@ def _scan_platform_root(env: DSTEnvironment, root: Path, platform: Platform) -> 
         active = read_active_steam_account()
     else:
         names, recent, active = {}, [], ""
-    user_dirs = list_user_dirs(root, known_ids=names)
+    user_dirs = list_user_dirs(user_root, known_ids=names) if user_root is not None else []
+    account_base = user_root if user_root is not None else root
     ids = [d.name for d in user_dirs]
     # 只有一个账号时不必读修改时间
     played = {d.name: _last_played(d) for d in user_dirs} if len(user_dirs) > 1 else None
@@ -177,7 +190,7 @@ def _scan_platform_root(env: DSTEnvironment, root: Path, platform: Platform) -> 
     current = pick_current_account(ids, selected=selected, selected_active=selected_active, active=active,
                                    recent=recent, last_played=played)
     for account_id in ids:
-        path = root / account_id
+        path = account_base / account_id
         env.accounts.append(Account(account_id, platform, path, names.get(account_id, ""),
                                     steam_active=account_id == active))
 
@@ -185,7 +198,7 @@ def _scan_platform_root(env: DSTEnvironment, root: Path, platform: Platform) -> 
         env.user_id = current
         env.steam_active_account = active
         env.steam_names = names
-        client_ini = root / current / "client.ini" if current else None
+        client_ini = user_root / current / "client.ini" if current and user_root is not None else None
         if client_ini is not None and client_ini.exists():
             env.client_config = client_ini
     else:
@@ -193,7 +206,7 @@ def _scan_platform_root(env: DSTEnvironment, root: Path, platform: Platform) -> 
         env.wegame_user_id = current
 
     # 根目录下的 cluster → SERVER
-    for cluster_path in list_clusters(root):
+    for cluster_path in (list_clusters(root) if root is not None else []):
         cluster = _build_cluster(cluster_path, SaveSource.SERVER, platform)
         env.clusters.append(cluster)
 

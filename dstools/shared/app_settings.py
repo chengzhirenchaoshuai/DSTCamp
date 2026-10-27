@@ -12,6 +12,7 @@ _KEY_STEAMCMD_SERVER_PATH = "steamcmd_server_path"
 _KEY_CLIENT_RUNTIME_PATH = "client_runtime_path"
 _KEY_SERVER_RUNTIME_MODE = "server_runtime_mode"
 _KEY_WEGAME_ROOT_PATH = "wegame_root_path"
+_KEY_KLEI_ROOT_PATH = "klei_root_path"
 _KEY_STEAM_MODS_PATH = "steam_mods_path"
 _KEY_STEAMCMD_PATH = "steamcmd_path"
 _KEY_STEAM_BACKEND = "steam_backend"
@@ -182,6 +183,22 @@ def set_dedicated_server_extra_args(value: str) -> None:
         data[_KEY_DEDICATED_SERVER_EXTRA_ARGS] = value
     else:
         data.pop(_KEY_DEDICATED_SERVER_EXTRA_ARGS, None)
+    save_settings(data)
+
+
+def get_klei_root_override() -> Path | None:
+    """用户手动指定的 Steam 版存档根目录（替代自动找到的 文档/Klei/DoNotStarveTogether），未设置返回 None。"""
+    raw = load_settings().get(_KEY_KLEI_ROOT_PATH)
+    return Path(raw) if raw else None
+
+
+def set_klei_root_override(path: Path | None) -> None:
+    """记住手动指定的存档根目录；传 None 恢复自动查找。"""
+    data = load_settings()
+    if path:
+        data[_KEY_KLEI_ROOT_PATH] = str(path)
+    else:
+        data.pop(_KEY_KLEI_ROOT_PATH, None)
     save_settings(data)
 
 
