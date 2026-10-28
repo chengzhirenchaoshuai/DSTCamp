@@ -628,7 +628,7 @@ class _SteamcmdLoginDialog(dialogs.Dialog):
 
 class _SteamcmdSettingsDialog(dialogs.Dialog):
     """云服务器场景的「SteamCMD 设置」窗口：指定 steamcmd.exe 和登录账号，点"保存"才生效。
-    切换 Steam 客户端 / SteamCMD 由「开服场景」负责，这里不再提供。"""
+    切换 Steam 客户端 / SteamCMD 由「开服场景」负责。"""
 
     def __init__(self, parent, steamcmd: Path | None, account: str):
         super().__init__(parent, t("local.backend_title"), "md", confirm_text=t("local.runtime_mode_save_btn"))
@@ -3132,8 +3132,7 @@ class LocalServicePage(Page):
 
     def _nat_connect_info(self, cluster, owner: str | None) -> tuple[str | None, str | None]:
         """按实际映射方式取穿透地址（工作线程调用，owner 由界面线程预先算好）。
-        Lolia/自建的地址就在本地设置里，不联网；只有樱花映射才调樱花 API——以前只要
-        填过樱花 Token 就先查樱花，网络差时连带拖慢甚至拖垮 Lolia/自建的显示。
+        Lolia/自建的地址就在本地设置里，不联网；只有樱花映射才调樱花 API，避免网络差时拖慢其它方式的显示。
         樱花 API 出错时异常向上抛，界面显示"获取失败"并自动重试，而不是误显示"未映射"。"""
         master = self._master_shard(cluster) if cluster else None
         if not master:

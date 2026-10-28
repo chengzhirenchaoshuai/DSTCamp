@@ -299,7 +299,7 @@ def detect_mod_format(workshop_id, workshop_root: Path | None, steam_state=None)
 
 def find_shared_ugc_directory() -> Path | None:
     """专服 ``-ugc_directory`` 参数：直接用 Steam 的 ``steamapps/workshop``（真机验证），
-    所有存档共享一份内容，不再在每个 shard 下生成 ugc_mods 副本。找不到返回 None，
+    所有存档共享一份内容。找不到返回 None，
     调用方不传该参数即可。
 
     SteamCMD 通道始终返回它的工坊目录（还没下载过 Mod 时也返回），启动前的缺失检查才能提示去下载。"""

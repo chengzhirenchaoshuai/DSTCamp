@@ -87,7 +87,7 @@ def shard_plan_from_template(path: Path) -> WorldShardPlan:
 
 
 def default_plans_from_cluster(cluster_root: Path) -> tuple[WorldShardPlan, WorldShardPlan]:
-    """读取两个官方分片目录，不再把目录名误当成固定 location。"""
+    """读取两个官方分片目录的世界计划；location 以文件内容为准，不按目录名推断。"""
     master = shard_plan_from_template(cluster_root / "Master" / "leveldataoverride.lua")
     caves = shard_plan_from_template(cluster_root / "Caves" / "leveldataoverride.lua")
     return master, caves

@@ -96,7 +96,7 @@ def verify_mod_manifest(
             try:
                 entries = list(os.scandir(directory))
             except OSError:
-                continue  # 与原先 os.walk 一致：读不了的目录跳过
+                continue  # 读不了的目录跳过
             for entry in entries:
                 try:
                     is_dir = entry.is_dir()

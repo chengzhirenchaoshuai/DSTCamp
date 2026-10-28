@@ -517,7 +517,7 @@ class ConsolePane(QWidget):
         self._run_search()
 
     def _close_search(self) -> None:
-        """× / Esc：清空搜索词和高亮（搜索栏本身常驻，不再隐藏）。"""
+        """× / Esc：清空搜索词和高亮（搜索栏常驻）。"""
         self._remember_search()
         self._search_edit.blockSignals(True)
         self._search_line.blockSignals(True)

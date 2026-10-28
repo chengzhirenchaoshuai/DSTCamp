@@ -246,25 +246,18 @@ class ServerStatus(Enum):
     CRASHED = "crashed"
 
 
-# 进程 RUNNING 不等于世界可进入，Master 与 Secondary 的就绪标记不同（已用真实 server_log.txt 核对）：
-# - Master：正式 Sim 建立后打印 "Sim paused"/"Sim unpaused"（兼容旧版 "DST_Master_Ready"）。
-#   坑：新建世界的临时 worldgen 也会打印 "About to start..." 和 "Reset() returning"，
-#   随后销毁重载，不能把 Reset 当完成标记；
-#   坑：引擎不做空服暂停时（pause_when_empty=false，或"三界同行"等 Mod 自行 SetTimeScale(0) 冻结）
-#   永远不打印 "Sim paused"（已用两份只差该项的离线存档实跑确认），因此大厅注册成功
-#   （"Server registered via geo DNS"）和从世界接入完成（"[Shard] Secondary <名>(<id>) ready!"）也算就绪；
-#   多世界的 Master 在世界加载完后打印 "[Shard] Shard server started on port"，正常日志里
-#   "Sim paused" 紧随其后 0～1 秒，同样算就绪（单世界和从世界不打印这行）；
-#   单世界靠 "Telling Client our new session identifier"：世界加载完后的最后一步，新建和已有存档实跑
-#   都在 "Sim paused" 前约 1 秒；从世界也打印它但要再等主世界接入，所以只给 Master 用；
-#   这几行在真机日志中都只出现在正式 Sim 阶段（之后不再销毁重载）；比 "Sim paused" 早 0～1 秒，
-#   Mod 多或 WeGame 创建 Rail 服务器时早 2～4 秒，此时 Lua 世界已建好，控制台命令可用；
-# - Secondary：连上 Master 后打印 "secondary shard LUA is now ready!"（旧版为 "Slave LUA ..."）。
-#   坑：更早的 "secondary shard is now ready!" 不能算：从世界快照比主世界新时，随后会
-#   "Synchronizing backward to master snapshot" 并整个销毁重载，LUA ready 才在重载之后（202 份真机日志核对）。
-# 启动分界线有两种措辞，随 cluster.ini 的 shard_enabled 变化：
-# true 为 "About to start a shard with these settings"，false 为
-# "About to start a server with the following settings"，两种都要认，否则单世界存档永远不就绪。
+# 进程 RUNNING 不等于世界可进入；就绪标记已用真实 server_log.txt 核对：
+# - Master：正式 Sim 建立后打印 "Sim paused"/"Sim unpaused"（旧版 "DST_Master_Ready"）。
+#   坑：新建世界的临时 worldgen 也打印 "About to start..."/"Reset() returning"，随后销毁重载，不能当完成标记。
+#   坑：不做空服暂停时（pause_when_empty=false，或 Mod 自行 SetTimeScale(0)）永远不打印 "Sim paused"，
+#   所以下列只在正式 Sim 阶段出现的行也算就绪（比 "Sim paused" 早 0～1 秒，Mod 多或 WeGame 时早 2～4 秒，
+#   此时控制台命令已可用）：大厅注册 "Server registered via geo DNS"、从世界接入
+#   "[Shard] Secondary <名>(<id>) ready!"、多世界的 "[Shard] Shard server started on port"、
+#   单世界最后一步 "Telling Client our new session identifier"（从世界也打印，但还要等主世界接入，只给 Master 用）。
+# - Secondary：连上 Master 后打印 "secondary shard LUA is now ready!"（旧版 "Slave LUA ..."）。
+#   坑：更早的 "secondary shard is now ready!" 不算：从世界快照比主世界新时随后会
+#   "Synchronizing backward to master snapshot" 整个重载（202 份真机日志核对）。
+# 启动分界线随 cluster.ini 的 shard_enabled 有两种措辞，都要认，否则单世界存档永远不就绪。
 _REAL_START_MARKERS = (
     "about to start a shard with these settings",
     "about to start a server with the following settings",

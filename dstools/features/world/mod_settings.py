@@ -49,15 +49,11 @@ MOD_CUSTOM_GROUP_NAMES: dict[str, dict] = {}
 class ModWorldSetting:
     """一条 mod 贡献的世界设置/生成条目。"""
     key: str
-    is_rule: bool      # True = 世界设置(LEVELCATEGORY.SETTINGS，可编辑)
-                        # False = 世界生成(LEVELCATEGORY.WORLDGEN，只读，
-                        # 跟 DSTCamp 对待原版生成类设置一致)
-    name: dict          # {"zh": "...", "en": "..."}
-    values: list | None  # 合法取值(按 tuning_vars 表里出现的顺序)；
-                         # None 表示只读展示，不需要取值列表
-    mod_id: str          # 贡献这条设置的 workshop id（不带前缀）
-    icon_element: str | None = None  # mod 图标图集里对应的 Element name
-                                      # （含 ".tex" 后缀，与图集 XML 一致），None 表示没有
+    is_rule: bool  # True 为世界设置（可编辑），False 为世界生成（只读，与原版生成项一致）
+    name: dict  # {"zh": "...", "en": "..."}
+    values: list | None  # 合法取值（按 tuning_vars 表顺序）；None 表示只读展示
+    mod_id: str  # 贡献这条设置的 workshop id（不带前缀）
+    icon_element: str | None = None  # Mod 图集里的 Element name（含 ".tex" 后缀），None 表示没有
     # 存档里没有该 key 时的占位值。坑：不是所有 Mod 都有 "default" 档，
     # 如 Island Adventures 的 poison/dst_boats 等只有 "none"/"always"
     initial_value: str = "default"

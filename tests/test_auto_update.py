@@ -356,19 +356,12 @@ def test_helper_retries_while_old_exe_is_still_in_use() -> None:
 
 def test_standard_exe_name_is_fixed_but_custom_name_is_preserved() -> None:
     root = Path("C:/DSTCamp")
-    staged = root / "cache" / "DSTCamp-1.3.6.exe"
     # 旧版本号命名一次性迁移到固定名字。
-    assert auto_update.resolve_install_target(
-        root / "DSTCamp-1.3.5.exe", staged
-    ) == root / auto_update.STANDARD_EXE_NAME
+    assert auto_update.resolve_install_target(root / "DSTCamp-1.3.5.exe") == root / auto_update.STANDARD_EXE_NAME
     # 已经是固定名字的安装，后续更新继续保持固定名字。
-    assert auto_update.resolve_install_target(
-        root / auto_update.STANDARD_EXE_NAME, staged
-    ) == root / auto_update.STANDARD_EXE_NAME
+    assert auto_update.resolve_install_target(root / auto_update.STANDARD_EXE_NAME) == root / auto_update.STANDARD_EXE_NAME
     # 用户自定义命名不受影响。
-    assert auto_update.resolve_install_target(
-        root / "我的开服工具.exe", staged
-    ) == root / "我的开服工具.exe"
+    assert auto_update.resolve_install_target(root / "我的开服工具.exe") == root / "我的开服工具.exe"
 
 
 def test_cleanup_removes_known_stale_artifacts() -> None:

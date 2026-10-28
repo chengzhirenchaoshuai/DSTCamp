@@ -142,8 +142,8 @@ class ModConfigDialog(QDialog):
         # 默认配置模式：跟游戏主菜单"模组"一致，显示 client=true 的客户端选项，应用后只写默认配置
         self.default_mode = default_mode
         self.vars: dict[str, QComboBox] = {}
-        # 按下拉框项的顺序记录 data（与 combo 的 item 索引一一对应），不再
-        # 用显示文本当字典键——见 _render_choice_row() 的说明。
+        # 按下拉框项的顺序记录 data（与 combo 的 item 索引一一对应），不用显示文本当键，
+        # 见 _render_choice_row() 的说明
         self.choice_maps: dict[str, list[Any]] = {}
         # "Configs Extended"(工坊 3317960157) 风格的集合/数组/文本/字典配置项，见
         # _render_raw_value_editor() —— 不走 self.vars/choice_maps 那套下拉框机制。

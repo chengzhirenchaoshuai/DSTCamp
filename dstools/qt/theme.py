@@ -252,8 +252,8 @@ def _apply_fake_transparent_popup_bg(combo, popup) -> None:
         return  # 没有真正的顶层窗口可截（比如独立弹出的下拉框本身就是"窗口"）
     top_left_local = window.mapFromGlobal(popup.mapToGlobal(QPoint(0, 0)))
     popup_rect = QRect(top_left_local, popup.size())
-    # 不能用 Python 动态属性标记"已贴背景"：PySide6 每次拿到的包装对象不保证相同，
-    # 改用 objectName + findChild() 查 C++ 子控件树
+    # 坑：不能用 Python 动态属性标记"已贴背景"，PySide6 每次拿到的包装对象不保证相同；
+    # 用 objectName + findChild() 查 C++ 子控件树
     label = popup.findChild(QLabel, _POPUP_BG_LABEL_NAME)
     grab_rect = popup_rect.intersected(window.rect())
     pixmap = window.grab(grab_rect) if not grab_rect.isEmpty() else None

@@ -318,7 +318,7 @@ def ensure_install_dir_writable() -> None:
 def ensure_install_target_replaceable() -> None:
     """退出前确认安装目标能被覆盖：迁移到固定名字时同目录已有的那份不能正在运行。"""
     current = Path(sys.executable).resolve()
-    target = resolve_install_target(current, current)
+    target = resolve_install_target(current)
     if target == current or not target.exists():
         return
     try:
@@ -342,9 +342,8 @@ def take_update_failure_log() -> str:
     return text
 
 
-def resolve_install_target(current_exe: Path, staged_exe: Path) -> Path:
+def resolve_install_target(current_exe: Path) -> Path:
     """标准安装固定用 STANDARD_EXE_NAME，用户自定义的 EXE 名称保持不变；旧的带版本号安装名在本次迁移。"""
-    del staged_exe  # 保留参数只为了调用方语义清晰，命名不再影响安装目标
     current = Path(current_exe).resolve()
     is_standard = current.name == STANDARD_EXE_NAME or bool(
         _LEGACY_VERSIONED_EXE_NAME_RE.fullmatch(current.name)
@@ -361,7 +360,7 @@ def launch_update_helper(staged_exe: Path) -> None:
     staged = staged_exe.resolve()
     if not staged.is_file() or staged == current:
         raise FileNotFoundError(staged)
-    target = resolve_install_target(current, staged)
+    target = resolve_install_target(current)
     backup = current.with_name(current.name + ".old")
     local_staged = current.with_name(_hidden_staged_name(current.stem, os.getpid()))
     shutil.copy2(staged, local_staged)

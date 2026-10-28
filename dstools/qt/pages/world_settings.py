@@ -220,7 +220,7 @@ class WorldSettingsPage(Page):
 
     def _update_tab_labels(self) -> None:
         data = self._data
-        # 不再标注可改/仅查看：本地存档只读由上方横幅说明，面板也不显示箭头
+        # 本地存档只读由上方横幅说明，面板不显示箭头
         rules, generation = t("world.rules"), t("world.generation")
         if data is not None and data.status == page_data.STATUS_OK:
             rules += f" ({sum(len(v) for v in data.rules_by_category.values())})"

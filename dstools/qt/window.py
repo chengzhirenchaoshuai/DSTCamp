@@ -601,8 +601,7 @@ class ClusterBar(QWidget):
         self._platform.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._cluster = _RefreshingCombo()
         self._cluster.about_to_open.connect(self.reload)
-        # 按最长的存档名自适应宽度，不随窗口拉伸；窗口窄放不下时可收到最小宽度（存档名被截断），
-        # 不再与右侧按钮重叠
+        # 按最长的存档名自适应宽度，不随窗口拉伸；窗口窄时收到最小宽度（截断存档名），不与右侧按钮重叠
         self._cluster.setMinimumWidth(150)
         self._cluster.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._cluster.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
@@ -643,7 +642,7 @@ class ClusterBar(QWidget):
         self._open_location.setText(t("env.open_location"))
         self._create_save.setText(t("save.create_server_save"))
         self._refresh.setText(t("save.refresh"))
-        # "刷新"至少跟本地服务器页"更换路径"按钮一样宽（约 4 个字），不再只按两个字收窄。
+        # "刷新"至少跟本地服务器页"更换路径"按钮一样宽（约 4 个字）
         self._refresh.setMinimumWidth(QPushButton(t("local.install_change_btn")).sizeHint().width())
 
     def set_compact(self, compact: bool) -> None:
