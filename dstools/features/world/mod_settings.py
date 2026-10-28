@@ -1065,7 +1065,7 @@ MOD_ICON_ATLAS: dict[str, tuple[str, str]] = {
 
 
 # workshop-3811652910 == 三合一测试mod（岛屿冒险核心/海难 + 云霄国度 + 补丁 + 兼容层整合版），
-# 已核对到 1.2.8；作者已下架，改为补丁 3826855460（不注册世界设置，直接用四个原 Mod 的登记表），这里只为老存档保留。integrated_loader.lua 按
+# 已核对到 1.2.9；作者已下架，改为补丁 3826855460（不注册世界设置，直接用四个原 Mod 的登记表），这里只为老存档保留。integrated_loader.lua 按
 # core→sw→pl→patch→compat 在各自子环境执行原 Mod 入口；注册世界设置的 modservercreationmain.lua /
 # modcustomizeitems.lua 及三张图集与本机独立版 3435352667 1.0.80 / 1467214795 1.0.63 /
 # 3322803908 1.0.50 逐字节相同，patch/compat 不注册
@@ -1095,7 +1095,7 @@ MOD_VERIFIED_VERSIONS: dict[str, str] = {
     _PORKLAND_ID: "1.0.50",
     _BWB_ID: "0.4.16.6",
     _TA_ID: "26.09.19",
-    _THREE_WORLDS_ID: "1.2.8",
+    _THREE_WORLDS_ID: "1.2.9",
 }
 
 
