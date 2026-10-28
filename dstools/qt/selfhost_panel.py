@@ -59,6 +59,15 @@ def _muted(text: str = "") -> QLabel:
     return label
 
 
+def _set_colored_text(label: QLabel, text: str, color: str) -> None:
+    """轮询里反复调用：只在变化时写入，重设样式表会触发样式重算和重绘。"""
+    style = f"color: {color};"
+    if label.text() != text:
+        label.setText(text)
+    if label.styleSheet() != style:
+        label.setStyleSheet(style)
+
+
 def _make_pill_bar(labels: list[str]) -> PillTabBar:
     return PillTabBar(labels, height=32, pill_height=24, font_size_key="FONT_SIZE_SM")
 
@@ -1241,23 +1250,22 @@ class SelfHostPanel(QWidget):
             text, color = t("selfhost.lobby_accel_status_no_wireguard"), theme.hex("TEXT_MUTED")
         else:
             text, color = t("selfhost.lobby_accel_status_ready"), theme.hex("TEXT_MUTED")
-        self._lobby_status_label.setText(text)
-        self._lobby_status_label.setStyleSheet(f"color: {color};")
+        _set_colored_text(self._lobby_status_label, text, color)
 
         mihomo_path = app_settings.get_lobby_accel_mihomo_path()
         if mihomo_path:
-            self._mihomo_summary_label.setText(t("selfhost.lobby_mihomo_selected", name=mihomo_path.name))
-            self._mihomo_summary_label.setStyleSheet(f"color: {theme.hex('SUCCESS')};")
+            _set_colored_text(self._mihomo_summary_label, t("selfhost.lobby_mihomo_selected", name=mihomo_path.name),
+                              theme.hex("SUCCESS"))
         else:
-            self._mihomo_summary_label.setText(t("selfhost.lobby_mihomo_not_selected"))
-            self._mihomo_summary_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
+            _set_colored_text(self._mihomo_summary_label, t("selfhost.lobby_mihomo_not_selected"),
+                              theme.hex("TEXT_MUTED"))
         wireguard = app_settings.get_lobby_accel_wireguard()
         if wireguard:
-            self._wireguard_summary_label.setText(t("selfhost.lobby_wireguard_summary", port=wireguard["port"]))
-            self._wireguard_summary_label.setStyleSheet(f"color: {theme.hex('SUCCESS')};")
+            _set_colored_text(self._wireguard_summary_label,
+                              t("selfhost.lobby_wireguard_summary", port=wireguard["port"]), theme.hex("SUCCESS"))
         else:
-            self._wireguard_summary_label.setText(t("selfhost.lobby_wireguard_not_deployed"))
-            self._wireguard_summary_label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
+            _set_colored_text(self._wireguard_summary_label, t("selfhost.lobby_wireguard_not_deployed"),
+                              theme.hex("TEXT_MUTED"))
         if self._lobby_dialog is not None:
             self._lobby_dialog.refresh()
 

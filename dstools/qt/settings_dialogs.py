@@ -135,6 +135,7 @@ class _FontChoiceCard(QWidget):
     def __init__(self, style: str):
         super().__init__()
         self._style = style
+        theme.ensure_font_registered(style)  # 预览要用该字体绘制，启动时只注册了当前样式的字体
         self._selected = False
         self._hover = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)

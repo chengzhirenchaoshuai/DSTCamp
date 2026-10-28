@@ -81,13 +81,33 @@ def get_settings_dir() -> Path:
     return Path.home() / ".dstcamp"
 
 
+# (路径, 修改时间, 大小) -> 文件原文。界面轮询里每秒要读很多次设置，云盘加杀软扫描下每次打开文件都很慢；
+# 文件没变就复用原文，只多一次 stat。缓存原文而不是字典：每次重新解析，调用方改返回值不会污染缓存。
+_cached_text: tuple[tuple[str, int, int], str] | None = None
+
+
+def _stat_key(path: Path) -> tuple[str, int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return str(path), st.st_mtime_ns, st.st_size
+
+
 def load_settings() -> dict:
     """读取设置文件，不存在或损坏都返回空字典（从不抛异常）。"""
+    global _cached_text
     path = get_settings_dir() / _SETTINGS_FILE
-    if not path.exists():
+    key = _stat_key(path)
+    if key is None:
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        if _cached_text is not None and _cached_text[0] == key:
+            text = _cached_text[1]
+        else:
+            text = path.read_text(encoding="utf-8")
+            _cached_text = (key, text)
+        return json.loads(text)
     except (OSError, ValueError):
         return {}
 

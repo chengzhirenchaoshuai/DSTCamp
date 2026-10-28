@@ -82,6 +82,10 @@ from dstools.shared.token_manager import (
 )
 
 _POLL_MS = 150
+# 窗口最小化或缩到托盘时的轮询间隔：只剩进程监督要做，不必高频刷新界面
+_POLL_HIDDEN_MS = 1000
+# 按钮、横幅等非控制台状态的兜底刷新间隔；进程状态变化时立即刷新，不等这个间隔
+_SLOW_POLL_S = 1.0
 # SteamCMD 通道启动前的 Mod 更新检查：后台定期查，启动时只读缓存，结果超过有效期就不拿来拦启动
 _STEAMCMD_MOD_CHECK_INTERVAL_MS = 15 * 60 * 1000
 _STEAMCMD_MOD_CHECK_TTL = 30 * 60
@@ -184,6 +188,25 @@ def _tun_proxy_detected() -> bool:
     return False
 
 
+# 世界目录 -> ((server.ini 修改时间, 大小), 是否主世界)。轮询每 150ms 要判断好几次主世界，文件没变就不重新解析
+_is_master_cache: dict[Path, tuple[tuple[int, int] | None, bool]] = {}
+
+
+def _shard_is_master(shard_dir: Path) -> bool:
+    ini = shard_dir / "server.ini"
+    try:
+        st = ini.stat()
+        stamp = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        stamp = None
+    cached = _is_master_cache.get(shard_dir)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    is_master = bool(load_shard_config(shard_dir).shard.get("is_master", True))
+    _is_master_cache[shard_dir] = (stamp, is_master)
+    return is_master
+
+
 def _set_button_state(button, enabled: bool, reason: str = "") -> None:
     """按钮置灰时必须把原因放进悬停提示，让用户知道为什么点不了；启用时清空提示。
     只在状态真的变化时写入，避免定时轮询反复触发重绘。"""
@@ -243,8 +266,12 @@ class _ShardRow(QWidget):
         key = (str(self.cluster_path), self.shard.name)
         status = proc.status if proc else (
             ServerStatus.STARTING if key in self.page._launching_keys else ServerStatus.STOPPED)
-        self.status_label.setText(t(STATUS_TEXT_KEYS[status]))
-        self.status_label.setStyleSheet(f"color: {status_color(status)};")
+        text, style = t(STATUS_TEXT_KEYS[status]), f"color: {status_color(status)};"
+        # 轮询频繁调用：只在变化时写入，重设样式表会触发样式重算和重绘
+        if self.status_label.text() != text:
+            self.status_label.setText(text)
+        if self.status_label.styleSheet() != style:
+            self.status_label.setStyleSheet(style)
         running = status in RUNNING_LIKE
         restarting = key in self.page._restarting_keys
         cluster = self.page.get_cluster()
@@ -939,6 +966,8 @@ class LocalServicePage(Page):
         self._detect_install_dir()
         self._poll_timer = QTimer(self, interval=_POLL_MS)
         self._poll_timer.timeout.connect(self._poll)
+        self._slow_poll_at = 0.0
+        self._poll_signature = None
         self._poll_timer.start()
         # (存档路径与启用的工坊 ID, 检查时刻, [(有更新的 ID, 标题)])
         self._steamcmd_mod_check: tuple | None = None
@@ -3021,7 +3050,7 @@ class LocalServicePage(Page):
     @staticmethod
     def _master_shard(cluster):
         for shard in cluster.shards:
-            if load_shard_config(shard.path).shard.get("is_master", True):
+            if _shard_is_master(Path(shard.path)):
                 return shard
         return cluster.shards[0] if cluster.shards else None
 
@@ -3550,23 +3579,27 @@ class LocalServicePage(Page):
                     pass
                 self._last_auto_backup_ts[path_str] = now
 
+    def _state_signature(self, cluster) -> tuple:
+        """影响按钮和横幅的进程状态摘要：与上次不同就立即走一遍慢速刷新。"""
+        procs = tuple(sorted((str(p.cluster_path), p.shard_name, p.status.value, p.world_ready)
+                             for p in self.manager.running()))
+        return (str(cluster.path) if cluster else None, procs, self._luajit_busy, self._steam_update_running,
+                frozenset(self._launching_keys), frozenset(self._restarting_keys), self.window().isVisible())
+
     def _poll(self) -> None:
+        """快路径每次都跑（控制台输出、自动重启、直连状态）；其余状态每秒刷新一次或在进程状态变化时刷新。"""
         try:
-            self._refresh_steam_remote_build_async()
+            window = self.window()
+            hidden = not window.isVisible() or window.isMinimized()
+            interval = _POLL_HIDDEN_MS if hidden else _POLL_MS
+            if self._poll_timer.interval() != interval:
+                self._poll_timer.setInterval(interval)
             for pane in self._console_panes.values():
                 pane.pump()
-            for row in self._shard_rows.values():
-                row.update_state()
             cluster = self.get_cluster()
-            self._update_start_lock_state(cluster)
-            self._update_runtime_btns_state(cluster)
-            self._update_stop_all_btn_state(cluster)
-            self._update_restart_all_btn_state(cluster)
-            self._update_logs_btn_state(cluster)
-            self._update_luajit_row(cluster)
-            self.ctx.poll_lobby_accel()
             self._auto_restart.poll()
             if cluster is not None and cluster.platform != Platform.WEGAME:
+                # 倒计时按秒走，放在快路径免得跳数；文字没变不写入
                 banner_text = self._auto_restart.banner_text(cluster)
                 if banner_text != self._auto_restart_banner.text():
                     self._auto_restart_banner.set_text(banner_text)
@@ -3576,10 +3609,29 @@ class LocalServicePage(Page):
                 self._refresh_nat_status()
                 self._check_connect_fetch_timeouts()
                 self._tick_connect_retries()
-            self._maybe_periodic_backup()
+            signature = self._state_signature(cluster)
+            now = time.monotonic()
+            if signature == self._poll_signature and now - self._slow_poll_at < _SLOW_POLL_S:
+                return
+            self._poll_signature = signature
+            self._slow_poll_at = now
+            self._slow_poll(cluster)
         except Exception:
             import traceback
             traceback.print_exc()
+
+    def _slow_poll(self, cluster) -> None:
+        self._refresh_steam_remote_build_async()
+        for row in self._shard_rows.values():
+            row.update_state()
+        self._update_start_lock_state(cluster)
+        self._update_runtime_btns_state(cluster)
+        self._update_stop_all_btn_state(cluster)
+        self._update_restart_all_btn_state(cluster)
+        self._update_logs_btn_state(cluster)
+        self._update_luajit_row(cluster)
+        self.ctx.poll_lobby_accel()
+        self._maybe_periodic_backup()
 
     def retranslate(self) -> None:
         self.on_cluster_changed(self.get_cluster())

@@ -331,6 +331,7 @@ class Theme(QObject):
         self._font_style = style if style in FONT_STYLE_NAMES else "default"
         level = app_settings.get_font_size_level()
         self._font_size_level = level if level in _FONT_SIZE_LEVEL_KEYS else "normal"
+        self._registered_font_styles: set[str] = set()
 
     # ── 状态 ────────────────────────────────────────────────────────────
     @property
@@ -446,12 +447,16 @@ class Theme(QObject):
 
     # ── 切换 ────────────────────────────────────────────────────────────
     def load_fonts(self) -> None:
-        """把打包字体私有注册进当前进程（之后才能按族名使用），只注册一次；缺文件时 Qt 静默回退系统字体。"""
-        if getattr(self, "_fonts_loaded", False):
-            return
-        self._fonts_loaded = True
+        """注册当前字体样式要用的打包字体。其余样式等切换或预览时再注册：每个字体文件注册后常驻十几 MB 内存。"""
+        self.ensure_font_registered(self._font_style)
+
+    def ensure_font_registered(self, style_name: str) -> None:
+        """把该样式的打包字体私有注册进当前进程（之后才能按族名使用），每种只注册一次；缺文件时 Qt 静默回退系统字体。"""
+        if style_name in self._registered_font_styles or QApplication.instance() is None:
+            return  # 没有 QApplication 时字体库不可用，等建好后再注册
+        self._registered_font_styles.add(style_name)
         for style in FONT_STYLES:
-            if style.filename:
+            if style.key == style_name and style.filename:
                 QFontDatabase.addApplicationFont(str(tool_binary_dir() / "fonts" / style.filename))
 
     def set_theme(self, name: str) -> None:
@@ -468,6 +473,7 @@ class Theme(QObject):
         if choice == self._font_style or choice not in FONT_STYLE_NAMES:
             return
         old_level = self._font_size_level
+        self.ensure_font_registered(choice)
         self._font_style = choice
         app_settings.set_font_style_choice(choice)
         self.apply_to_app()
