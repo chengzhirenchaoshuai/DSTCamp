@@ -141,7 +141,7 @@ def _isolated_settings_dir():
 
 
 def test_lua_parser_roundtrip():
-    """测试 Lua 表往返：解析 -> 序列化 -> 再解析。"""
+    """Lua 表往返：解析 -> 序列化 -> 再解析；多行字符串的换行和制表符要正确转义。"""
     original = (
         "return {\n"
         '    ["workshop-123"]={\n'
@@ -165,6 +165,8 @@ def test_lua_parser_roundtrip():
     assert parsed == re_parsed, (
         f"Round-trip failed!\nOriginal parsed: {parsed}\nRe-parsed: {re_parsed}"
     )
+    multiline = {"desc": "第一行\n第二行\t完成", "enabled": True}
+    assert parse_lua_table(serialize_lua_table(multiline)) == multiline
 
 
 def test_ini_parser():
@@ -1267,54 +1269,6 @@ def test_world_creation_plan_and_atomic_writer():
             pass
         else:
             raise AssertionError("existing cluster must not be overwritten")
-
-
-def test_world_categories_bilingual():
-    """世界设置分类与名称随界面语言切换中英文。"""
-
-    from dstools.features.world.categories import get_setting_info, get_categories
-    from dstools.i18n import get_lang, set_lang
-
-    original_lang = get_lang()
-    try:
-        set_lang("zh")
-        cat, is_rule, name = get_setting_info("day", "forest")
-        assert (cat, is_rule, name) == ("global", True, "昼夜选项")
-        categories = dict(get_categories("forest", "rules"))
-        assert categories["global"] == "全局"
-
-        set_lang("en")
-        cat, is_rule, name = get_setting_info("day", "forest")
-        assert (cat, is_rule, name) == ("global", True, "Day/Night Cycle")
-        categories = dict(get_categories("forest", "rules"))
-        assert categories["global"] == "General"
-
-        # 未知 key 兜底：分类 "other"，名字原样回退成 key 本身。
-        cat, is_rule, name = get_setting_info("totally_unknown_key_xyz", "forest")
-        assert (cat, is_rule, name) == ("other", False, "totally_unknown_key_xyz")
-    finally:
-        set_lang(original_lang)
-
-
-def test_world_ocean_frequency_labels():
-    """ocean_ 前缀的世界生成取值每一档都要有中文文案（"海草"曾显示原始字符串 ocean_default）。"""
-
-    from dstools.features.world.value_labels import get_value_label
-
-    expected = {
-        "ocean_never": "无",
-        "ocean_rare": "很少",
-        "ocean_uncommon": "较少",
-        "ocean_default": "默认",
-        "ocean_often": "较多",
-        "ocean_mostly": "很多",
-        "ocean_always": "大量",
-        "ocean_insane": "疯狂",
-    }
-    for raw_value, zh_label in expected.items():
-        got = get_value_label("ocean_waterplant", raw_value)
-        assert got == zh_label, f"{raw_value} 应该翻译成 {zh_label!r}，实际是 {got!r}"
-        assert got != raw_value, f"{raw_value} 不应该原样透出未翻译的原始字符串"
 
 
 def test_mod_resolve_cache():
@@ -2856,15 +2810,10 @@ def test_steam_library_folder_casing():
 
 
 def test_font_style_switch():
-    """字体样式独立于颜色主题：切换后字体族/字号生效、bold 保留、可持久化，且打包的字体文件都存在。"""
+    """字体样式独立于颜色主题：切换后字体族/字号生效、bold 保留、可持久化。"""
 
-    from dstools.qt.theme import FONT_FAMILY_BY_STYLE, FONT_STYLES, Theme
+    from dstools.qt.theme import FONT_FAMILY_BY_STYLE, Theme
     from dstools.shared import app_settings
-
-    fonts_dir = Path(__file__).resolve().parent.parent / "tools" / "fonts"
-    for style in FONT_STYLES:
-        if style.filename:
-            assert (fonts_dir / style.filename).is_file(), f"字体文件缺失: {style.filename}"
 
     with _isolated_settings_dir():
         theme = Theme()

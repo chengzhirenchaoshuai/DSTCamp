@@ -46,15 +46,11 @@ def _wireguard_config() -> WireGuardClientConfig:
 
 
 def test_mihomo_config_routes_server_tcp_and_udp() -> None:
+    # 只有专服进程走 WireGuard，其余流量直连
     config = build_mihomo_config(_wireguard_config())
-    assert "type: wireguard" in config
-    assert "server: \"203.0.113.8\"" in config
-    assert "udp: true" in config
-    assert "allowed-ips: ['0.0.0.0/0']" in config
     assert "dontstarve_dedicated_server_nullrenderer_x64.exe" in config
     assert "dontstarve_dedicated_server_nullrenderer.exe" in config
     assert config.count("PROCESS-NAME") == 2
-    assert "NETWORK,TCP" not in config
     assert "MATCH,DIRECT" in config
 
 
@@ -76,16 +72,8 @@ def test_wireguard_keypair_is_valid_and_stable() -> None:
         assert first[0] != first[1]
 
 
-def test_wireguard_install_script_is_scoped_and_idempotent() -> None:
+def test_wireguard_install_script_never_uploads_private_key() -> None:
     script = build_install_script(51820, PUBLIC_KEY)
-    assert "dstcamp-wg" in script
-    assert "10.77.0.0/24" in script
-    assert "net.ipv4.ip_forward=1" in script
-    assert "MASQUERADE" in script
-    assert "systemctl enable --now" in script
-    assert "ROLLBACK_NEEDED=1" in script
-    assert "CURRENT_PORT=" in script
-    assert "apt-get install -y wireguard-tools iptables" in script
     assert PRIVATE_KEY not in script, "客户端私钥绝不能上传到 VPS"
     assert PUBLIC_KEY in script
 

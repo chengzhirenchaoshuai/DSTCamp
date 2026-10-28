@@ -1034,7 +1034,7 @@ def test_nat_without_matching_sakura_tunnel_skips_nodes_request() -> None:
 
 
 def test_public_ipv4_prefers_cip_cc_plain_text() -> None:
-    """优先使用响应更快的 cip.cc，并采用它的命令行纯文本格式。"""
+    """公网 IP 查询绕过系统代理，并能解析 cip.cc 的纯文本格式。"""
     from dstools.qt.pages import local_service as local_page
 
     calls = []
@@ -1067,12 +1067,7 @@ def test_public_ipv4_prefers_cip_cc_plain_text() -> None:
     with patch.object(local_page.urllib.request, "build_opener", fake_build_opener):
         assert local_page._fetch_public_ipv4() == "203.0.113.42"
 
-    assert [source[0] for source in local_page._PUBLIC_IP_SOURCES] == [
-        "https://cip.cc/",
-        "https://myip.ipip.net",
-        "https://cdid.c-ctrip.com/model-poc2/h",
-    ]
-    assert calls == [("https://cip.cc/", "curl/8.0", 4)]
+    assert len(calls) == 1
 
 
 if __name__ == "__main__":

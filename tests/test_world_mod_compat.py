@@ -63,9 +63,7 @@ from dstools.models import ModEntry, SaveSource  # noqa: E402
 from dstools.shared.lua_parser import (  # noqa: E402
     LuaParseError,
     parse_lua_file,
-    parse_lua_table,
     parse_lua_value,
-    serialize_lua_table,
 )
 from _harness import run  # noqa: E402
 
@@ -425,11 +423,6 @@ def test_island_cross_shard_reuses_verified_vanilla_template() -> None:
     assert tab._plan_caves is not forest
     assert tab._plan_caves.overrides == forest.overrides
     assert tab._plan_caves.level_data == forest.level_data
-
-
-def test_lua_multiline_roundtrip() -> None:
-    original = {"desc": "第一行\n第二行\t完成", "enabled": True}
-    assert parse_lua_table(serialize_lua_table(original)) == original
 
 
 def test_lua_file_strips_klei_persistent_string_header() -> None:
