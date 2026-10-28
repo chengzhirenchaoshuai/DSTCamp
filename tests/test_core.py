@@ -2155,6 +2155,31 @@ def test_backup_manager_restore_clears_stale_slots():
         ).read_text() == "[NETWORK]\nserver_port=1\n"
 
 
+def test_reset_worlds_only_removes_sessions():
+    """离线重置世界只删各世界 save/session/ 下的会话，shardindex 与配置文件保留（同官方 ShardIndex:Delete(cb, true)）。"""
+    from dstools.features.save_browser.world_reset import reset_worlds, shards_with_sessions
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cluster = Path(tmp) / "Cluster_1"
+        for shard, session_id in (("Master", "48AA04095102666C"), ("Caves", "07803E27BB6F0C05")):
+            save = cluster / shard / "save"
+            (save / "session" / session_id / "KU_test_").mkdir(parents=True)
+            (save / "session" / session_id / "0000000002").write_text("slot")
+            (save / "shardindex").write_text("index")
+            (cluster / shard / "server.ini").write_text("[SHARD]\n")
+            (cluster / shard / "leveldataoverride.lua").write_text("return {}")
+        (cluster / "Empty" / "save" / "session").mkdir(parents=True)  # 还没生成过世界的世界
+        (cluster / "Empty" / "server.ini").write_text("[SHARD]\n")
+
+        assert shards_with_sessions(cluster) == ["Caves", "Master"]
+        assert reset_worlds(cluster) == ["Caves", "Master"]
+        assert shards_with_sessions(cluster) == []
+        for shard in ("Master", "Caves"):
+            assert not any((cluster / shard / "save" / "session").iterdir())
+            assert (cluster / shard / "save" / "shardindex").read_text() == "index"
+            assert (cluster / shard / "leveldataoverride.lua").exists()
+
+
 def test_save_bundle_contains_complete_cluster():
     """分享包应保留存档根目录，并包含备份功能会主动跳过的日志等文件。"""
 
