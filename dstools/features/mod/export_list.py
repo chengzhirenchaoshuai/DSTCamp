@@ -52,7 +52,7 @@ def collect_export_data(mod_ids, folders: dict, platform) -> tuple[list[ExportMo
     from dstools.features.mod.icons import get_mod_icon_path, load_mod_icon_image
     from dstools.features.mod.list_model import mod_name_cmp
     from dstools.features.mod.local_version import resolve_local_mod_version
-    from dstools.features.mod.parser import parse_modinfo
+    from dstools.features.mod.parser import engine_folder_name, parse_modinfo
 
     def one(mod_id):
         folder = folders.get(mod_id)
@@ -64,7 +64,7 @@ def collect_export_data(mod_ids, folders: dict, platform) -> tuple[list[ExportMo
                 info = None
         if info is not None:
             try:
-                resolved = resolve_local_mod_version(str(mod_id), folder, str(info.workshop_id))
+                resolved = resolve_local_mod_version(str(mod_id), folder, engine_folder_name(folder))
                 if resolved.name_status == "confirmed":
                     info.name = resolved.name
                 if resolved.icon_status == "confirmed":

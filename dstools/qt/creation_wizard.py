@@ -28,7 +28,7 @@ from dstools.features.mod.icons import get_mod_icon_path, load_mod_icon_image
 from dstools.features.mod.list_model import build_mod_rows, localize_mod_name, sort_mod_data
 from dstools.features.mod.locations import resolve_mod_open_location
 from dstools.features.mod.parser import (
-    find_mod_folder, list_installed_mod_ids, parse_modinfo, resolve_wegame_client_mods_dir,
+    engine_folder_name, find_mod_folder, list_installed_mod_ids, parse_modinfo, resolve_wegame_client_mods_dir,
     split_installed_mod_counts,
 )
 from dstools.features.save_browser.cluster_copy import suggest_new_cluster_name
@@ -1040,7 +1040,7 @@ class CreationWizardDialog(QDialog):
         for mod_id, info in self._mod_infos.items():
             folder = self._mod_paths.get(mod_id)
             if info and folder and info.version_status == "pending":
-                targets.append((mod_id, folder, info.workshop_id))
+                targets.append((mod_id, folder, engine_folder_name(folder)))
         if not targets:
             return
         platform = self._mod_scan_platform

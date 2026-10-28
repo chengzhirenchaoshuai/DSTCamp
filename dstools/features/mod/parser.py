@@ -551,6 +551,13 @@ def _workshop_id_from_folder(mod_folder: Path) -> str:
     )
 
 
+def engine_folder_name(mod_folder: Path) -> str:
+    """引擎注入 modinfo.lua 的 ``folder_name``：V2 工坊目录（纯数字）是 ``workshop-<id>``，
+    其余（``workshop-<id>`` 或手动放进 mods 的本地 Mod，如 ``Chinese-Pro``）就是目录名本身。"""
+    name = Path(mod_folder).name
+    return f"workshop-{name}" if name.isascii() and name.isdigit() else name
+
+
 def parse_modinfo(mod_folder: Path) -> ModInfo | None:
     """解析一个 Mod 目录的 modinfo.lua，无法解析返回 None。"""
     modinfo_path = mod_folder / "modinfo.lua"
@@ -1321,7 +1328,7 @@ def resolve_full_modinfo(mod_folder: Path, timeout: float | None = None) -> dict
         resolve_full_config_options,
     )
 
-    folder_name = _workshop_id_from_folder(mod_folder)
+    folder_name = engine_folder_name(mod_folder)
     result = resolve_full_config_options(
         text, timeout=timeout or FULL_FILE_TIMEOUT, folder_name=folder_name
     )

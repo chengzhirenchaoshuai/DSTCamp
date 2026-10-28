@@ -36,7 +36,7 @@ from dstools.features.mod.manager import (
 )
 from dstools.features.mod.modinfo_cache import parse_modinfo_cached
 from dstools.features.mod.parser import (
-    find_game_mods_dir, find_wegame_client_dir, find_wegame_server_dir,
+    engine_folder_name, find_game_mods_dir, find_wegame_client_dir, find_wegame_server_dir,
     is_dedicated_server_mods_dir, list_installed_mod_ids, resolve_full_modinfo,
     resolve_wegame_client_mods_dir,
 )
@@ -813,7 +813,7 @@ class ModPage(Page):
                 # 静态解析不保证拿到版本号，统一收集后另起后台任务补齐。即使命中完整解析缓存也要收集：
                 # Mod 可能在运行期间被 Steam 更新；version_cache 按内容哈希判断，没变时立即返回
                 if mod_info and mod_folder and not full:
-                    version_targets.append((wid, mod_folder, mod_info.workshop_id))
+                    version_targets.append((wid, mod_folder, engine_folder_name(mod_folder)))
                 if mod_info and mod_folder:
                     # 这里只判断缓存是否有效；读图放到列表显示之后，Mod 多时能少挡几百毫秒
                     if known:

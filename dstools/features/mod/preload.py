@@ -15,7 +15,7 @@ from dstools.features.mod.icons import get_mod_icon_path
 from dstools.features.mod.legacy_v1 import find_legacy_packages, materialize_legacy_package_for_read
 from dstools.features.mod.local_version import apply_local_version, resolve_local_version_target
 from dstools.features.mod.modinfo_cache import parse_modinfo_cached
-from dstools.features.mod.parser import ModInfo, find_mod_folder, list_installed_mod_ids
+from dstools.features.mod.parser import ModInfo, engine_folder_name, find_mod_folder, list_installed_mod_ids
 from dstools.models import Platform
 
 # 沙箱每个 Mod 起一个子进程；比 Mod 页的 4 路并发低，避免刚启动时抢满 CPU、引来杀软集中扫描
@@ -114,7 +114,7 @@ def warm_mod_caches(
         except Exception:
             return None
 
-    version_targets = [(wid, folder, info.workshop_id) for wid, folder, info in targets]
+    version_targets = [(wid, folder, engine_folder_name(folder)) for wid, folder, info in targets]
     with ThreadPoolExecutor(max_workers=VERSION_WORKERS) as pool:
         for resolved in pool.map(resolve, version_targets):
             if resolved is not None:

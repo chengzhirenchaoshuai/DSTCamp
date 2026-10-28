@@ -96,7 +96,10 @@ def resolve_local_mod_version(
 ) -> LocalModVersion:
     """读取一个本地 Mod 的最终版本，优先使用内容指纹完全匹配的缓存。"""
     mod_folder = Path(mod_folder)
-    folder_name = folder_name or mod_folder.name
+    if not folder_name:
+        from dstools.features.mod.parser import engine_folder_name
+
+        folder_name = engine_folder_name(mod_folder)
     modinfo_path = mod_folder / "modinfo.lua"
     cached = load_version_result(str(workshop_id), modinfo_path, folder_name)
     if cached is not None:
