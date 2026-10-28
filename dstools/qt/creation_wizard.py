@@ -1073,9 +1073,7 @@ class CreationWizardDialog(QDialog):
                     info.name = normalized.name
                 info.version = normalized.version
                 info.version_status = normalized.status
-                info.version_source = normalized.source
                 info.version_compatible = normalized.version_compatible
-                info.version_compatible_status = normalized.compatible_status
             self.ctx.mod_catalog.publish(platform, self._mod_infos, self._mod_paths, self._icon_imgs, client_mods_dir)
             self._render_list()
 

@@ -276,7 +276,6 @@ class SelfHostPanel(QWidget):
         self._lobby_accel_busy = False
         self._wireguard_deploying = False
         self._diagnostic_busy = False
-        self._diagnostic_session = None
         self._current_cluster = None
         self._any_mapped = False
         self._last_status: probe.ServerStatus | None = None
@@ -1388,7 +1387,6 @@ class SelfHostPanel(QWidget):
         if not dialogs.ask_yes_no(self.window(), t("selfhost.lobby_diag_title"), t("selfhost.lobby_diag_confirm")):
             return
         session = LobbyDiagnosticSession(cluster, self.lobby_accel.mihomo, ssh, mapped_ports)
-        self._diagnostic_session = session
 
         def cancel():
             session.cancel()
@@ -1423,7 +1421,6 @@ class SelfHostPanel(QWidget):
 
         def error(exc: Exception) -> None:
             self._diagnostic_busy = False
-            self._diagnostic_session = None
             progress.append(t("selfhost.lobby_diag_failed", detail=str(exc)))
             progress.finish()
             self._refresh_lobby_row()
@@ -1432,7 +1429,6 @@ class SelfHostPanel(QWidget):
 
     def _finish_lobby_diagnostic(self, progress, report) -> None:
         self._diagnostic_busy = False
-        self._diagnostic_session = None
         evidence = report.evidence
         remote = evidence.remote
         route = report.route

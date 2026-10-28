@@ -6,7 +6,7 @@
 
 import webbrowser
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget, QStyle, QVBoxLayout,
 )

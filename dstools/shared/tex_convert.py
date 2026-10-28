@@ -304,11 +304,6 @@ def launch_vcredist_installer() -> bool:
     return True
 
 
-def ktech_runtime_broken() -> bool:
-    """本次运行中 ktech 是否已因运行库加载失败而熔断。"""
-    return _runtime_broken
-
-
 def _run_ktech(exe: Path, args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     """启动 ktech 并等待结束；加载器级失败时置熔断标记。超时或启动失败抛 OSError/SubprocessError。"""
     global _runtime_broken

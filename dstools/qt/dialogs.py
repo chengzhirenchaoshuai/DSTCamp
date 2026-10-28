@@ -151,7 +151,7 @@ class MessageDialog(QDialog):
 
     def __init__(self, parent, kind: str, title: str, text: str, buttons: list[tuple[str, object, str]],
                  default=None, escape=None, size: str = "sm", rich: bool = False,
-                 on_link=None, min_body_height: int = 0, auxiliary=None):
+                 on_link=None, min_body_height: int = 0):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
@@ -184,13 +184,6 @@ class MessageDialog(QDialog):
 
         row = QHBoxLayout()
         row.setSpacing(8)
-        if auxiliary is not None:
-            # 左下角辅助操作（如"下载 VC++ 2023"），点击只执行回调、不关闭弹窗。
-            aux_label, aux_callback = auxiliary
-            aux_btn = style_button(QPushButton(aux_label), "secondary")
-            aux_btn.setAutoDefault(False)
-            aux_btn.clicked.connect(lambda _c=False: aux_callback())
-            row.addWidget(aux_btn)
         left = [b for b in buttons if b[2] == "secondary"]
         right = [b for b in buttons if b[2] != "secondary"]
         for label, value, variant in left:
@@ -254,16 +247,6 @@ def ask_yes_no(parent, title: str, text: str, min_width: int = 0, danger: bool =
                (t("dlg.confirm_btn"), True, "danger" if danger else "primary")]
     return bool(MessageDialog(parent, "question", title, text, buttons, default=not danger, escape=False,
                               size=width_tier(min_width), rich=rich).ask())
-
-
-def ask_yes_no_with_auxiliary(parent, title: str, text: str, auxiliary_label: str,
-                              auxiliary_command, min_width: int = 0, danger: bool = False) -> bool:
-    """确认/取消，左下角多一个不关闭窗口的辅助按钮（如打开依赖下载页）。"""
-    buttons = [(t("dlg.cancel_btn"), False, "secondary"),
-               (t("dlg.confirm_btn"), True, "danger" if danger else "primary")]
-    return bool(MessageDialog(parent, "question", title, text, buttons, default=not danger, escape=False,
-                              size=width_tier(min_width),
-                              auxiliary=(auxiliary_label, auxiliary_command)).ask())
 
 
 def ask_choice(parent, title: str, text: str, choices: list[tuple[str, str]], default: str = "",

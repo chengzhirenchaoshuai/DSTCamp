@@ -138,7 +138,6 @@ class ModPage(Page):
         # SteamCMD「更新 Mod」窗口上次查完的列表：再次打开先显示它，后台照常复查后原地更新
         self.steamcmd_update_rows_snapshot: list = []
         self._steamcmd_pending_count: int | None = None  # SteamCMD 通道需要下载的 Mod 数；其它通道为 None
-        self._workshop_log_dialog = None
 
         # 与其他主页签相同的外壳：主题色圆角边框、内部透明
         page_layout = QVBoxLayout(self)

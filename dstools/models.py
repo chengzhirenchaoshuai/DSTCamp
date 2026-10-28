@@ -24,9 +24,7 @@ class SaveMetadata:
     day: int = 0
     season: str = ""
     days_in_season: float = 0.0
-    days_left_in_season: float = 0.0
     phase: str = ""
-    raw: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -48,23 +46,11 @@ class PlayerCharacterSave:
 
     player_id: str
     character: str = ""
-    slot_number: int | None = None
     save_file: Path | None = None
-    meta_file: Path | None = None
-    size: int = 0
-    x: float | None = None
-    z: float | None = None
     health: float | None = None
     sanity: float | None = None
-    sanity_sane: bool | None = None
     hunger: float | None = None
     temperature: float | None = None
-    moisture: float | None = None
-    age: float | None = None
-    skin_name: str = ""
-    clothing: dict = field(default_factory=dict)
-    recipes_count: int | None = None
-    raw: dict = field(default_factory=dict)
     parse_error: str = ""
 
 
@@ -179,7 +165,6 @@ class DSTEnvironment:
     user_id: str = ""
     wegame_user_id: str = ""
     clusters: list[Cluster] = field(default_factory=list)
-    client_config: Path | None = None
     accounts: list[Account] = field(default_factory=list)
     steam_active_account: str = ""            # Steam 客户端当前登录的账号 ID，Steam 未运行时为空
     steam_names: dict[str, str] = field(default_factory=dict)  # 本机登录过的 Steam 账号 ID -> 昵称

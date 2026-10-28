@@ -172,7 +172,7 @@ def resolve_legacy_package_version(workshop_id: int, archive_path: Path):
                 source_bytes.decode("utf-8", errors="replace"), folder_name=folder_name)
             if result is not None:
                 save_package_version_result(str(workshop_id), archive, source_bytes, folder_name, result)
-        resolved = normalize_version_result(result, "legacy_package")
+        resolved = normalize_version_result(result)
         with _PACKAGE_VERSION_CACHE_LOCK:
             _PACKAGE_VERSION_CACHE[key] = (*fingerprint, resolved)
         return resolved

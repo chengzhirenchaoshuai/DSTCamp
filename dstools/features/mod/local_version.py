@@ -40,14 +40,11 @@ def _normalize_field(result: Any) -> tuple[str, str]:
 
 @dataclass(frozen=True)
 class LocalModVersion:
-    """一次本地版本解析结果，同时保留显示值、比较值和证据来源。"""
+    """一次本地版本解析结果：显示值与可信状态。"""
 
     version: str = ""
     status: str = VERSION_UNRESOLVED
     version_compatible: str = ""
-    compatible_status: str = VERSION_UNRESOLVED
-    source: str = ""
-    # 追加在既有字段之后，保持历史代码按位置构造 LocalModVersion 的兼容性。
     name: str = ""
     name_status: str = VERSION_UNRESOLVED
     icon: str = ""
@@ -64,9 +61,7 @@ class LocalModVersion:
         )
 
 
-def normalize_version_result(
-    result: dict[str, Any] | None, source: str
-) -> LocalModVersion:
+def normalize_version_result(result: dict[str, Any] | None) -> LocalModVersion:
     """把双字段沙箱协议转换成稳定的领域对象。"""
     if not isinstance(result, dict):
         return LocalModVersion()
@@ -74,8 +69,7 @@ def normalize_version_result(
     icon, icon_status = _normalize_field(result.get("icon"))
     icon_atlas, icon_atlas_status = _normalize_field(result.get("icon_atlas"))
     version, status = _normalize_field(result.get("version"))
-    compatible, compatible_status = _normalize_field(result.get("version_compatible"))
-    trusted_source = source if status in (VERSION_CONFIRMED, VERSION_UNDECLARED) else ""
+    compatible, _ = _normalize_field(result.get("version_compatible"))
     return LocalModVersion(
         name=name,
         name_status=name_status,
@@ -86,8 +80,6 @@ def normalize_version_result(
         version=version,
         status=status,
         version_compatible=compatible,
-        compatible_status=compatible_status,
-        source=trusted_source,
     )
 
 
@@ -103,7 +95,7 @@ def resolve_local_mod_version(
     modinfo_path = mod_folder / "modinfo.lua"
     cached = load_version_result(str(workshop_id), modinfo_path, folder_name)
     if cached is not None:
-        return normalize_version_result(cached, "cache")
+        return normalize_version_result(cached)
     try:
         text = modinfo_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -113,7 +105,7 @@ def resolve_local_mod_version(
     result = resolve_mod_versions(text, folder_name=folder_name)
     if result is not None:
         save_version_result(str(workshop_id), modinfo_path, folder_name, result)
-    return normalize_version_result(result, "sandbox")
+    return normalize_version_result(result)
 
 
 def resolve_local_version_target(target) -> tuple[str, LocalModVersion]:
@@ -134,6 +126,4 @@ def apply_local_version(info, version: LocalModVersion) -> None:
         info.icon_atlas = version.icon_atlas
     info.version = version.version
     info.version_status = version.status
-    info.version_source = version.source
     info.version_compatible = version.version_compatible
-    info.version_compatible_status = version.compatible_status

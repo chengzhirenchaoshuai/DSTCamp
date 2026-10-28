@@ -198,9 +198,6 @@ def _scan_platform_root(env: DSTEnvironment, root: Path | None, platform: Platfo
         env.user_id = current
         env.steam_active_account = active
         env.steam_names = names
-        client_ini = user_root / current / "client.ini" if current and user_root is not None else None
-        if client_ini is not None and client_ini.exists():
-            env.client_config = client_ini
     else:
         # WeGame 版用户 ID 单独存一份（状态栏按存档类型切换显示）
         env.wegame_user_id = current

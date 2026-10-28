@@ -157,9 +157,7 @@ class ModInfo:
     # 版本只信任完整沙箱执行后的最终值：pending/confirmed/undeclared/unresolved；
     # 静态解析到的 version 保留但不能冒充 confirmed
     version_status: str = "pending"
-    version_source: str = ""
     version_compatible: str = ""
-    version_compatible_status: str = "pending"
     description: str = ""
     workshop_id: str = ""  # 从文件夹名派生
     icon: str = ""  # 例如 "modicon.tex"，相对于 icon_atlas 所在文件夹

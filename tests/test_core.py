@@ -266,7 +266,7 @@ def test_discovery():
         assert env.klei_root == custom and env.client_klei_root == root
         assert [c.name for c in env.clusters if c.source == SaveSource.SERVER] == ["Remote"]
         assert [c.name for c in env.clusters if c.source == SaveSource.LOCAL] == ["Shared"]
-        assert env.user_id == "123456" and env.client_config == root / "123456" / "client.ini"
+        assert env.user_id == "123456"
 
 
 def test_pick_current_account():
@@ -373,10 +373,8 @@ def test_list_session_players():
         )
         assert good.character == "wilson"
         assert good.health == 120
-        assert good.sanity == 150 and good.sanity_sane is True
+        assert good.sanity == 150
         assert good.hunger == 100
-        assert good.age == 42
-        assert good.x == 100.5 and good.z == -50.25
 
         bad = by_id["A7BADPLAYER0"]
         assert bad.parse_error, "Corrupt player should have parse_error set"
@@ -403,7 +401,7 @@ def test_list_session_players():
         assert not empty_latest.parse_error, (
             f"Should fall back to slot 10, got: {empty_latest.parse_error}"
         )
-        assert empty_latest.slot_number == 10
+        assert empty_latest.save_file.name == "0000000010"
         assert empty_latest.health == 88
 
 
@@ -1433,14 +1431,12 @@ def test_mod_version_resolution():
         "version": {"declared": True, "value": "1.2.3-final"},
         "version_compatible": {"declared": True, "value": "1.2"},
     }
-    normalized = normalize_version_result(result, "sandbox")
+    normalized = normalize_version_result(result)
     assert normalized.name == "Dynamic Mod"
     assert normalized.name_status == VERSION_CONFIRMED
     assert normalized.version == "1.2.3-final"
     assert normalized.status == VERSION_CONFIRMED
     assert normalized.version_compatible == "1.2"
-    assert normalized.compatible_status == VERSION_CONFIRMED
-    assert normalized.source == "sandbox"
 
     conditional = resolve_mod_versions(
         'version = folder_name == "workshop-123" and "workshop" or "local"',
@@ -1449,18 +1445,16 @@ def test_mod_version_resolution():
     assert conditional["version"] == {"declared": True, "value": "workshop"}
 
     assert resolve_mod_versions('version = "temporary"\nmissing_engine_api()') is None
-    assert normalize_version_result(None, "sandbox").status == VERSION_UNRESOLVED
+    assert normalize_version_result(None).status == VERSION_UNRESOLVED
 
     undeclared = resolve_mod_versions('name = "No Version"')
-    undeclared_result = normalize_version_result(undeclared, "sandbox")
+    undeclared_result = normalize_version_result(undeclared)
     assert undeclared_result.status == VERSION_UNDECLARED
-    assert undeclared_result.compatible_status == VERSION_UNDECLARED
     invalid = normalize_version_result(
         {
             "version": {"declared": True, "value": True},
             "version_compatible": {"declared": False},
         },
-        "sandbox",
     )
     assert invalid.status == VERSION_UNRESOLVED
 
@@ -1469,7 +1463,6 @@ def test_mod_version_resolution():
             "version": {"declared": True, "value": " V1.2.3 "},
             "version_compatible": {"declared": False},
         },
-        "sandbox",
     )
     assert fallback.compare_version == "v1.2.3"
     assert normalize_version_for_compare(" V1.2.3 ") == "v1.2.3"
@@ -1478,7 +1471,6 @@ def test_mod_version_resolution():
             "version": {"declared": True, "value": "0.0.6  --版本"},
             "version_compatible": {"declared": False},
         },
-        "sandbox",
     )
     assert commented.version == "0.0.6"
 
@@ -2959,7 +2951,7 @@ def test_ktech_broken_runtime_fails_without_dialog():
             dll.write_bytes(dll.read_bytes()[:4096])
             result = tex_convert._run_ktech(runtime_dir / "ktech.exe", ["input.tex"], runtime_dir)
             assert (result.returncode & 0xFFFFFFFF) == 0xC000007B
-            assert tex_convert.ktech_runtime_broken() is True
+            assert tex_convert._runtime_broken is True
             assert tex_convert.tex_to_png(runtime_dir / "coder.xml", Path(tmp) / "out.png") is False
             assert kernel32.GetErrorMode() == 0
     finally:

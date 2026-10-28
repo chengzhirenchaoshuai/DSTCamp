@@ -144,7 +144,7 @@ def parse_callback(path: str, expected_state: str) -> str:
 
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):  # noqa: N802（http.server 约定的方法名）
+    def do_GET(self):  # noqa: N802  http.server 约定的方法名
         server = self.server
         try:
             server.result_code = parse_callback(self.path, server.expected_state)

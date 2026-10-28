@@ -40,7 +40,7 @@ def _read_meta_file(meta_path: Path) -> SaveMetadata | None:
     except Exception:
         return None
 
-    metadata = SaveMetadata(raw=raw)
+    metadata = SaveMetadata()
 
     clock = raw.get("clock", {})
     if isinstance(clock, dict):
@@ -51,7 +51,6 @@ def _read_meta_file(meta_path: Path) -> SaveMetadata | None:
     if isinstance(seasons, dict):
         metadata.season = seasons.get("season", "")
         metadata.days_in_season = seasons.get("elapseddaysinseason", 0)
-        metadata.days_left_in_season = seasons.get("remainingdaysinseason", 0)
 
     return metadata
 
@@ -168,6 +167,15 @@ def _read_player_slot_table(path: Path) -> dict:
     return parse_lua_table(text, str(path))
 
 
+# 角色状态：(属性名, 存档里的组件名, 组件内的数值键)
+_PLAYER_STATS = (
+    ("health", "health", "health"),
+    ("sanity", "sanity", "current"),
+    ("hunger", "hunger", "hunger"),
+    ("temperature", "temperature", "current"),
+)
+
+
 def list_session_players(session: SaveSession) -> list[PlayerCharacterSave]:
     """列出存档会话里每个玩家的最新角色状态。
 
@@ -195,51 +203,18 @@ def list_session_players(session: SaveSession) -> list[PlayerCharacterSave]:
             non_empty = [f for f in slot_files if f.stat().st_size > 0]
             latest = non_empty[-1] if non_empty else slot_files[-1]
             meta_path = entry / f"{latest.name}.meta"
-            player.slot_number = int(latest.name)
             player.save_file = latest
-            player.size = latest.stat().st_size
 
             if meta_path.exists():
-                player.meta_file = meta_path
                 meta_table = parse_lua_file(meta_path)
                 player.character = meta_table.get("character", "")
 
-            table = _read_player_slot_table(latest)
-            player.raw = table
-            player.x = table.get("x")
-            player.z = table.get("z")
-            data = table.get("data")
+            data = _read_player_slot_table(latest).get("data")
             if isinstance(data, dict):
-                health = data.get("health")
-                if isinstance(health, dict):
-                    player.health = health.get("health")
-                sanity = data.get("sanity")
-                if isinstance(sanity, dict):
-                    player.sanity = sanity.get("current")
-                    player.sanity_sane = sanity.get("sane")
-                hunger = data.get("hunger")
-                if isinstance(hunger, dict):
-                    player.hunger = hunger.get("hunger")
-                temperature = data.get("temperature")
-                if isinstance(temperature, dict):
-                    player.temperature = temperature.get("current")
-                moisture = data.get("moisture")
-                if isinstance(moisture, dict):
-                    player.moisture = moisture.get("moisture")
-                age = data.get("age")
-                if isinstance(age, dict):
-                    player.age = age.get("age")
-                skinner = data.get("skinner")
-                if isinstance(skinner, dict):
-                    player.skin_name = skinner.get("skin_name", "")
-                    clothing = skinner.get("clothing")
-                    if isinstance(clothing, dict):
-                        player.clothing = clothing
-                builder = data.get("builder")
-                if isinstance(builder, dict):
-                    recipes = builder.get("recipes")
-                    if isinstance(recipes, dict):
-                        player.recipes_count = len(recipes)
+                for attr, component, key in _PLAYER_STATS:
+                    value = data.get(component)
+                    if isinstance(value, dict):
+                        setattr(player, attr, value.get(key))
         except Exception as e:
             player.parse_error = str(e)
         players.append(player)
