@@ -32,6 +32,7 @@ from dstools.qt.theme import theme
 from dstools.shared.clipboard import copy_file_to_clipboard
 
 _COMMAND_HISTORY_LIMIT = 100
+_CONSOLE_MAX_LINES = 5000  # 每个世界控制台保留的最近行数
 _SEARCH_HISTORY_LIMIT = 20
 _SEARCH_HIGHLIGHT = "#ffd54f"
 _SEARCH_HIGHLIGHT_CURRENT = "#ff9800"
@@ -438,7 +439,9 @@ class ConsolePane(QWidget):
 
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
-        self.text.setMaximumBlockCount(20_000)
+        # 真实专服日志实测：每 2 万行约 27 MB、5000 行约 8 MB，五分片长时间运行差出上百 MB；
+        # 完整日志在各世界的 server_log.txt，这里只留最近的供查看和 Ctrl+F 搜索
+        self.text.setMaximumBlockCount(_CONSOLE_MAX_LINES)
         self.text.setFont(theme.font("FONT_SIZE_SM"))
         outer.addWidget(self.text, 1)
 
