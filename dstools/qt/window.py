@@ -48,6 +48,7 @@ from dstools.shared.resource_paths import bundled_resource_dir
 from dstools.shared.single_instance import activate_message_id, version_code
 
 TAB_KEYS = ["local", "world", "mods", "server", "saves", "sakura"]
+_EAGER_PAGE_KEYS = ("local", "sakura")  # 带后台监督逻辑、启动就要建好的页
 BASE_W, BASE_H = 1600, 900  # 默认尺寸（逻辑像素，Qt 自动按显示器缩放，不需要 DPI 补丁）
 MIN_W, MIN_H = 960, 540
 ASPECT = BASE_W / BASE_H
@@ -782,12 +783,29 @@ class MainWindow(QWidget):
 
     # ── 装配 ────────────────────────────────────────────────────────────
     def _build_pages(self) -> None:
+        """专服页、穿透页带着开服/frpc 监督逻辑，启动就建；其余页先放空白占位，第一次切过去才建，
+        省下启动时间和常驻内存（云服务器用户多半只开服不碰其它页）。self.pages 只登记已建好的页。"""
         for key in TAB_KEYS:
-            page = self._make_page(key)
-            self.pages[key] = page
-            self.stack.addWidget(page)
+            if key in _EAGER_PAGE_KEYS:
+                page = self._make_page(key)
+                self.pages[key] = page
+                self.stack.addWidget(page)
+            else:
+                self.stack.addWidget(QWidget())
         self.current_page().load()
         self._fit_chrome_to_height()  # 窗口尺寸在页面建好之前就定了，这里补判一次
+
+    def _ensure_page(self, key: str):
+        page = self.pages.get(key)
+        if page is None:
+            index = TAB_KEYS.index(key)
+            placeholder = self.stack.widget(index)
+            page = self._make_page(key)
+            self.pages[key] = page
+            self.stack.insertWidget(index, page)
+            self.stack.removeWidget(placeholder)
+            placeholder.deleteLater()
+        return page
 
     def _make_page(self, key: str):
         page_cls = {
@@ -802,11 +820,11 @@ class MainWindow(QWidget):
         self._on_tab_changed(index)
 
     def current_page(self):
-        return self.pages[TAB_KEYS[self.tabbar.current_index()]]
+        return self._ensure_page(TAB_KEYS[self.tabbar.current_index()])
 
     def _on_tab_changed(self, index: int) -> None:
+        page = self._ensure_page(TAB_KEYS[index])
         self.stack.setCurrentIndex(index)
-        page = self.current_page()
         if page.stale:
             page.load()
 
@@ -833,7 +851,7 @@ class MainWindow(QWidget):
             selected = self.ctx.selected_cluster()
             if selected is None or str(selected.path) != str(cluster.path):
                 return True
-        keys = [key for key in TAB_KEYS if self.pages[key].has_unsaved_changes()]
+        keys = [key for key in TAB_KEYS if key in self.pages and self.pages[key].has_unsaved_changes()]
         if not keys:
             return True
         sep = "、" if get_lang() == "zh" else ", "
