@@ -107,14 +107,33 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.7.7 changes
+## 1.7.8 changes
 
 ### ✨ New features
+
+- **Hosting setup**: on first launch, choose "Host on my own PC" or "Host on a cloud server" (changeable later in "Settings → Hosting Setup..."); it now decides the server program and channel. The "Auto" server program option, "Settings → Advanced", and the SteamCMD recommendation banner are removed.
+- **Custom server save directory**: the Settings menu gains "Server Save Folder..." to set it, restore automatic detection, or open it; servers also start when saves are outside the default location, including on a different drive from "Documents". Accounts and local saves are still read from the game's default location.
+- The "Switch Program" window uses card layout, the install guide is simpler, and F5 re-detects; "Add Mod Junction" is hidden when hosting with the Bundled Server.
+- Log bundles include client logs from the hosting PC covering the same time period.
+
+### 🐞 Fixes
+
+- The three-in-one Mod moved to "four Mods + a standalone patch (3826855460)" and no longer worked the old way: enabling the patch now brings in Island Adventures Core, Shipwrecked, Above the Clouds, and their patches, with five world types and a five-shard layout.
+- With no server program found, clicking "Start" or "Switch Program" raised an error instead of showing the install guide.
+- Saving settings failed when the file was briefly locked (WinError 5), interrupting actions such as switching scenarios.
+- Message boxes with many buttons cut off their text; some Mod configuration group titles were not translated (e.g. Uncompromising Mode's Mod Compatibility).
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.7.7)</strong></summary>
+
+### 1.7.7
+
+#### ✨ New features
 
 - The Mod list shows Chinese names provided by Chinese++ Pro; search matches both the Chinese and original names.
 - Log bundles include frpc output and note each world's tunnel type, to help diagnose disconnects.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - Dedicated servers installed in a Steam library were mistaken for SteamCMD installs.
 - SteamCMD updates stayed stuck after a 0x6 failure: the stuck manifest is now cleared before the next update, keeping downloaded progress.
@@ -122,9 +141,6 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 - After cleanup tools deleted temporary files, background tasks kept popping up "Failed to start embedded python interpreter!"; a banner now asks you to restart DSTCamp.
 
 Thanks to @Lovedmo for fixing the SteamCMD issues (#3).
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.7.6)</strong></summary>
 
 ### 1.7.6
 
