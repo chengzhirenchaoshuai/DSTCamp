@@ -8,7 +8,6 @@
 只服务可编辑的"世界规则"，"世界生成"见 GEN_VALUE_SETS。
 """
 
-DEFAULT_SET = ["never", "rare", "default", "often", "always"]
 WORLDGEN_FREQUENCY_SET = [
     "never", "rare", "uncommon", "default", "often", "mostly", "always", "insane",
 ]
@@ -161,8 +160,7 @@ VALUE_SETS = {
     # ══════════ 洞穴-世界规则（森林没有的专属 key，按 CAVE_RULES_DICT 顺序） ══════════
     # 世界|world
     "earthquakes": ["never", "rare", "default", "often", "always"],
-    # 用户核实：从不(未实测，按同类设置推断是 never)/rare/default/often/always，
-    # 和 DEFAULT_SET 的原始值顺序一样，只是这个 key 中文文案不同(从不/稀有/常见)
+    # 取值同常规五档，只是中文文案不同（从不/稀有/常见）
     "wormattacks_boss": ["never", "rare", "default", "often", "always"],
     "wormattacks": ["never", "rare", "default", "often", "always"],
     "rifts_enabled_cave": ["never", "default", "always"],

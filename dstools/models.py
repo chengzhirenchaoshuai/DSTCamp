@@ -117,7 +117,6 @@ class Shard:
     name: str
     path: Path
     config: ShardConfig | None = None
-    saves: list[SaveSession] = field(default_factory=list)
     mod_overrides_path: Path | None = None
     leveldata_path: Path | None = None
 

@@ -31,7 +31,7 @@ from dstools.qt.selfhost_panel import SelfHostPanel
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.tool_download import download_tool_with_dialog
-from dstools.qt.widgets import AutoHideLabel, Card, PillTabBar, VScrollArea, section_card
+from dstools.qt.widgets import AutoHideLabel, Card, PillTabBar, VScrollArea, clear_layout, section_card
 from dstools.shared import app_settings, tool_store
 from dstools.qt.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
 from dstools.shared.server_ports import stable_path_key
@@ -467,18 +467,8 @@ class _SakuraMappingPanel(QWidget):
         for label, value in zip(self._account_value_labels, values):
             label.setText(str(value))
 
-    def _clear_shards_grid(self) -> None:
-        while self._shards_grid.count():
-            item = self._shards_grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-        # deleteLater() 只是排队销毁，旧控件会和新建行重叠；hide() + setParent(None) 立即同步摘除
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
-
     def _render_shard_placeholders(self, status_text: str | None = None) -> None:
-        self._clear_shards_grid()
+        clear_layout(self._shards_grid)
         cluster = self._current_cluster
         text = status_text if status_text is not None else t("sakura.loading")
         if not cluster:
@@ -521,7 +511,7 @@ class _SakuraMappingPanel(QWidget):
         return next((item for item in tunnels if str(item.get("id", "")).isdigit() and int(item["id"]) == tunnel_id), None)
 
     def _render_shard_rows(self) -> None:
-        self._clear_shards_grid()
+        clear_layout(self._shards_grid)
         cluster = self._current_cluster
         if not cluster:
             self._shards_grid.addWidget(QLabel(t("local.select_cluster_first")), 0, 0)

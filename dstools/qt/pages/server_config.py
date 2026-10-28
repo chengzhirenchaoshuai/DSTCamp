@@ -30,7 +30,7 @@ from dstools.qt.forms import FormGrid
 from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import Banner, Card, PillTabBar
+from dstools.qt.widgets import Banner, Card, PillTabBar, clear_layout
 from dstools.shared.server_ports import (
     collect_cluster_port_claims, format_lan_port_issues, lan_restriction_names,
     rewrite_lan_server_ports_atomic, scan_udp_ports,
@@ -458,12 +458,7 @@ class ServerConfigPage(Page):
         self._token.load(cluster)
 
     def _clear_cluster_form(self) -> None:
-        while self._cluster_layout.count():
-            widget = self._cluster_layout.takeAt(0).widget()
-            if widget is not None:
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
+        clear_layout(self._cluster_layout)
         self._cluster_grids = []
 
     def _rebuild_cluster_form(self, cluster, local_server: dict | None = None) -> None:
@@ -496,12 +491,7 @@ class ServerConfigPage(Page):
         self._rebuild_shard_form()
 
     def _clear_shard_form(self) -> None:
-        while self._shard_inner_layout.count():
-            widget = self._shard_inner_layout.takeAt(0).widget()
-            if widget is not None:
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
+        clear_layout(self._shard_inner_layout)
         self._shard_grid = None
         self._shard_form = None
 
@@ -516,12 +506,7 @@ class ServerConfigPage(Page):
 
     def _render_shard_form(self) -> None:
         form = self._shard_form
-        while self._shard_inner_layout.count():
-            widget = self._shard_inner_layout.takeAt(0).widget()
-            if widget is not None:
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
+        clear_layout(self._shard_inner_layout)
         card = Card(radius=18, alpha=0, border_key="PRIMARY", border=True)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(14, 8, 14, 12)

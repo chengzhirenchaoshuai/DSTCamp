@@ -28,7 +28,7 @@ from dstools.models import SaveSource
 from dstools.qt import dialogs, frpc_tool
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
-from dstools.qt.widgets import AutoHideLabel, PillTabBar, ToggleSwitch, section_card
+from dstools.qt.widgets import AutoHideLabel, PillTabBar, ToggleSwitch, clear_layout, section_card
 from dstools.shared import app_settings
 from dstools.qt.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping
 from dstools.shared.frpc_log import FrpcOutputLog
@@ -742,23 +742,12 @@ class SelfHostPanel(QWidget):
             self._run_probe(reschedule=False)
         self._refresh_lobby_row()
 
-    def _clear_shards_grid(self) -> None:
-        while self._shards_grid.count():
-            item = self._shards_grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                # 立即隐藏并摘掉父级，不等 deleteLater() 真正执行——见 qt/pages/sakura.py
-                # 同名方法的说明，两处是同一个坑。
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
-
     @staticmethod
     def _is_master_shard(shard) -> bool:
         return load_shard_config(shard.path).shard.get("is_master", True)
 
     def _render_shard_rows(self) -> None:
-        self._clear_shards_grid()
+        clear_layout(self._shards_grid)
         self._status_error_label.setText("")
         cluster = self._current_cluster
         if not cluster or cluster.source != SaveSource.SERVER or not cluster.shards:

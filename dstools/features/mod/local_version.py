@@ -10,7 +10,6 @@ from typing import Any
 from dstools.features.mod.version_cache import load_version_result, save_version_result
 
 
-VERSION_PENDING = "pending"
 VERSION_CONFIRMED = "confirmed"
 VERSION_UNDECLARED = "undeclared"
 VERSION_UNRESOLVED = "unresolved"

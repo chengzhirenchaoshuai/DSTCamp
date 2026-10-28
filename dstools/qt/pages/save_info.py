@@ -31,7 +31,7 @@ from dstools.qt.lan_mapping_guard import mapping_method_names
 from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async, run_async_with_log
-from dstools.qt.widgets import Card, FrostedMenu, MenuTextItem
+from dstools.qt.widgets import Card, FrostedMenu, MenuTextItem, clear_layout
 from dstools.shared.app_settings import set_player_note
 from dstools.shared.clipboard import copy_file_to_clipboard
 
@@ -273,12 +273,7 @@ class SaveInfoPage(Page):
         self._session_lines[index].setVisible(True)
 
     def _clear_rows(self) -> None:
-        while self._rows_layout.count() > 1:  # 最后一项是撑开底部的 stretch
-            widget = self._rows_layout.takeAt(0).widget()
-            if widget is not None:
-                widget.hide()
-                widget.setParent(None)  # 立刻脱离控件树，不等延迟删除
-                widget.deleteLater()
+        clear_layout(self._rows_layout, keep_last=1)  # 最后一项是撑开底部的 stretch
 
     def _add_row_message(self, text: str) -> None:
         label = _label(text, size_key="FONT_SIZE_BASE")

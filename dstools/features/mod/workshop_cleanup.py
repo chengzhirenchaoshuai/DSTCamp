@@ -132,6 +132,7 @@ def delete_legacy_runtime_residual(
         discover_legacy_runtime_roots,
         find_legacy_package_ids,
         running_dst_processes,
+        same_location,
     )
 
     text_id = str(int(workshop_id))
@@ -143,7 +144,7 @@ def delete_legacy_runtime_residual(
         if context is not None
         else tuple(discover_legacy_runtime_roots())
     )
-    if not any(_same_location(candidate.parent, root) for root in roots):
+    if not any(same_location(candidate.parent, root) for root in roots):
         raise ValueError("V1 残留目录不在标准 mods 路径内")
     if candidate.name != f"workshop-{text_id}":
         raise ValueError("V1 残留目录名称不符合规范")
@@ -194,15 +195,6 @@ def delete_legacy_runtime_residual(
     deleted = candidate.resolve()
     shutil.rmtree(candidate)
     return deleted
-
-
-def _same_location(left: Path, right: Path) -> bool:
-    try:
-        return os.path.samefile(left, right)
-    except OSError:
-        return os.path.normcase(str(left.resolve(strict=False))) == os.path.normcase(
-            str(right.resolve(strict=False))
-        )
 
 
 @dataclass(frozen=True)

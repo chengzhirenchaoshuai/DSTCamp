@@ -35,15 +35,11 @@ class SteamUpdateState:
     """更新观察状态常量，字符串便于日志和 UI 直接展示。"""
 
     UNAVAILABLE = "unavailable"
-    STEAM_NOT_RUNNING = "steam_not_running"
     APP_NOT_INSTALLED = "app_not_installed"
-    REQUESTED = "requested"
     DOWNLOADING = "downloading"
     VERIFYING = "verifying"
     UP_TO_DATE = "up_to_date"
     UPDATED = "updated"
-    FAILED = "failed"
-    TIMEOUT = "timeout"
 
 
 def action_for_snapshot(

@@ -87,6 +87,19 @@ class Card(QWidget):
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
 
 
+def clear_layout(layout, keep_last: int = 0) -> None:
+    """移除并销毁布局里的控件，保留末尾 keep_last 项（如撑底的弹簧）。
+
+    坑：只 deleteLater() 时旧控件要等回到事件循环才消失，期间会和新建的行重叠、占着尺寸；
+    必须先 hide() + setParent(None) 同步摘除。"""
+    while layout.count() > keep_last:
+        widget = layout.takeAt(0).widget()
+        if widget is not None:
+            widget.hide()
+            widget.setParent(None)
+            widget.deleteLater()
+
+
 def section_card(title: str | None = None) -> tuple[Card, QVBoxLayout]:
     """带可选标题的内容分区卡片，样式跟存档信息页"玩家概览"卡片一致；
     返回 (卡片, 卡片内的纵向布局)，调用方往布局里继续加内容。"""

@@ -221,7 +221,7 @@ def discover_legacy_runtime_roots() -> list[Path]:
 
     roots: list[Path] = []
     for candidate in candidates:
-        if not any(_same_location(candidate, existing) for existing in roots):
+        if not any(same_location(candidate, existing) for existing in roots):
             roots.append(candidate)
     return roots
 
@@ -495,7 +495,7 @@ def find_legacy_runtime_residual_dirs() -> dict[int, tuple[Path, ...]]:
             ):
                 continue
             paths = residuals.setdefault(int(text_id), [])
-            if not any(_same_location(child, existing) for existing in paths):
+            if not any(same_location(child, existing) for existing in paths):
                 paths.append(child)
     return {workshop_id: tuple(paths) for workshop_id, paths in residuals.items()}
 
@@ -681,7 +681,7 @@ def deploy_legacy_package(
     try:
         for target in result.targets:
             # 同一个真实目录可能经 junction 以不同表面路径出现，再做一次防重。
-            if any(_same_location(target, previous) for previous in result.deployed):
+            if any(same_location(target, previous) for previous in result.deployed):
                 continue
             if not force and (target / "modinfo.lua").is_file():
                 result.already_current.append(target)
@@ -695,7 +695,8 @@ def deploy_legacy_package(
 
 
 
-def _same_location(left: Path, right: Path) -> bool:
+def same_location(left: Path, right: Path) -> bool:
+    """两个路径是否指向同一位置；文件不存在时按规范化后的绝对路径比较。"""
     try:
         return os.path.samefile(left, right)
     except OSError:

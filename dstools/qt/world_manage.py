@@ -17,7 +17,7 @@ from dstools.qt import dialogs
 from dstools.qt.lan_mapping_guard import shard_mapping_name
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import Banner, Card
+from dstools.qt.widgets import Banner, Card, clear_layout
 from dstools.shared import app_settings
 
 MAX_PLAYER_LIMIT = 64  # cluster.ini max_players 的上限
@@ -97,12 +97,7 @@ class ManageWorldsDialog(dialogs.Dialog):
 
     # ── 列表 ────────────────────────────────────────────────────────────
     def reload(self) -> None:
-        while self._list.count():
-            widget = self._list.takeAt(0).widget()
-            if widget is not None:
-                # 先摘掉父控件：只 deleteLater 的话旧卡片要等回到事件循环才消失，期间还占着尺寸
-                widget.setParent(None)
-                widget.deleteLater()
+        clear_layout(self._list)
         try:
             self._fill_list()
         finally:

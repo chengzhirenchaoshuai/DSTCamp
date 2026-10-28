@@ -34,7 +34,7 @@ from dstools.qt.lolia_oauth_dialog import LoliaOAuthAppDialog
 from dstools.qt.node_picker import NodeChoice, NodePickerDialog
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
-from dstools.qt.widgets import AutoHideLabel, section_card
+from dstools.qt.widgets import AutoHideLabel, clear_layout, section_card
 from dstools.shared import app_settings
 from dstools.shared.frpc_log import FrpcOutputLog
 from dstools.shared.resource_paths import data_dir
@@ -388,22 +388,12 @@ class LoliaPanel(QWidget):
         self._render_shard_rows()
         self._reload_async()
 
-    def _clear_shards_grid(self) -> None:
-        while self._shards_grid.count():
-            item = self._shards_grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                # 立即隐藏并摘掉父级，不等 deleteLater()（同 qt/pages/sakura.py 的说明）
-                widget.hide()
-                widget.setParent(None)
-                widget.deleteLater()
-
     @staticmethod
     def _is_master_shard(shard) -> bool:
         return load_shard_config(shard.path).shard.get("is_master", True)
 
     def _render_shard_rows(self) -> None:
-        self._clear_shards_grid()
+        clear_layout(self._shards_grid)
         self._status_label.setText("")
         cluster = self._current_cluster
         if not cluster or cluster.source != SaveSource.SERVER or not cluster.shards:
