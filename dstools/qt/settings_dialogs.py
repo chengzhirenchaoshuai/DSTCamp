@@ -19,7 +19,8 @@ from dstools.qt.threads import run_async
 from dstools.qt.widgets import ToggleSwitch, section_card
 from dstools.shared.discovery import auto_klei_root, list_clusters
 from dstools.shared.app_settings import (
-    get_custom_bg_opacity, get_klei_root_override, get_remind_update_enabled, set_cache_dir_override,
+    get_custom_bg_opacity, get_klei_root_override, get_lite_mode_enabled, get_remind_update_enabled,
+    set_cache_dir_override,
     set_klei_root_override,
     set_custom_bg_opacity, set_remind_update_enabled,
 )
@@ -47,6 +48,9 @@ class BackgroundImageDialog(dialogs.Dialog):
         path = get_custom_bg_path()
         self._status = self.text_label(path.name if path else t("settings.custom_bg_none"))
         self.body.addWidget(self._status)
+        if get_lite_mode_enabled():
+            # 轻量模式不加载背景图，这里照常可选，关掉轻量模式后才显示
+            self.body.addWidget(self.text_label(t("settings.custom_bg_lite_hint"), muted=True))
 
         row1 = QHBoxLayout()
         choose_btn = QPushButton(t("settings.custom_bg_choose"))

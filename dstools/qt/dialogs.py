@@ -27,7 +27,7 @@ from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import ToggleSwitch, section_card
 from dstools.shared.app_settings import (
-    get_backup_auto_enabled, get_backup_interval_minutes, get_backup_retention,
+    get_backup_auto_enabled, get_backup_interval_minutes, get_backup_retention, get_lite_mode_enabled,
     set_backup_auto_enabled, set_backup_interval_minutes, set_backup_retention,
 )
 
@@ -359,6 +359,12 @@ def show_toast(parent, text: str, ms: int = 1400, near=None) -> None:
             pixmap = anchor.grab(grab_rect)
             if not pixmap.isNull():
                 _apply_toast_fade(toast, pixmap)
+
+    if get_lite_mode_enabled():
+        # 轻量模式不做淡入淡出：透明度特效每帧离屏重绘，远程桌面下还要逐帧传输
+        toast.show()
+        QTimer.singleShot(ms, toast, toast.close)
+        return
 
     effect = QGraphicsOpacityEffect(toast)
     effect.setOpacity(0.0)

@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from dstools.qt.theme import theme
 
 from dstools.shared.custom_background import get_custom_bg_path
-from dstools.shared.app_settings import get_custom_bg_opacity
+from dstools.shared.app_settings import get_custom_bg_opacity, get_lite_mode_enabled
 
 _MAX_WIDTH = 2560  # 超大图只在加载时缩小一次，绘制时不再处理
 _THUMB_WIDTH = 192  # 求图片平均色用的缩略图宽度
@@ -27,7 +27,8 @@ class Background:
         path = get_custom_bg_path()
         self.opacity = float(get_custom_bg_opacity())
         self.pixmap = self._mean = self._scaled = None
-        if path is None:
+        # 轻量模式不加载背景图：整窗贴图和文字描边在远程桌面、无显卡的云服务器上重绘很慢，大图也常驻内存
+        if path is None or get_lite_mode_enabled():
             return
         pixmap = QPixmap(str(path))
         if pixmap.isNull():

@@ -32,6 +32,8 @@ _KEY_CACHE_DIR = "cache_dir"
 _KEY_CUSTOM_BG_FILENAME = "custom_bg_filename"
 _KEY_CUSTOM_BG_OPACITY = "custom_bg_opacity"
 _KEY_WINDOW_ORNAMENTS = "window_ornaments_enabled"
+_KEY_LITE_MODE = "lite_mode_enabled"
+_KEY_LITE_MODE_PROMPTED = "lite_mode_prompted"
 _DEFAULT_CUSTOM_BG_OPACITY = 0.35
 _KEY_WINDOW_POS = "window_pos"
 _KEY_WINDOW_SIZE = "window_size"
@@ -617,6 +619,28 @@ def get_window_ornaments_enabled() -> bool:
 def set_window_ornaments_enabled(value: bool) -> None:
     data = load_settings()
     data[_KEY_WINDOW_ORNAMENTS] = value
+    save_settings(data)
+
+
+def get_lite_mode_enabled() -> bool:
+    """轻量模式（适合云服务器、远程桌面）：不画背景图和窗口点缀、不播动画、启动不预热 Mod 缓存，默认关闭。"""
+    return load_settings().get(_KEY_LITE_MODE, False)
+
+
+def set_lite_mode_enabled(value: bool) -> None:
+    data = load_settings()
+    data[_KEY_LITE_MODE] = value
+    save_settings(data)
+
+
+def get_lite_mode_prompted() -> bool:
+    """是否已在服务器系统或远程桌面下提醒过开启轻量模式（只提醒一次）。"""
+    return load_settings().get(_KEY_LITE_MODE_PROMPTED, False)
+
+
+def set_lite_mode_prompted() -> None:
+    data = load_settings()
+    data[_KEY_LITE_MODE_PROMPTED] = True
     save_settings(data)
 
 

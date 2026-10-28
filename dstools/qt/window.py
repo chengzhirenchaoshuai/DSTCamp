@@ -7,6 +7,7 @@
 import ctypes
 import math
 import os
+import sys
 from ctypes import wintypes
 from pathlib import Path
 
@@ -39,16 +40,31 @@ from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.self_update import SelfUpdater, is_update_available
 from dstools.qt.widgets import CheckMenuItem, FrostedMenu, Grip, PillTabBar, ThemeMenuItem, TitleButton
 from dstools.shared.app_settings import (
-    get_creation_wizard_size, get_minimize_on_close, get_remind_update_enabled,
-    get_window_ornaments_enabled, get_window_position, get_window_size, set_creation_wizard_size,
-    set_minimize_on_close, set_window_ornaments_enabled, set_window_position,
-    set_window_size,
+    get_creation_wizard_size, get_lite_mode_enabled, get_lite_mode_prompted, get_minimize_on_close,
+    get_remind_update_enabled, get_window_ornaments_enabled, get_window_position, get_window_size,
+    set_creation_wizard_size, set_lite_mode_enabled, set_lite_mode_prompted, set_minimize_on_close,
+    set_window_ornaments_enabled, set_window_position, set_window_size,
 )
 from dstools.shared.resource_paths import bundled_resource_dir
 from dstools.shared.single_instance import activate_message_id, version_code
 
 TAB_KEYS = ["local", "world", "mods", "server", "saves", "sakura"]
 _EAGER_PAGE_KEYS = ("local", "sakura")  # 带后台监督逻辑、启动就要建好的页
+_SM_REMOTESESSION = 0x1000
+
+
+def _ornaments_effective() -> bool:
+    """窗口点缀实际是否显示：用户开着且不在轻量模式。"""
+    return get_window_ornaments_enabled() and not get_lite_mode_enabled()
+
+
+def _looks_like_cloud_server() -> bool:
+    """Windows Server 系统或远程桌面会话：多半是云服务器，没有显卡、画面要经网络传输，适合轻量模式。"""
+    if sys.platform != "win32":
+        return False
+    if sys.getwindowsversion().product_type != 1:  # 1 = 工作站版，2/3 = 域控/服务器版
+        return True
+    return bool(ctypes.windll.user32.GetSystemMetrics(_SM_REMOTESESSION))
 BASE_W, BASE_H = 1600, 900  # 默认尺寸（逻辑像素，Qt 自动按显示器缩放，不需要 DPI 补丁）
 MIN_W, MIN_H = 960, 540
 ASPECT = BASE_W / BASE_H
@@ -230,6 +246,7 @@ class MenuStrip(QWidget):
         self._bg_settings_action.setText(t("theme.custom_bg_settings"))
         self._font_settings_action.setText(t("theme.font_settings"))
         self._minimize_action.setText(t("settings.minimize_on_close_label"))
+        self._lite_action.setText(t("settings.lite_mode_label"))
         self._scenario_action.setText(t("settings.scenario_label"))
         self._klei_root_action.setText(t("settings.klei_root_menu"))
         self._defender_action.setText(t("settings.defender_label"))
@@ -294,7 +311,7 @@ class MenuStrip(QWidget):
         self._ornaments_action = add_item(CheckMenuItem(
             menu, t("theme.ornaments"),
             lambda: self._window.set_ornaments_enabled(not get_window_ornaments_enabled()),
-            get_window_ornaments_enabled))
+            _ornaments_effective))
         # 背景图/字体样式是跟颜色主题解耦的全局设置，点开只弹设置窗口，不切主题。
         self._bg_settings_action = add_item(CheckMenuItem(
             menu, t("theme.custom_bg_settings"), self._window.show_custom_bg_dialog))
@@ -339,7 +356,16 @@ class MenuStrip(QWidget):
         minimize.triggered.connect(lambda checked: set_minimize_on_close(bool(checked)))
         menu.addAction(minimize)
         self._minimize_action = minimize
+        lite = QAction(t("settings.lite_mode_label"), self, checkable=True)
+        lite.setChecked(get_lite_mode_enabled())
+        lite.triggered.connect(lambda checked: self._window.set_lite_mode(bool(checked)))
+        menu.addAction(lite)
+        self._lite_action = lite
         return menu
+
+    def sync_lite_mode_check(self) -> None:
+        """轻量模式在菜单外（启动提醒）被改时同步勾选状态；setChecked 不触发 triggered。"""
+        self._lite_action.setChecked(get_lite_mode_enabled())
 
 
 class _RefreshingCombo(QComboBox):
@@ -777,7 +803,7 @@ class MainWindow(QWidget):
         ):
             self._grips.append(Grip(self, edges, cursor))
         self._ornaments = WindowOrnaments(self, lambda: self._restore_geometry is not None,
-                                          get_window_ornaments_enabled())
+                                          _ornaments_effective())
         self._build_tray()
         self._update_status()
 
@@ -935,6 +961,15 @@ class MainWindow(QWidget):
         """主窗口显示后依次做的启动检查，一个弹窗关掉再出下一个，不叠在一起。"""
         self.check_usage_scenario_on_startup()
         self.check_cache_dir_on_startup()
+        self.suggest_lite_mode_on_startup()
+
+    def suggest_lite_mode_on_startup(self) -> None:
+        """在服务器系统或远程桌面里运行、还没开轻量模式时提醒一次；无论选什么都不再提醒，之后可在设置菜单里改。"""
+        if get_lite_mode_prompted() or get_lite_mode_enabled() or not _looks_like_cloud_server():
+            return
+        set_lite_mode_prompted()
+        if dialogs.ask_yes_no(self, t("settings.lite_mode_label"), t("settings.lite_mode_suggest"), min_width=520):
+            self.set_lite_mode(True)
 
     def check_usage_scenario_on_startup(self) -> None:
         """还没选过开服场景时弹窗选一次。WeGame 用户不用 Steam 通道，不弹，切到 Steam 后下次启动再问。"""
@@ -1116,8 +1151,20 @@ class MainWindow(QWidget):
         self.repaint()
 
     def set_ornaments_enabled(self, enabled: bool) -> None:
+        if get_lite_mode_enabled():
+            dialogs.show_info(self, t("theme.ornaments"), t("settings.lite_mode_blocks_ornaments"))
+            return
         set_window_ornaments_enabled(enabled)
         self._ornaments.set_enabled(enabled)
+
+    def set_lite_mode(self, enabled: bool) -> None:
+        """切换轻量模式并立即生效：背景图、文字描边和点缀随之卸下或恢复；动画和启动预热从下一次起按新设置。"""
+        set_lite_mode_enabled(enabled)
+        self.menu_strip.sync_lite_mode_check()
+        self.background.reload()
+        self.text_halo.refresh()
+        self._ornaments.set_enabled(_ornaments_effective())
+        self.update()
 
     # ── 位置/尺寸 ───────────────────────────────────────────────────────
     def _place_initially(self) -> None:
