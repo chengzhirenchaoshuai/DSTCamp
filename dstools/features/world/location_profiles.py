@@ -18,24 +18,41 @@ CHERRY_FOREST_MOD_ID = "1289779251"
 PORKLAND_MOD_ID = "3322803908"
 IA_CORE_MOD_ID = "3435352667"
 IA_SHIPWRECKED_MOD_ID = "1467214795"
-# 三合一整合版：一个 Mod 内含岛屿冒险核心/海难与云霄国度，只能专服多分片使用（建房界面勾选即报错）
+PORKLAND_PATCH_MOD_ID = "3330056551"
+# 三合一整合版（作者已下架，只为老存档保留）：一个 Mod 内含岛屿冒险核心/海难与云霄国度，只能专服多分片使用（建房界面勾选即报错）
 THREE_WORLDS_MOD_ID = "3811652910"
+# 三界同行 · 四模组独立补丁：取代整合版，四个原 Mod 分别启用，补丁只做兼容与扩展，不注册世界设置
+THREE_WORLDS_PATCH_MOD_ID = "3826855460"
+# Mod -> 已核对的硬依赖（取自各自 modinfo.lua 的 mod_dependencies）。游戏只在建房界面的模组页
+# 自动勾选依赖，专服只按 modoverrides 加载，所以写配置时必须一并启用。
+# 依赖列表写全（含间接依赖），补丁排在前面，界面补依赖时只问一次
+MOD_HARD_DEPENDENCIES: dict[str, tuple[str, ...]] = {
+    THREE_WORLDS_PATCH_MOD_ID: (IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID, PORKLAND_PATCH_MOD_ID),
+    IA_SHIPWRECKED_MOD_ID: (IA_CORE_MOD_ID,),
+}
+# 依赖提示里显示的 Mod 名称
+DEPENDENCY_MOD_NAMES = {
+    IA_CORE_MOD_ID: "岛屿冒险 - 核心",
+    IA_SHIPWRECKED_MOD_ID: "岛屿冒险 - 海难",
+    PORKLAND_MOD_ID: "云霄国度",
+    PORKLAND_PATCH_MOD_ID: "云霄国度补丁",
+    THREE_WORLDS_PATCH_MOD_ID: "三界同行 · 四模组独立补丁",
+}
 # 整合 Mod -> 它在世界类型上等同于哪些独立版（只用于能力判断，不写进 modoverrides）
 BUNDLED_MOD_CAPABILITIES = {
     THREE_WORLDS_MOD_ID: frozenset({IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID}),
 }
 # 三合一整合版说明要求不能同时启用的原 Mod（ID 见包内 CREDITS.md），会重复加载同一份内容
 THREE_WORLDS_CONFLICT_MODS = {
-    IA_CORE_MOD_ID: "岛屿冒险 - 核心",
-    IA_SHIPWRECKED_MOD_ID: "岛屿冒险 - 海难",
-    PORKLAND_MOD_ID: "云霄国度",
-    "3330056551": "云霄国度补丁",
+    mod_id: DEPENDENCY_MOD_NAMES[mod_id]
+    for mod_id in (IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID, PORKLAND_PATCH_MOD_ID)
 }
 ALL_MOD_LOCATIONS = (
     FOREST_LOCATION, CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION,
 )
 # 三合一整合版创意工坊说明与 README 要求的专服五分片：(目录名, location, 分片 ID, 额外 overrides)。
 # 分片 ID 固定，"世界分组暂停"按它配对（森林+洞穴、海难+火山、猪镇）；Master 无 ID。
+# 新补丁 twpatch/groups.lua 的分片 ID 与时钟表和整合版相同，沿用同一布局。
 # 海难的 volcanoisland：IA postinit/map/levels/shipwrecked.lua 判断 ``~= "none"`` 才加火山岛，
 # 缺 key 也会生成，有独立火山分片时必须显式写 "none"。
 THREE_WORLDS_SHARD_LAYOUT = (
@@ -276,9 +293,31 @@ def location_capability_ids(mod_ids) -> frozenset[str]:
 def with_required_dependencies(mod_ids) -> frozenset[str]:
     """返回加入已验证硬依赖后的 Mod 集合，不修改调用方容器。"""
     normalized = set(normalize_mod_ids(mod_ids))
-    if IA_SHIPWRECKED_MOD_ID in normalized:
-        normalized.add(IA_CORE_MOD_ID)
+    for mod_id in tuple(normalized):
+        normalized.update(MOD_HARD_DEPENDENCIES.get(mod_id, ()))
     return frozenset(normalized)
+
+
+def dependent_mod_ids(mod_id: str) -> tuple[str, ...]:
+    """硬依赖 ``mod_id`` 的 Mod，关闭它时这些 Mod 也要一起关闭。"""
+    target = str(mod_id).removeprefix("workshop-")
+    return tuple(child for child, deps in MOD_HARD_DEPENDENCIES.items() if target in deps)
+
+
+def dependency_label(mod_ids, with_id: bool = True) -> str:
+    """依赖提示里的 Mod 列表，如 ``岛屿冒险 - 核心 (3435352667)、云霄国度 (3322803908)``。"""
+    names = []
+    for mod_id in mod_ids:
+        mod_id = str(mod_id).removeprefix("workshop-")
+        name = DEPENDENCY_MOD_NAMES.get(mod_id, mod_id)
+        names.append(f"{name} ({mod_id})" if with_id and name != mod_id else name)
+    return "、".join(names)
+
+
+def three_worlds_layout_available(mod_ids) -> bool:
+    """启用了整合版或新补丁时，创建向导提供专服五分片布局。"""
+    normalized = normalize_mod_ids(mod_ids)
+    return THREE_WORLDS_MOD_ID in normalized or THREE_WORLDS_PATCH_MOD_ID in normalized
 
 
 
@@ -288,6 +327,22 @@ def resolve_world_location_profile(enabled_mod_ids) -> WorldLocationProfile:
     selected = normalize_mod_ids(enabled_mod_ids)
     effective = with_required_dependencies(selected)
     warnings: list[str] = []
+
+    if THREE_WORLDS_PATCH_MOD_ID in effective:
+        # 新补丁接管岛屿冒险与云霄国度的兼容，并打开云霄国度的世界类型切换，两个槽位放开全部世界
+        if THREE_WORLDS_MOD_ID in effective:
+            warnings.append(
+                "三界同行补丁已取代三合一整合版，二者不能同时启用，请关闭三合一整合版。"
+            )
+        return WorldLocationProfile(
+            selected,
+            effective,
+            ALL_MOD_LOCATIONS,
+            ALL_MOD_LOCATIONS,
+            FOREST_LOCATION,
+            CAVE_LOCATION,
+            tuple(warnings),
+        )
 
     if THREE_WORLDS_MOD_ID in effective:
         # 整合版自带两套扩展的兼容层，面向专服五分片（Master 森林 + 海难/猪镇/洞穴/火山）；

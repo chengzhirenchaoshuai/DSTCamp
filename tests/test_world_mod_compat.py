@@ -38,8 +38,10 @@ from dstools.features.world.location_profiles import (  # noqa: E402
     MASTER_SHARD,
     PORKLAND_LOCATION,
     PORKLAND_MOD_ID,
+    PORKLAND_PATCH_MOD_ID,
     SHIPWRECKED_LOCATION,
     THREE_WORLDS_MOD_ID,
+    THREE_WORLDS_PATCH_MOD_ID,
     VOLCANO_LOCATION,
     get_location_definition,
     location_requirements_met,
@@ -148,6 +150,16 @@ def test_location_profiles() -> None:
     # 与原 Mod（海难会连带补核心）同时启用时给出警告，创建校验据此拦下
     clash = resolve_world_location_profile({THREE_WORLDS_MOD_ID, IA_SHIPWRECKED_MOD_ID})
     assert clash.warnings and "岛屿冒险 - 核心" in clash.warnings[0]
+
+    # 三界同行补丁：自动带上四个原 Mod，五种世界都可用，不触发猪镇+岛屿冒险警告
+    patch_profile = resolve_world_location_profile({f"workshop-{THREE_WORLDS_PATCH_MOD_ID}"})
+    assert patch_profile.effective_mod_ids == frozenset({
+        THREE_WORLDS_PATCH_MOD_ID, IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID, PORKLAND_PATCH_MOD_ID,
+    })
+    assert set(patch_profile.caves_locations) == set(three.master_locations) and not patch_profile.warnings
+    # 与旧整合版同时启用时只报一条取代提示
+    legacy = resolve_world_location_profile({THREE_WORLDS_PATCH_MOD_ID, THREE_WORLDS_MOD_ID})
+    assert len(legacy.warnings) == 1 and "三合一整合版" in legacy.warnings[0]
 
 
 def test_setting_location_isolation() -> None:
@@ -519,7 +531,7 @@ def test_creation_dependency_confirmation() -> None:
     with patch(
         "dstools.qt.creation_wizard.dialogs.ask_yes_no", return_value=True,
     ) as confirm:
-        assert accepted._ensure_island_adventures_dependency(show_dialog=True)
+        assert accepted._ensure_mod_dependencies(show_dialog=True)
     confirm.assert_called_once()
     core_key = f"workshop-{IA_CORE_MOD_ID}"
     child_key = f"workshop-{IA_SHIPWRECKED_MOD_ID}"
@@ -530,7 +542,7 @@ def test_creation_dependency_confirmation() -> None:
     with patch(
         "dstools.qt.creation_wizard.dialogs.ask_yes_no", return_value=False,
     ):
-        assert not declined._ensure_island_adventures_dependency(show_dialog=True)
+        assert not declined._ensure_mod_dependencies(show_dialog=True)
     assert not declined._mod_data[child_key].enabled
     assert child_key not in declined._selected_mod_ids
     assert not declined._mod_data[core_key].enabled
@@ -558,6 +570,18 @@ def test_main_mod_dependency_confirmation() -> None:
     assert not declined._mod_data[child_key].enabled
     assert not declined._mod_data[core_key].enabled
     assert not declined.dirty_marked
+
+    # 三界同行补丁：一次确认启用四个依赖；关闭其中任一依赖时补丁一起关闭
+    patch_key = f"workshop-{THREE_WORLDS_PATCH_MOD_ID}"
+    page = _main_mod_dependency_page()
+    for mod_id in (THREE_WORLDS_PATCH_MOD_ID, PORKLAND_MOD_ID, PORKLAND_PATCH_MOD_ID):
+        page._mod_data[f"workshop-{mod_id}"] = ModEntry(workshop_id=f"workshop-{mod_id}", enabled=False)
+    with patch("dstools.qt.pages.mod.dialogs.ask_yes_no", return_value=True) as confirm:
+        page._on_toggle(patch_key)
+    confirm.assert_called_once()
+    assert all(mod.enabled for mod in page._mod_data.values())
+    page._on_toggle(f"workshop-{PORKLAND_PATCH_MOD_ID}")
+    assert not page._mod_data[patch_key].enabled and page._mod_data[core_key].enabled
 
 
 def test_pending_mod_world_preview() -> None:
@@ -595,7 +619,7 @@ def test_creation_preset_apply_refreshes_mod_list() -> None:
         "workshop-123": ModEntry(workshop_id="workshop-123", enabled=False),
     }
     tab._initialized_pages = set()
-    tab._ensure_island_adventures_dependency = lambda show_dialog: True
+    tab._ensure_mod_dependencies = lambda show_dialog: True
     tab._scan_installed_mods = lambda force=False: refreshed.append(force)
     tab._status_label = SimpleNamespace(setText=statuses.append)
     preset = ModPreset(

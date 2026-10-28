@@ -1094,7 +1094,7 @@ STRINGS = {
         "world.creation_remove_world_confirm": "确定删除世界“{name}”吗？其尚未写入存档的设置会一并移除。",
         "world.creation_three_worlds_layout": "套用三世界五分片",
         "world.creation_three_worlds_confirm": (
-            "按三合一整合版的专服要求设置五个世界：\n"
+            "按三界同行补丁（及旧三合一整合版）的专服要求设置五个世界：\n"
             "Master 森林、Shipwrecked 海难（编号 2）、Porkland 猪镇（编号 3）、"
             "Caves 洞穴（编号 4）、Volcano 火山（编号 5）。\n\n"
             "现有的额外世界会被移除，各从世界的端口和分片编号会重置；海难不生成火山岛（由火山世界代替）。\n\n"
@@ -1125,8 +1125,6 @@ STRINGS = {
         "world.creation_mod_scanning_hint": "Mod 仍在扫描，请稍候完成后再创建存档",
         "world.creation_mod_dirty_hint": "Mod 配置已修改，创建存档时写入",
         "world.creation_preset_loaded": "已载入 Mod 配置集：{name}",
-        "world.creation_ia_child_disabled": "已同时关闭依赖岛屿冒险核心的海难内容包",
-        "world.creation_ia_missing_core": "岛屿冒险 - 海难缺少依赖 Mod 3435352667，请先订阅并安装核心。",
         # Mod 配置弹窗
         "mod.apply": "应用",
         "mod.reset": "重置",
@@ -1221,6 +1219,8 @@ STRINGS = {
         "mod.dependency_required_confirm": "“{mod}”必须同时启用“{dependency}”才能正常运行。是否同时启用？",
         "mod.dependency_enabled": "已同时启用依赖 Mod：{dependency}",
         "mod.dependency_enable_cancelled": "已取消启用：未启用所需的依赖 Mod",
+        "mod.dependency_missing": "“{mod}”缺少依赖 Mod：{dependency}，请先订阅并安装。",
+        "mod.dependents_disabled": "已同时关闭依赖它的 Mod：{mods}",
         # Mod 配置集
         "mod.preset_save_btn": "保存为配置集",
         "mod.preset_apply_btn": "载入配置集",
@@ -2863,7 +2863,7 @@ STRINGS = {
         "world.creation_remove_world_confirm": 'Remove the world "{name}"? Its unsaved settings will also be removed.',
         "world.creation_three_worlds_layout": "Apply Three-World 5-Shard Layout",
         "world.creation_three_worlds_confirm": (
-            "Set up the five worlds required by the three-in-one mod for dedicated servers:\n"
+            "Set up the five worlds required by the Three Worlds patch (and the legacy three-in-one mod) for dedicated servers:\n"
             "Master Forest, Shipwrecked (ID 2), Porkland (ID 3), Caves (ID 4), Volcano (ID 5).\n\n"
             "Existing extra worlds will be removed, and ports and shard IDs of secondary worlds will be reset; "
             "Shipwrecked will not generate a volcano island (the Volcano world replaces it).\n\n"
@@ -2894,8 +2894,6 @@ STRINGS = {
         "world.creation_mod_scanning_hint": "Mods are still being scanned; please wait before creating the save",
         "world.creation_mod_dirty_hint": "Mod configuration changed; it will be written when the save is created",
         "world.creation_preset_loaded": "Mod preset loaded: {name}",
-        "world.creation_ia_child_disabled": "Also disabled the Shipwrecked pack that depends on Island Adventures Core",
-        "world.creation_ia_missing_core": "Island Adventures - Shipwrecked is missing its dependency Mod 3435352667. Please subscribe to and install the core mod first.",
         # Mod 配置弹窗
         "mod.apply": "Apply",
         "mod.reset": "Reset",
@@ -2992,6 +2990,8 @@ STRINGS = {
         "mod.dependency_required_confirm": "{mod} requires {dependency} to work. Enable the dependency too?",
         "mod.dependency_enabled": "Also enabled required dependency: {dependency}",
         "mod.dependency_enable_cancelled": "Enable cancelled because the required dependency was not enabled",
+        "mod.dependency_missing": "{mod} is missing required Mods: {dependency}. Please subscribe to and install them first.",
+        "mod.dependents_disabled": "Also disabled Mods that depend on it: {mods}",
         # Mod presets
         "mod.preset_save_btn": "Save as Preset",
         "mod.preset_apply_btn": "Apply Preset",

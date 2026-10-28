@@ -34,8 +34,9 @@ from dstools.features.mod.parser import (
 from dstools.features.save_browser.cluster_copy import suggest_new_cluster_name
 from dstools.features.world import creation, defaults, user_presets
 from dstools.features.world.location_profiles import (
-    CAVES_SHARD, IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, MASTER_SHARD, THREE_WORLDS_MOD_ID, find_mod_key,
-    get_location_definition, resolve_world_location_profile,
+    CAVES_SHARD, DEPENDENCY_MOD_NAMES, MASTER_SHARD, MOD_HARD_DEPENDENCIES, dependency_label,
+    dependent_mod_ids, find_mod_key, get_location_definition, resolve_world_location_profile,
+    three_worlds_layout_available,
 )
 from dstools.features.world.mod_settings import (
     filter_mod_world_settings, get_mod_categories, get_mod_world_settings,
@@ -716,7 +717,7 @@ class CreationWizardDialog(QDialog):
             profile = resolve_world_location_profile(self._selected_mod_ids)
             profile_changed = profile.effective_mod_ids != self._world_profile.effective_mod_ids
             self._world_profile = profile
-            self._three_worlds_btn.setVisible(THREE_WORLDS_MOD_ID in profile.effective_mod_ids)
+            self._three_worlds_btn.setVisible(three_worlds_layout_available(profile.effective_mod_ids))
             if apply_profile_defaults and profile_changed:
                 for shard in self._live_fixed_shards():
                     if shard not in self._user_selected_location_shards:
@@ -1025,7 +1026,7 @@ class CreationWizardDialog(QDialog):
                 name=info.name if info else "", description=info.description if info else "")
             if icon is not None:
                 self._icon_imgs[mod_id] = icon
-        self._ensure_island_adventures_dependency(show_dialog=False)
+        self._ensure_mod_dependencies(show_dialog=False)
         self._mod_data = sort_mod_data(self._mod_data, self._mod_infos)
         regular, custom = split_installed_mod_counts((mid for mid, _i, _icon, _f in records), self._mod_scan_platform)
         self._mod_scan_status_label.setText(t("mod.scan_found_breakdown", regular=regular, custom=custom))
@@ -1113,46 +1114,62 @@ class CreationWizardDialog(QDialog):
             self._selected_mod_ids.add(mod_id)
         else:
             self._selected_mod_ids.discard(mod_id)
-        if str(mod_id).removeprefix("workshop-") == IA_CORE_MOD_ID and not mod.enabled:
-            child_key = find_mod_key(self._mod_data, IA_SHIPWRECKED_MOD_ID)
-            child = self._mod_data.get(child_key) if child_key else None
-            if child is not None and child.enabled:
-                child.enabled = False
-                self._selected_mod_ids.discard(child_key)
-                self._status_label.setText(t("world.creation_ia_child_disabled"))
-        if not self._ensure_island_adventures_dependency(show_dialog=True):
+        if not mod.enabled:
+            disabled_children = []
+            for child_id in dependent_mod_ids(mod_id):
+                child_key = find_mod_key(self._mod_data, child_id)
+                child = self._mod_data.get(child_key) if child_key else None
+                if child is not None and child.enabled:
+                    child.enabled = False
+                    self._selected_mod_ids.discard(child_key)
+                    disabled_children.append(child_id)
+            if disabled_children:
+                self._status_label.setText(t("mod.dependents_disabled",
+                                             mods=dependency_label(disabled_children, with_id=False)))
+        if not self._ensure_mod_dependencies(show_dialog=True):
             self._render_list()
             return
         self._sync_mod_overrides()
         self._world_stale = True
         self._render_list()
 
-    def _ensure_island_adventures_dependency(self, show_dialog: bool) -> bool:
-        child_key = find_mod_key(self._mod_data, IA_SHIPWRECKED_MOD_ID)
-        child = self._mod_data.get(child_key) if child_key else None
-        if child is None or not child.enabled:
-            return True
-        core_key = find_mod_key(self._mod_data, IA_CORE_MOD_ID)
-        core = self._mod_data.get(core_key) if core_key else None
-        if core is None:
-            child.enabled = False
-            self._selected_mod_ids.discard(child_key)
-            if show_dialog:
-                dialogs.show_error(self, t("mod.dependency_required_title"), t("world.creation_ia_missing_core"))
-            return False
-        if not core.enabled and show_dialog:
-            if not dialogs.ask_yes_no(self, t("mod.dependency_required_title"),
-                                      t("mod.dependency_required_confirm", mod="岛屿冒险 - 海难",
-                                        dependency="岛屿冒险 - 核心 (3435352667)")):
+    def _ensure_mod_dependencies(self, show_dialog: bool) -> bool:
+        """已启用的 Mod 缺硬依赖时一并启用；依赖未安装或用户拒绝时关闭该 Mod，返回是否全部满足。"""
+        satisfied = True
+        for child_id, dependency_ids in MOD_HARD_DEPENDENCIES.items():
+            child_key = find_mod_key(self._mod_data, child_id)
+            child = self._mod_data.get(child_key) if child_key else None
+            if child is None or not child.enabled:
+                continue
+            child_name = DEPENDENCY_MOD_NAMES[child_id]
+            dependency_keys = {dep: find_mod_key(self._mod_data, dep) for dep in dependency_ids}
+            missing = [dep for dep, key in dependency_keys.items() if key is None]
+            if missing:
                 child.enabled = False
                 self._selected_mod_ids.discard(child_key)
-                self._status_label.setText(t("mod.dependency_enable_cancelled"))
-                return False
-        core.enabled = True
-        self._selected_mod_ids.add(core_key)
-        if show_dialog:
-            self._status_label.setText(t("mod.dependency_enabled", dependency="岛屿冒险 - 核心"))
-        return True
+                if show_dialog:
+                    dialogs.show_error(self, t("mod.dependency_required_title"),
+                                       t("mod.dependency_missing", mod=child_name,
+                                         dependency=dependency_label(missing)))
+                satisfied = False
+                continue
+            disabled = [dep for dep, key in dependency_keys.items() if not self._mod_data[key].enabled]
+            if disabled and show_dialog:
+                if not dialogs.ask_yes_no(self, t("mod.dependency_required_title"),
+                                          t("mod.dependency_required_confirm", mod=child_name,
+                                            dependency=dependency_label(disabled))):
+                    child.enabled = False
+                    self._selected_mod_ids.discard(child_key)
+                    self._status_label.setText(t("mod.dependency_enable_cancelled"))
+                    satisfied = False
+                    continue
+            for key in dependency_keys.values():
+                self._mod_data[key].enabled = True
+                self._selected_mod_ids.add(key)
+            if disabled and show_dialog:
+                self._status_label.setText(t("mod.dependency_enabled",
+                                             dependency=dependency_label(disabled, with_id=False)))
+        return satisfied
 
     def _open_mod_config(self, mod_id: str) -> None:
         mod = self._mod_data.get(mod_id)
@@ -1219,7 +1236,7 @@ class CreationWizardDialog(QDialog):
             saved = preset.mods.get(mod_id, {})
             mod.enabled = bool(saved.get("enabled", False)) if saved else False
             mod.configuration_options = copy.deepcopy(saved.get("configuration_options", {})) if saved else {}
-        self._ensure_island_adventures_dependency(show_dialog=True)
+        self._ensure_mod_dependencies(show_dialog=True)
         if "world" in self._initialized_pages:
             self._reload_template(apply_profile_defaults=True)
         self._scan_installed_mods(force=False)

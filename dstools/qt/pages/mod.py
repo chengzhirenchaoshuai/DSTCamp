@@ -44,7 +44,9 @@ from dstools.features.mod.preload import modinfo_stamp, resolve_readable_mod_fol
 from dstools.features.mod.sandbox_apply import apply_full_sandbox_result
 from dstools.features.mod.shardindex import ShardIndexError, load_shardindex_mods, save_shardindex_mods, shardindex_path
 from dstools.features.mod.sync import apply_mod_sync, detach_mod_sync_junction, get_enabled_mod_ids, plan_mod_sync
-from dstools.features.world.location_profiles import IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, find_mod_key
+from dstools.features.world.location_profiles import (
+    DEPENDENCY_MOD_NAMES, MOD_HARD_DEPENDENCIES, dependency_label, dependent_mod_ids, find_mod_key,
+)
 from dstools.i18n import t
 from dstools.models import ModEntry, ModOverrides, Platform, SaveSource
 from dstools.qt import dialogs
@@ -1201,28 +1203,34 @@ class ModPage(Page):
             # 存档里还没有这个 Mod 的配置：套用默认配置（对应游戏主菜单"模组"里的全局配置）
             mod.configuration_options = recall_for(workshop_id, self._mod_infos.get(workshop_id))
         normalized_id = str(workshop_id).removeprefix("workshop-")
-        if normalized_id == IA_SHIPWRECKED_MOD_ID and mod.enabled:
-            core_key = find_mod_key(self._mod_data, IA_CORE_MOD_ID)
-            core = self._mod_data.get(core_key) if core_key else None
-            if core is None:
+        dependency_ids = MOD_HARD_DEPENDENCIES.get(normalized_id, ())
+        if dependency_ids and mod.enabled:
+            child_name = DEPENDENCY_MOD_NAMES[normalized_id]
+            dependency_keys = {dep: find_mod_key(self._mod_data, dep) for dep in dependency_ids}
+            missing = [dep for dep, key in dependency_keys.items() if key is None]
+            if missing:
                 mod.enabled = False
-                dialogs.show_error(self.window(), "缺少 Mod 依赖",
-                                   "岛屿冒险 - 海难缺少依赖 Mod 3435352667，请先订阅并安装核心。")
+                dialogs.show_error(self.window(), t("mod.dependency_required_title"),
+                                   t("mod.dependency_missing", mod=child_name,
+                                     dependency=dependency_label(missing)))
                 self._render_list()
                 return
-            if not core.enabled:
+            disabled = [dep for dep, key in dependency_keys.items() if not self._mod_data[key].enabled]
+            if disabled:
                 if not dialogs.ask_yes_no(self.window(), t("mod.dependency_required_title"),
-                                          t("mod.dependency_required_confirm", mod="岛屿冒险 - 海难",
-                                            dependency="岛屿冒险 - 核心 (3435352667)")):
+                                          t("mod.dependency_required_confirm", mod=child_name,
+                                            dependency=dependency_label(disabled))):
                     mod.enabled = False
                     self._render_list()
                     return
-                core.enabled = True
-        elif normalized_id == IA_CORE_MOD_ID and not mod.enabled:
-            child_key = find_mod_key(self._mod_data, IA_SHIPWRECKED_MOD_ID)
-            child = self._mod_data.get(child_key) if child_key else None
-            if child is not None and child.enabled:
-                child.enabled = False
+                for dep in disabled:
+                    self._mod_data[dependency_keys[dep]].enabled = True
+        elif not mod.enabled:
+            for child_id in dependent_mod_ids(normalized_id):
+                child_key = find_mod_key(self._mod_data, child_id)
+                child = self._mod_data.get(child_key) if child_key else None
+                if child is not None and child.enabled:
+                    child.enabled = False
         self._mark_dirty()
         self._update_enabled_count()
         self._render_list()
