@@ -17,13 +17,18 @@ DSTCamp：Windows 上的《饥荒：联机版》存档、Mod、世界、专服�
 ## 项目结构
 
 ```text
-dstools/qt/           界面：app.py 装配与入口、window.py 主窗口、pages/ 各页签、dialogs.py 通用弹窗、
-                      theme.py 主题与字体、threads.py 后台任务
+dstools/qt/           界面基础设施：app.py 装配与入口、window.py 主窗口、pages/ 各页签、dialogs.py 通用弹窗、
+                      widgets.py 通用控件（含 clear_layout）、theme.py 主题与字体、threads.py 后台任务
+  mod/ world/         Mod 与世界相关的弹窗、面板（创建向导在 world/）
+  tunnel/             三种内网穿透面板、节点选择、frpc 后台下载
+  server/             专服控制台与崩溃自动重启调度
 dstools/features/     单功能业务逻辑（不依赖界面，可直接测试）
 dstools/shared/       两个以上功能共用的基础设施；palettes.py 调色板、font_styles.py 字体样式、
                       resource_paths.py 资源与运行时目录（顶部有完整目录清单）
 dstools/i18n/strings.py  中英文文案唯一来源
-icons/、tools/        随发布打包的固定资源
+icons/、tools/        随发布打包的固定资源（白名单见 scripts/build_exe.py；按需下载的工具不打包）
+scripts/              run_gui.py 发布入口、build_exe.py 打包、make_tools_release.py、sync_gitee_releases.ps1
+tests/                脚本式测试，run_all.py 逐文件隔离运行
 reference/            开发核对资料（含 tk_legacy/ 旧 Tk 代码、dev_scripts/），不进 Git、不参与运行
 build/、release/      可重建的构建中间产物与发布产物，不进 Git
 ```
@@ -85,7 +90,7 @@ python scripts/build_exe.py
 - Mod 目录联接用 `os.path.isjunction()` 判断、`os.rmdir()` 删除，禁止 `shutil.rmtree()`。
 - `CLUSTER_INI_DEFAULTS` 只补缺失字段；`NO_TYPE_COERCE_FIELDS` 中的密码等字段保持字符串。
 - 森林与洞穴配置独立；新增世界 key、取值或 Mod 支持前必须核对实际 Lua 源码。
-- ktech 随包；frpc、frps、樱花 frpc、vcredist 不打包，首次使用时经 `tool_store` 从官网（vcredist）或 `tools-N` 发行版下载，按写死的 SHA-256 校验，存 `data/tools/` 并保持 `.xz`（裸 frp 落盘会被杀软隔离），也可从网盘工具包导入。自建/Lolia 的 frpc 由开服等无人值守流程拉起，经 `qt/frpc_tool.py` 后台静默下载、失败显示在状态行，不弹窗。Linux 二进制用 `sftp.putfo()` 流式上传，本机不落地解压。
+- ktech 随包；frpc、frps、樱花 frpc、vcredist 不打包，首次使用时经 `tool_store` 从官网（vcredist）或 `tools-N` 发行版下载，按写死的 SHA-256 校验，存 `data/tools/` 并保持 `.xz`（裸 frp 落盘会被杀软隔离），也可从网盘工具包导入。自建/Lolia 的 frpc 由开服等无人值守流程拉起，经 `qt/tunnel/frpc_tool.py` 后台静默下载、失败显示在状态行，不弹窗。Linux 二进制用 `sftp.putfo()` 流式上传，本机不落地解压。
 - LuaJIT 补丁依赖的 VC++ 2015-2022 x64 运行库版本会随微软更新而变，不进 `tool_store`：安装补丁前按配套 DLL 的链接器版本检测，缺失时从微软官网下载，校验内嵌的微软 Authenticode 签名后安装（`features/local_service/luajit_runtime.py`）。
 - 内置 SteamCMD（`tools/steamcmd/`，原样附 Valve 许可协议，不得修改程序）首次使用时释放到缓存目录；它不能在非 ASCII 路径下运行，联网自更新由它自己完成。
 - WeGame 不支持一键启动专服，不实现绕过方案。

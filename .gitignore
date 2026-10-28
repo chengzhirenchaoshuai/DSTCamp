@@ -17,7 +17,5 @@ cache/
 data/
 security/
 
-# Agent-specific local instructions and Codex runtime state
-AGENTS.md
-CLAUDE.md
+# Codex 运行时状态
 .codex/

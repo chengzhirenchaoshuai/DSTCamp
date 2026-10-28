@@ -18,7 +18,7 @@
   <a href="#-features">Features</a> ·
   <a href="#-storage-layout">Storage</a> ·
   <a href="#-development">Development</a> ·
-  <a href="#177-changes">Changelog</a> ·
+  <a href="#179-changes">Changelog</a> ·
   <a href="README.md">中文</a>
 </p>
 
@@ -32,10 +32,10 @@
 | 🧩 | **Mods** | Steam/WeGame Mod scanning, toggling and configuration, presets, Workshop updates and status, V1 Legacy deployment, stale-copy cleanup, missing-Mod checks |
 | 🌍 | **World settings** | Independent Forest/Caves settings, icons and value labels, Island Adventures / Porkland / Beneath the World Below worlds |
 | ⚙️ | **Server config** | `cluster.ini`, `server.ini`, shared token pool, administrators and blocklist (pick from players in your saves) |
-| 💾 | **Saves** | Player status and Klei IDs, manual/automatic backup and restore, copy to a server save, package for sharing, create/delete saves |
+| 💾 | **Saves** | Player status and Klei IDs, manual/automatic backup and restore, offline world reset, copy to a server save, package for sharing, create/delete saves |
 | 🌐 | **Tunneling & acceleration** | SakuraFrp, Lolia, self-hosted frps (one-click SSH deploy), Mihomo TUN + WireGuard lobby acceleration with route diagnostics |
 
-Also included: Chinese/English UI, six themes, three fonts with four size levels, custom backgrounds, system tray, remembered window size and position, and verified auto-update.
+Also included: Chinese/English UI, six themes, three fonts with four size levels, custom backgrounds, lite mode, system tray, remembered window size and position, and verified auto-update.
 
 > [!NOTE]
 > WeGame does not provide one-click dedicated-server launching. DSTCamp does not bypass platform restrictions.
@@ -90,7 +90,8 @@ security/       Credentials: SSH keys and host trust, WireGuard/Mihomo configs, 
 ## 🛠️ Development
 
 ```text
-dstools/qt/            Qt UI: app.py entry, window.py main window, pages/ tabs, dialogs.py, theme.py
+dstools/qt/            Qt UI: app.py entry, window.py main window, pages/ tabs, dialogs.py, theme.py;
+                       feature dialogs and panels live in mod/, world/, tunnel/ (tunneling) and server/ (console)
 dstools/features/      UI-independent business logic per feature: mod, world, local_service, save_browser,
                        cluster_config, sakura, lolia, frp_selfhost
 dstools/shared/        Cross-feature infrastructure: paths, settings, Lua/INI parsing, ports, palettes and font styles
@@ -107,24 +108,41 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.7.8 changes
+## 1.7.9 changes
 
 ### ✨ New features
+
+- **Reset World Offline**: the Save Info tab gains "Reset World Offline", which resets worlds without starting the server: it backs up first, then deletes each world's session saves, and the game generates new worlds from the current world settings on the next start. World settings, Mods and server configuration are kept.
+- **Lite mode**: the Settings menu gains "Lite mode (for cloud servers)", which hides the background image, text outlines and window ornaments, skips toast fade animations and doesn't pre-warm the Mod cache at startup. When running on a server edition of Windows or in Remote Desktop, DSTCamp suggests it once after launch.
+
+### ⚡ Performance
+
+- Faster startup and lower resident memory: the World, Mod, Server Config and Save Info tabs are built the first time you open them; only the Local Server and tunneling tabs are built at startup.
+- Lower idle CPU and memory: the settings file is cached by modification time, Local Server status polling is split into fast and slow paths and slows down while the window is minimized, status labels restyle only when they change, and bundled fonts load on demand.
+- The server console keeps 5,000 lines per world instead of 20,000 (about 27 MB per 20,000 lines measured); the full log stays in server_log.txt.
+
+### 🐞 Fixes
+
+- Local Mods placed manually in the mods folder (such as Chinese-Pro) were read as Workshop Mods, so Mods that detect their source from the folder name showed the wrong name.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.7.8)</strong></summary>
+
+### 1.7.8
+
+#### ✨ New features
 
 - **Hosting setup**: on first launch, choose "Host on my own PC" or "Host on a cloud server" (changeable later in "Settings → Hosting Setup..."); it now decides the server program and channel. The "Auto" server program option, "Settings → Advanced", and the SteamCMD recommendation banner are removed.
 - **Custom server save directory**: the Settings menu gains "Server Save Folder..." to set it, restore automatic detection, or open it; servers also start when saves are outside the default location, including on a different drive from "Documents". Accounts and local saves are still read from the game's default location.
 - The "Switch Program" window uses card layout, the install guide is simpler, and F5 re-detects; "Add Mod Junction" is hidden when hosting with the Bundled Server.
 - Log bundles include client logs from the hosting PC covering the same time period.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - The three-in-one Mod moved to "four Mods + a standalone patch (3826855460)" and no longer worked the old way: enabling the patch now brings in Island Adventures Core, Shipwrecked, Above the Clouds, and their patches, with five world types and a five-shard layout.
 - With no server program found, clicking "Start" or "Switch Program" raised an error instead of showing the install guide.
 - Saving settings failed when the file was briefly locked (WinError 5), interrupting actions such as switching scenarios.
 - Message boxes with many buttons cut off their text; some Mod configuration group titles were not translated (e.g. Uncompromising Mode's Mod Compatibility).
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.7.7)</strong></summary>
 
 ### 1.7.7
 
