@@ -23,7 +23,6 @@ from dstools.features.save_browser.cluster_copy import (
 )
 from dstools.features.save_browser.save_bundle import create_save_bundle, default_save_bundle_output_dir
 from dstools.features.save_browser.save_delete import recycle_cluster_dir
-from dstools.features.save_browser.world_reset import reset_worlds, shards_with_sessions
 from dstools.i18n import t
 from dstools.models import SaveSource
 from dstools.qt import dialogs
@@ -105,11 +104,7 @@ class SaveInfoPage(Page):
         self._delete_button = QPushButton()
         self._delete_button.clicked.connect(self._on_delete)
         self._delete_running = False
-        self._reset_button = QPushButton()
-        self._reset_button.clicked.connect(self._on_reset_world)
-        self._reset_running = False
         overview_row.addWidget(self._copy_to_server, 0, Qt.AlignmentFlag.AlignVCenter)
-        overview_row.addWidget(self._reset_button, 0, Qt.AlignmentFlag.AlignVCenter)
         overview_row.addWidget(self._delete_button, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self._overview)
 
@@ -151,8 +146,6 @@ class SaveInfoPage(Page):
         self._shard_label.setText(t("save.shard"))
         self._players_title.setText(t("save.players_section"))
         self._delete_button.setText(t("save.delete_busy") if self._delete_running else t("save.delete_btn"))
-        self._reset_button.setText(t("save.reset_world_busy") if self._reset_running else t("save.reset_world_btn"))
-        self._reset_button.setToolTip(t("save.reset_world_hover"))
         self._copy_to_server.setText(t("save.copy_to_server"))
         self._bundle_button.setText(t("save.bundle_running") if self._bundle_running else t("save.bundle_btn"))
         self._manage_button.setText(t("save.backup_management"))
@@ -213,7 +206,6 @@ class SaveInfoPage(Page):
             label.setText("")
         self._storage_label.setText(t("save.loading"))
         self._delete_button.setEnabled(not self._delete_running)
-        self._reset_button.setEnabled(not self._reset_running)
 
         def done(overview: view_data.ClusterOverview) -> None:
             if generation != self._generation:
@@ -425,48 +417,6 @@ class SaveInfoPage(Page):
             finish()
             self.ctx.refresh_env()
             dialogs.show_error(self._window(), title, t("save.delete_failed", error=str(exc)))
-
-        run_async(work, done, failed)
-
-    def _on_reset_world(self) -> None:
-        """不启动服务器重置世界：先备份，再删各世界的会话存档（业务见 features/save_browser/world_reset.py）。"""
-        cluster = self.ctx.selected_cluster()
-        if cluster is None or self._reset_running:
-            return
-        title = t("save.reset_world_title")
-        if self._cluster_in_use(cluster):
-            dialogs.show_warning(self._window(), title, t("save.reset_world_running", name=cluster.name))
-            return
-        shards = shards_with_sessions(cluster.path)
-        if not shards:
-            dialogs.show_info(self._window(), title, t("save.reset_world_none", name=cluster.name))
-            return
-        if not dialogs.ask_yes_no(self._window(), title,
-                                  t("save.reset_world_confirm", name=cluster.name, shards="、".join(shards)),
-                                  danger=True):
-            return
-        self._reset_running = True
-        self._reset_button.setEnabled(False)
-        self._reset_button.setText(t("save.reset_world_busy"))
-
-        def work():
-            create_backup(cluster.path, keep=True)
-            return reset_worlds(cluster.path)
-
-        def finish() -> None:
-            self._reset_running = False
-            self._reset_button.setText(t("save.reset_world_btn"))
-            self._reset_button.setEnabled(True)
-
-        def done(reset: list[str]) -> None:
-            finish()
-            self.load()
-            dialogs.show_info(self._window(), title, t("save.reset_world_done", shards="、".join(reset)))
-
-        def failed(exc: Exception) -> None:
-            finish()
-            self.load()
-            dialogs.show_error(self._window(), title, t("save.reset_world_failed", error=str(exc)))
 
         run_async(work, done, failed)
 

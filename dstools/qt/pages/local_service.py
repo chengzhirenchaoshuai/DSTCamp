@@ -53,6 +53,7 @@ from dstools.features.local_service.shard_helpers import RUNNING_LIKE, STATUS_TE
 from dstools.features.local_service.auto_restart import TOKEN_HOLD_DURATION, TOKEN_WAIT_LIMIT
 from dstools.features.local_service.token_scheduler import TokenSelection, TokenUse, select_token_for_cluster
 from dstools.features.sakura import api as sakura_frp
+from dstools.features.save_browser.world_reset import reset_worlds, shards_with_sessions
 from dstools.i18n import t
 from dstools.models import Platform, SaveSource
 from dstools.qt import dialogs
@@ -877,6 +878,7 @@ class LocalServicePage(Page):
         self._console_panes: dict[tuple[str, str], ConsolePane] = {}
         self._launching_keys: set[tuple[str, str]] = set()
         self._restarting_keys: set[tuple[str, str]] = set()
+        self._resetting_paths: set[str] = set()  # 正在离线重置世界的存档，期间不能启动
         self._token_reservations: dict[str, str] = {}
         self._auto_restart = AutoRestartController(self)
         # 开服程序只从 server_runtime.resolve_runtime() 取；_install_dir 保留给自动重启等旧调用方。
@@ -1065,12 +1067,15 @@ class LocalServicePage(Page):
         self._stop_all_btn = QPushButton(t("local.stop_all_btn"))
         self._restart_all_btn = QPushButton(t("local.restart_all_btn"))
         self._logs_btn = QPushButton(t("local.get_logs_btn"))
+        self._reset_world_btn = QPushButton(t("local.reset_world_btn"))
         self._start_all_btn.clicked.connect(self._start_all)
         self._stop_all_btn.clicked.connect(self._stop_all)
         self._restart_all_btn.clicked.connect(self._restart_all)
         self._logs_btn.clicked.connect(self._get_logs)
+        self._reset_world_btn.clicked.connect(self._reset_world)
         # 只调小字号（直角边框是全局默认）。QPushButton 默认横向策略会随窗口拉伸，需固定宽度
-        buttons = (self._start_all_btn, self._stop_all_btn, self._restart_all_btn, self._logs_btn)
+        buttons = (self._start_all_btn, self._stop_all_btn, self._restart_all_btn, self._logs_btn,
+                   self._reset_world_btn)
         for button in buttons:
             button.setFont(theme.font("FONT_SIZE_SM"))
         # 横向 Fixed、宽度取 sizeHint：随字号自适应，不随窗口拉伸（写死宽度在大字号下会溢出）
@@ -1180,6 +1185,7 @@ class LocalServicePage(Page):
         self._update_stop_all_btn_state(c)
         self._update_restart_all_btn_state(c)
         self._update_logs_btn_state(c)
+        self._update_reset_world_btn_state(c)
         if is_server:
             self._local_banner.set_text("")
             self._connect_row.setVisible(True)
@@ -3492,6 +3498,8 @@ class LocalServicePage(Page):
         WeGame 存档不用这里的开服程序，另有限制。"""
         if cluster is None or cluster.platform != Platform.STEAM:
             return ""
+        if str(cluster.path) in self._resetting_paths:
+            return t("local.reset_world_busy")
         if self._runtime is None:
             return t("local.start_no_runtime")
         if self._steamcmd_update_running():
@@ -3555,6 +3563,76 @@ class LocalServicePage(Page):
 
         run_async(work, done, error)
 
+    # ── 离线重置世界 ─────────────────────────────────────────────────────
+    def _reset_world_block_reason(self, cluster) -> str:
+        """现在不能重置的原因；本程序里这个存档有世界在运行、启动或重启时不能删会话。"""
+        if str(cluster.path) in self._resetting_paths:
+            return t("local.reset_world_busy")
+        busy = any((str(cluster.path), shard.name) in self._launching_keys | self._restarting_keys
+                   or ((proc := self.manager.get(cluster.path, shard.name)) is not None
+                       and proc.status in RUNNING_LIKE)
+                   for shard in cluster.shards)
+        return t("local.reset_world_running", name=cluster.name) if busy else ""
+
+    def _update_reset_world_btn_state(self, cluster) -> None:
+        # 可用时也保留悬停说明，不用 _set_button_state（它在启用时清空提示）
+        reason = self._reset_world_block_reason(cluster) if cluster else ""
+        enabled = cluster is not None and not reason
+        tip = reason or t("local.reset_world_hover")
+        if self._reset_world_btn.isEnabled() != enabled:
+            self._reset_world_btn.setEnabled(enabled)
+        if self._reset_world_btn.toolTip() != tip:
+            self._reset_world_btn.setToolTip(tip)
+
+    def _reset_world(self) -> None:
+        """不启动服务器重置世界：先备份，再删各世界的会话存档（业务见 features/save_browser/world_reset.py）。"""
+        cluster = self.get_cluster()
+        if cluster is None or self._reset_world_block_reason(cluster):
+            return
+        title = t("local.reset_world_title")
+        # 外部启动的专服或游戏客户端开着的本地存档也会占用会话文件
+        external = detect_external_shard_processes(cluster)
+        if any(info.get("running") for info in external.values()):
+            dialogs.show_warning(self.window(), title, t("local.reset_world_running", name=cluster.name))
+            return
+        shards = shards_with_sessions(cluster.path)
+        if not shards:
+            dialogs.show_info(self.window(), title, t("local.reset_world_none", name=cluster.name))
+            return
+        if not dialogs.ask_yes_no(self.window(), title,
+                                  t("local.reset_world_confirm", name=cluster.name, shards="、".join(shards)),
+                                  danger=True):
+            return
+        if self._reset_world_block_reason(cluster):  # 确认期间可能有世界被启动
+            return
+        self._auto_restart.cancel(cluster)
+        key = str(cluster.path)
+        self._resetting_paths.add(key)
+        self._refresh_after_reset_change()
+
+        def work():
+            create_backup(cluster.path, keep=True)
+            return reset_worlds(cluster.path)
+
+        def done(reset: list[str]) -> None:
+            self._resetting_paths.discard(key)
+            self._refresh_after_reset_change()
+            dialogs.show_info(self.window(), title, t("local.reset_world_done", shards="、".join(reset)))
+
+        def failed(exc: Exception) -> None:
+            self._resetting_paths.discard(key)
+            self._refresh_after_reset_change()
+            dialogs.show_error(self.window(), title, t("local.reset_world_failed", error=str(exc)))
+
+        run_async(work, done, failed)
+
+    def _refresh_after_reset_change(self) -> None:
+        """重置开始或结束时立即刷新重置按钮和各启动按钮，不等慢轮询。"""
+        cluster = self.get_cluster()
+        self._update_reset_world_btn_state(cluster)
+        self._update_start_lock_state(cluster)
+        for row in self._shard_rows.values():
+            row.update_state()
 
     def _maybe_periodic_backup(self) -> None:
         if not get_backup_auto_enabled():
@@ -3629,6 +3707,7 @@ class LocalServicePage(Page):
         self._update_stop_all_btn_state(cluster)
         self._update_restart_all_btn_state(cluster)
         self._update_logs_btn_state(cluster)
+        self._update_reset_world_btn_state(cluster)
         self._update_luajit_row(cluster)
         self.ctx.poll_lobby_accel()
         self._maybe_periodic_backup()
