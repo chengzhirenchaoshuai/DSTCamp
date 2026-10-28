@@ -13,7 +13,7 @@ from dstools.features.mod.export_list import ExportModEntry
 from dstools.i18n import t
 from dstools.qt import dialogs
 from dstools.qt.imaging import pil_to_pixmap
-from dstools.qt.mod_panel import _DEFAULT_ICON_PATH
+from dstools.qt.mod.mod_panel import _DEFAULT_ICON_PATH
 from dstools.qt.theme import theme
 from dstools.qt.widgets import mod_format_tag_colors
 

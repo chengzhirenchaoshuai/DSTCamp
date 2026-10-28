@@ -1,22 +1,31 @@
 """统一解析只读发布资源与可写运行时目录。
 
-固定资源（每次启动都要用，随 EXE 打包，只读）：
-    icons/{app,ui,world,avatars,recommended,ornaments}  tools/{fonts,ktools,vcredist,frp_selfhost,frpc-sakura,steamcmd,hdiffpatch}
+固定资源（随 EXE 打包、只读，每次启动直接读取）：
+    icons/  app、ui、world、avatars、recommended、ornaments
+    tools/  fonts、ktools、hdiffpatch/hpatchz.exe、steamcmd（各附许可证）
+    按需下载的工具（frpc、frps、樱花 frpc、VC++ 2013）不打包，见 tool_store.py
 
 %APPDATA%/DSTCamp/（运行时可写）：
     settings.json   全部用户设置
-    cache/          可随时清空、按需重建（可在设置中改位置，须为纯 ASCII 路径）：
-                    mod_full_resolve、modinfo_static、mod_versions、mod_chs_translation、mod_icons/<平台>、legacy_v1_read、
-                    world_mod_icons、character_icons、connection_log、frpc_log（frpc 输出，日志包会收录）、
-                    lobby_accel_mihomo、runtime/{ktools,ktech_jobs}、
-                    steamcmd（内置 SteamCMD 及其自更新组件、日志和登录缓存，清空后下次使用重新释放并需重新登录）
-    data/           需要保留的用户数据：background、player_registry、port_backups、auto_restart、updates、
-                    runtime_tools（长驻工具的解压副本）、tools（按需下载或从工具包导入的工具，见 tool_store.py）、
-                    frpc_config / frp_selfhost_config / lolia_frpc_config、
-                    mod_config_memory（Mod 配置记忆 memory.json 与覆盖前的游戏配置备份 game_backup/）
-                    mod_repair（V1 Mod 目录多余文件的清理记录 v1_extras.log，日志包会收录）
-    security/       凭据与主机信任：frp_selfhost（SSH 密钥/known_hosts）、lobby_accel_wireguard、
-                    lobby_accel_mihomo、lolia（OAuth 令牌）
+    cache/          可随时清空、按需重建（可在设置中改位置，须为纯 ASCII 路径）
+        mod_full_resolve、modinfo_static、mod_versions、mod_chs_translation  Mod 解析结果
+        mod_icons/<平台>、world_mod_icons、character_icons                  转换好的图标
+        legacy_v1_read                                                      V1 Mod 包临时解压
+        connection_log                                                      专服日志连接记录
+        frpc_log                                                            frpc 输出（日志包会收录）
+        lobby_accel_mihomo                                                  Mihomo 运行文件
+        runtime/{ktools,ktech_jobs}                                         ktech 的 ASCII 运行副本与任务目录
+        steamcmd                                                            内置 SteamCMD（清空后需重新登录）
+        vcredist                                                            LuaJIT 所需 VC++ x64 安装包
+    data/           需要保留的用户数据
+        background、player_registry、port_backups、auto_restart、updates
+        runtime_tools       长驻工具的解压副本
+        tools               按需下载或从工具包导入的工具
+        frpc_config、frp_selfhost_config、lolia_frpc_config                 三种穿透的 frpc 配置
+        mod_config_memory   Mod 配置记忆与覆盖前的游戏配置备份
+        mod_repair          V1 Mod 目录多余文件的清理记录（日志包会收录）
+    security/       凭据与主机信任
+        frp_selfhost（SSH 密钥/known_hosts）、lobby_accel_wireguard、lobby_accel_mihomo、lolia（OAuth 令牌）
 """
 
 import hashlib

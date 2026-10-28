@@ -1101,7 +1101,7 @@ class MainWindow(QWidget):
         self._update_status()
 
     def open_creation_wizard(self) -> None:
-        from dstools.qt.creation_wizard import CreationWizardDialog
+        from dstools.qt.world.creation_wizard import CreationWizardDialog
 
         dialog = CreationWizardDialog(self.ctx, background=self.background)
         self.text_halo.watch(dialog)

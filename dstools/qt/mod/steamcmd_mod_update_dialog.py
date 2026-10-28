@@ -418,7 +418,7 @@ class SteamcmdModUpdateDialog(QDialog):
                                               t("steamcmd_update.download_missing_confirm", count=len(ids))):
             return
         from dstools.features.local_service import steamcmd_updater
-        from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
+        from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
         if steamcmd_updater.find_steamcmd() is None:
             run_steamcmd_mod_update(self, ids)  # 只会提示 SteamCMD 不可用的原因
             return

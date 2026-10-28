@@ -232,7 +232,7 @@ def test_shutdown_text_inside_other_command_does_not_hide_crash() -> None:
 
 
 def test_console_command_history_supports_up_down_and_draft() -> None:
-    from dstools.qt.local_console import ConsolePane
+    from dstools.qt.server.local_console import ConsolePane
 
     class _FakeEdit:
         def __init__(self) -> None:

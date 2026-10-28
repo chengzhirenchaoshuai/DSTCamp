@@ -1,6 +1,6 @@
 """Mod 管理页。
 
-列表使用 qt/mod_panel.py 的自绘面板；配置编辑、配置集、推荐订阅、Workshop 更新拆在同目录独立模块。
+列表使用 qt/mod/mod_panel.py 的自绘面板；配置编辑、配置集、推荐订阅、Workshop 更新拆在同目录独立模块。
 本地存档（Steam）的 Mod 状态以 Master/save/shardindex 为准，游戏关闭时可编辑，保存时同步写各世界 modoverrides.lua；
 WeGame 本地存档与未选存档时整页只读。
 """
@@ -50,14 +50,14 @@ from dstools.features.world.location_profiles import (
 from dstools.i18n import t
 from dstools.models import ModEntry, ModOverrides, Platform, SaveSource
 from dstools.qt import dialogs
-from dstools.qt.mod_config_dialog import open_mod_config
-from dstools.qt.mod_config_sync import start_sync as start_config_sync
-from dstools.qt.mod_panel import ModListPanel
-from dstools.qt.mod_preload import cancel as cancel_mod_preload
-from dstools.qt.mod_preload import take_snapshot as take_mod_preload_snapshot
-from dstools.qt.mod_defaults_dialog import GlobalDefaultsDialog
-from dstools.qt.mod_presets_dialogs import ApplyPresetDialog, SavePresetDialog
-from dstools.qt.mod_recommend_dialog import RecommendModsDialog
+from dstools.qt.mod.mod_config_dialog import open_mod_config
+from dstools.qt.mod.mod_config_sync import start_sync as start_config_sync
+from dstools.qt.mod.mod_panel import ModListPanel
+from dstools.qt.mod.mod_preload import cancel as cancel_mod_preload
+from dstools.qt.mod.mod_preload import take_snapshot as take_mod_preload_snapshot
+from dstools.qt.mod.mod_defaults_dialog import GlobalDefaultsDialog
+from dstools.qt.mod.mod_presets_dialogs import ApplyPresetDialog, SavePresetDialog
+from dstools.qt.mod.mod_recommend_dialog import RecommendModsDialog
 from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
@@ -1341,8 +1341,8 @@ class ModPage(Page):
         RecommendModsDialog(self).exec()
 
     def _open_download_by_id(self) -> None:
-        from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
-        from dstools.qt.workshop_download_dialog import WorkshopDownloadDialog
+        from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
+        from dstools.qt.mod.workshop_download_dialog import WorkshopDownloadDialog
         dialog = WorkshopDownloadDialog(self.window())
         if dialog.exec():
             run_steamcmd_mod_update(self.window(), dialog.workshop_ids, on_finished=self.ctx.workshop_mods_changed.emit)
@@ -1483,7 +1483,7 @@ class ModPage(Page):
     def _export_mod_list_image(self) -> None:
         """导出当前世界（默认地上）已启用的服务端 Mod 为图片，含未保存的勾选改动。"""
         from dstools.features.mod.export_list import build_export_entries
-        from dstools.qt.mod_export_dialog import ModListImageDialog, default_file_name, render_mod_list_image
+        from dstools.qt.mod.mod_export_dialog import ModListImageDialog, default_file_name, render_mod_list_image
 
         cluster = self.get_cluster()
         if cluster is None or self._loading:
@@ -1695,17 +1695,17 @@ class ModPage(Page):
         self._sync_btn.setVisible(not steamcmd and not (runtime and runtime.is_client))
 
     def _open_steamcmd_cleanup_dialog(self) -> None:
-        from dstools.qt.steamcmd_mod_cleanup_dialog import SteamcmdModCleanupDialog
+        from dstools.qt.mod.steamcmd_mod_cleanup_dialog import SteamcmdModCleanupDialog
         if SteamcmdModCleanupDialog(self.window(), self.ctx.clusters()).exec():
             self.ctx.workshop_mods_changed.emit()
 
     def _open_workshop_update_dialog(self) -> None:
         if self._uses_steamcmd():
             # SteamCMD 通道：全局更新已下载的和所有服务器存档用到的工坊 Mod（V1、V2 都按 Web API 判断）
-            from dstools.qt.steamcmd_mod_update_dialog import SteamcmdModUpdateDialog
+            from dstools.qt.mod.steamcmd_mod_update_dialog import SteamcmdModUpdateDialog
             SteamcmdModUpdateDialog(self).exec()
             return
-        from dstools.qt.mod_workshop_update_dialog import WorkshopUpdateDialog
+        from dstools.qt.mod.mod_workshop_update_dialog import WorkshopUpdateDialog
         WorkshopUpdateDialog(self).exec()
 
     def _update_workshop_mods(self, ids: list[int], expected_versions=None, force_redownload_ids=None,

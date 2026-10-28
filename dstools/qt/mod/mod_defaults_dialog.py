@@ -21,7 +21,7 @@ from dstools.features.mod.list_model import localize_mod_name
 from dstools.i18n import t
 from dstools.qt import dialogs
 from dstools.qt.imaging import pil_to_pixmap
-from dstools.qt.mod_config_sync import last_states, steamcmd_channel, sync_available, sync_off_text
+from dstools.qt.mod.mod_config_sync import last_states, steamcmd_channel, sync_available, sync_off_text
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Card, PillTabBar
@@ -362,7 +362,7 @@ class GlobalDefaultsDialog(dialogs.Dialog):
 
     def on_sync_done(self, report) -> None:
         """同步结束：恢复按钮，显示本次结果摘要并刷新各行状态；report 为 None 表示失败。"""
-        from dstools.qt.mod_config_sync import last_error
+        from dstools.qt.mod.mod_config_sync import last_error
 
         self._syncing = False
         self.unsetCursor()

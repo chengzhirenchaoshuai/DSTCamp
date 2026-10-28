@@ -9,7 +9,7 @@ from dstools.features.mod.parser import is_mod_subscribed
 from dstools.i18n import t
 from dstools.models import Platform
 from dstools.qt import dialogs
-from dstools.qt.mod_panel import _DEFAULT_ICON_PATH
+from dstools.qt.mod.mod_panel import _DEFAULT_ICON_PATH
 from dstools.qt.theme import theme
 from dstools.qt.widgets import Card
 from dstools.shared.resource_paths import bundled_resource_dir
@@ -104,7 +104,7 @@ class RecommendModsDialog(dialogs.Dialog):
         return card
 
     def _download(self, wid: str, button: QPushButton, done_label: QLabel) -> None:
-        from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
+        from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
 
         def finished() -> None:
             if is_mod_subscribed(wid):

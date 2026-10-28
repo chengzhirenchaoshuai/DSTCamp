@@ -351,7 +351,7 @@ def test_auto_restart_controller_flow() -> None:
         MAX_CRASH_RESTARTS, TOKEN_BUSY_RECHECK, TOKEN_WAIT_LIMIT,
     )
     from dstools.features.local_service.dedicated_server import ServerStatus
-    from dstools.qt import auto_restart as controller_module
+    from dstools.qt.server import auto_restart as controller_module
 
     app = QCoreApplication.instance() or QCoreApplication([])  # QTimer 需要应用对象，保持引用
     assert app is not None

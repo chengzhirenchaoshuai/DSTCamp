@@ -14,7 +14,7 @@ from dstools.features.world.location_profiles import CAVES_SHARD, get_location_d
 from dstools.i18n import get_lang, t
 from dstools.models import SaveSource
 from dstools.qt import dialogs
-from dstools.qt.lan_mapping_guard import shard_mapping_name
+from dstools.qt.tunnel.lan_mapping_guard import shard_mapping_name
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Banner, Card, clear_layout

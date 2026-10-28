@@ -25,12 +25,13 @@ from dstools.features.frp_selfhost.wireguard import DEFAULT_WIREGUARD_PORT, ensu
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE
 from dstools.i18n import t
 from dstools.models import SaveSource
-from dstools.qt import dialogs, frpc_tool
+from dstools.qt import dialogs
+from dstools.qt.tunnel import frpc_tool
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, PillTabBar, ToggleSwitch, clear_layout, section_card
 from dstools.shared import app_settings
-from dstools.qt.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping
+from dstools.qt.tunnel.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping
 from dstools.shared.frpc_log import FrpcOutputLog
 from dstools.shared.resource_paths import data_dir
 from dstools.shared.server_ports import stable_path_key

@@ -605,7 +605,7 @@ def test_modinfo_reader():
         ] == {"草": "6个", "树枝": "6个", "燧石": "2个"}
 
         # 坑：数组配置被解析成 "1"/"2"... 键的 dict 而不是 list，编辑器必须识别，否则会把原有数据清空
-        from dstools.qt.mod_config_dialog import ModConfigDialog
+        from dstools.qt.mod.mod_config_dialog import ModConfigDialog
 
         parsed_array_shape = {
             "1": "torch",
@@ -630,7 +630,7 @@ def test_mod_config_choice_keeps_unlisted_value():
     from PySide6.QtWidgets import QApplication
 
     from dstools.features.mod.parser import ModConfigOption, ModInfo
-    from dstools.qt.mod_config_dialog import ModConfigDialog
+    from dstools.qt.mod.mod_config_dialog import ModConfigDialog
 
     app = QApplication.instance() or QApplication([])
     worlds = {"1": {"name": "森林"}, "3": {"name": "猪镇", "style": "porkland"}}

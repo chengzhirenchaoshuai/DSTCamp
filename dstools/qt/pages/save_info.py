@@ -27,7 +27,7 @@ from dstools.features.save_browser.world_reset import reset_worlds, shards_with_
 from dstools.i18n import t
 from dstools.models import SaveSource
 from dstools.qt import dialogs
-from dstools.qt.lan_mapping_guard import mapping_method_names
+from dstools.qt.tunnel.lan_mapping_guard import mapping_method_names
 from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async, run_async_with_log

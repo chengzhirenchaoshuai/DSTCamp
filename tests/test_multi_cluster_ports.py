@@ -556,7 +556,7 @@ def test_config_editor_lan_port_repair_and_lock() -> None:
 
 
 def test_mapping_enable_guard_for_lan_saves() -> None:
-    from dstools.qt import lan_mapping_guard
+    from dstools.qt.tunnel import lan_mapping_guard
     from dstools.shared.ini_parser import parse_cluster_ini
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -646,7 +646,7 @@ def test_config_editor_port_ranges() -> None:
 
 def test_world_creation_port_conflict_choices() -> None:
     from dstools.features.world.creation import default_cluster_config, default_shard_config
-    from dstools.qt import creation_wizard
+    from dstools.qt.world import creation_wizard
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

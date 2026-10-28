@@ -1,4 +1,4 @@
-"""本地服务器页：世界启动/停止/重启、各世界控制台（qt/local_console.py）、直连代码
+"""本地服务器页：世界启动/停止/重启、各世界控制台（qt/server/local_console.py）、直连代码
 （局域网/公网/内网穿透）、安装目录、Steam 更新与 LuaJIT 补丁。
 
 内网穿透的映射与 frpc 状态通过 AppContext 的钩子获取。
@@ -56,11 +56,11 @@ from dstools.features.sakura import api as sakura_frp
 from dstools.i18n import t
 from dstools.models import Platform, SaveSource
 from dstools.qt import dialogs
-from dstools.qt.local_console import ConsolePane, ConsoleTabWidget, status_color
+from dstools.qt.server.local_console import ConsolePane, ConsoleTabWidget, status_color
 from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async, run_async_with_log
-from dstools.qt.auto_restart import AutoRestartController
+from dstools.qt.server.auto_restart import AutoRestartController
 from dstools.qt.widgets import Banner, Card, ToggleSwitch, VScrollArea
 from dstools.shared.app_settings import (
     blocking_token_holds, get_auto_restart_enabled, get_backup_auto_enabled, get_backup_interval_minutes,
@@ -1841,7 +1841,7 @@ class LocalServicePage(Page):
                 # SteamCMD 没有订阅：直接下载配套 Mod 到它的工坊目录
                 if dialogs.ask_yes_no(self.window(), t("local.luajit_confirm_install_title"),
                                        t("local.luajit_workshop_steamcmd_msg")):
-                    from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
+                    from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
                     run_steamcmd_mod_update(self.window(), [luajit_injector.WORKSHOP_ID],
                                             on_finished=self.ctx.workshop_mods_changed.emit)
             elif dialogs.ask_yes_no(self.window(), t("local.luajit_confirm_install_title"),
@@ -2472,7 +2472,7 @@ class LocalServicePage(Page):
 
     def _export_running_mods(self, proc, cluster) -> None:
         """控制台"Mod 全部加载成功"横幅点击：导出该世界实际加载的 Mod 列表图片。"""
-        from dstools.qt.mod_export_dialog import export_running_mods_image
+        from dstools.qt.mod.mod_export_dialog import export_running_mods_image
         network = cluster.config.network if cluster.config else {}
         label = str(network.get("cluster_name") or cluster.name)
         export_running_mods_image(self.window(), proc, sorted(proc.visible_mod_ids), label)
@@ -2533,7 +2533,7 @@ class LocalServicePage(Page):
         if choice == "subscribe":
             if steamcmd:
                 # SteamCMD 没有订阅，直接下载到它的工坊目录；完成后由用户重新点启动
-                from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
+                from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
                 run_steamcmd_mod_update(self.window(), list(missing.workshop_ids),
                                         on_finished=self.ctx.workshop_mods_changed.emit)
             else:
@@ -2611,7 +2611,7 @@ class LocalServicePage(Page):
              (t("local.outdated_mods_update_btn"), "update")],
             default="update")
         if choice == "update":
-            from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
+            from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
             self._steamcmd_mod_check = None
             run_steamcmd_mod_update(self.window(), [wid for wid, _title in outdated],
                                     on_finished=self.ctx.workshop_mods_changed.emit)

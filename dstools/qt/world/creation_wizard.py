@@ -55,17 +55,17 @@ from dstools.shared.server_ports import (
 )
 from dstools.shared.token_manager import read_token
 from dstools.qt import dialogs
-from dstools.qt.mod_config_dialog import open_mod_config
-from dstools.qt.mod_panel import ModListPanel
-from dstools.qt.mod_presets_dialogs import SavePresetDialog
+from dstools.qt.mod.mod_config_dialog import open_mod_config
+from dstools.qt.mod.mod_panel import ModListPanel
+from dstools.qt.mod.mod_presets_dialogs import SavePresetDialog
 from dstools.qt.pages.server_config import ServerConfigPage
 from dstools.qt.theme import theme
 from dstools.shared.resource_paths import bundled_resource_dir
 from dstools.shared.steam_discovery import read_steam_persona_name
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Grip, PillTabBar, TitleButton
-from dstools.qt.world_panel import WorldPanel
-from dstools.qt.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
+from dstools.qt.world.world_panel import WorldPanel
+from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
 
 FLASH_MS = 200
 

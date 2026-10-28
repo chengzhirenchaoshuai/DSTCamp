@@ -26,7 +26,7 @@ from dstools.features.mod.parser import parse_modinfo
 from dstools.i18n import t
 from dstools.models import Platform
 from dstools.qt import dialogs
-from dstools.qt.mod_panel import _DEFAULT_ICON_PATH
+from dstools.qt.mod.mod_panel import _DEFAULT_ICON_PATH
 from dstools.qt.widgets import Card
 from dstools.qt.theme import theme
 from dstools.shared.clipboard import copy_file_to_clipboard

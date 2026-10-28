@@ -56,7 +56,7 @@ from dstools.features.world.reader import WorldOverride, WorldPreset  # noqa: E4
 from dstools.features.world.view_model import build_world_view_model  # noqa: E402
 from dstools.features.mod.parser import parse_modinfo  # noqa: E402
 from dstools.features.mod.presets import ModPreset  # noqa: E402
-from dstools.qt.creation_wizard import CreationWizardDialog  # noqa: E402
+from dstools.qt.world.creation_wizard import CreationWizardDialog  # noqa: E402
 from dstools.qt.pages.mod import ModPage  # noqa: E402
 from dstools.features.cluster_config.config_manager import load_shard_config  # noqa: E402
 from dstools.models import ModEntry, SaveSource  # noqa: E402
@@ -522,7 +522,7 @@ def _main_mod_dependency_page() -> ModPage:
 def test_creation_dependency_confirmation() -> None:
     accepted = _dependency_wizard()
     with patch(
-        "dstools.qt.creation_wizard.dialogs.ask_yes_no", return_value=True,
+        "dstools.qt.world.creation_wizard.dialogs.ask_yes_no", return_value=True,
     ) as confirm:
         assert accepted._ensure_mod_dependencies(show_dialog=True)
     confirm.assert_called_once()
@@ -533,7 +533,7 @@ def test_creation_dependency_confirmation() -> None:
 
     declined = _dependency_wizard()
     with patch(
-        "dstools.qt.creation_wizard.dialogs.ask_yes_no", return_value=False,
+        "dstools.qt.world.creation_wizard.dialogs.ask_yes_no", return_value=False,
     ):
         assert not declined._ensure_mod_dependencies(show_dialog=True)
     assert not declined._mod_data[child_key].enabled

@@ -1,7 +1,7 @@
 """世界设置页：世界规则与世界生成都可改值保存。服务器存档写 leveldataoverride.lua；本地存档写游戏真正
 读取的各分片 save/shardindex 并同步 leveldataoverride.lua。游戏只在启动时读取并缓存各存档 shardindex，
 存档运行时开服进程还会覆盖它：存档可能在运行时拦下，游戏开着时保存前提醒需重启游戏。世界生成只在生成
-新世界时生效（已生成的世界需重置），后台加载，面板见 qt/world_panel.py。
+新世界时生效（已生成的世界需重置），后台加载，面板见 qt/world/world_panel.py。
 """
 
 import webbrowser
@@ -24,9 +24,9 @@ from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar
-from dstools.qt.world_manage import ManageWorldsDialog
-from dstools.qt.world_panel import WorldPanel
-from dstools.qt.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
+from dstools.qt.world.world_manage import ManageWorldsDialog
+from dstools.qt.world.world_panel import WorldPanel
+from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
 
 FLASH_MS = 200  # 被点的箭头短暂画成"按下"效果，模仿游戏 UI 的点击反馈
 
@@ -359,7 +359,7 @@ class WorldSettingsPage(Page):
         if choice != "go":
             return
         if steamcmd:
-            from dstools.qt.steamcmd_mods import run_steamcmd_mod_update
+            from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
             run_steamcmd_mod_update(self.window(), [shard_management.WORLDGATE_MOD_ID],
                                     on_finished=self.ctx.workshop_mods_changed.emit)
         else:

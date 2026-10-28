@@ -1,4 +1,4 @@
-"""内网穿透页：樱花映射（SakuraFrp 开放 API，本文件）、Lolia（qt/lolia_panel.py）、自建节点（qt/selfhost_panel.py，含大厅加速）。
+"""内网穿透页：樱花映射（SakuraFrp 开放 API，本文件）、Lolia（qt/tunnel/lolia_panel.py）、自建节点（qt/tunnel/selfhost_panel.py，含大厅加速）。
 
 跨页钩子（AppContext.mapping_owner / ensure_lobby_accel 等）在这里接管。
 """
@@ -25,15 +25,15 @@ from dstools.i18n import t
 from dstools.models import SaveSource
 from dstools.qt import dialogs
 from dstools.qt.pages.base import Page
-from dstools.qt.lolia_panel import LoliaPanel
-from dstools.qt.node_picker import NodeChoice, NodePickerDialog
-from dstools.qt.selfhost_panel import SelfHostPanel
+from dstools.qt.tunnel.lolia_panel import LoliaPanel
+from dstools.qt.tunnel.node_picker import NodeChoice, NodePickerDialog
+from dstools.qt.tunnel.selfhost_panel import SelfHostPanel
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.tool_download import download_tool_with_dialog
 from dstools.qt.widgets import AutoHideLabel, Card, PillTabBar, VScrollArea, clear_layout, section_card
 from dstools.shared import app_settings, tool_store
-from dstools.qt.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
+from dstools.qt.tunnel.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
 from dstools.shared.server_ports import stable_path_key
 from dstools.shared.token_manager import mask_token
 

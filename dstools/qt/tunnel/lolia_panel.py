@@ -28,10 +28,11 @@ from dstools.features.lolia import api as lolia_api
 from dstools.features.lolia import config as lolia_config
 from dstools.i18n import t
 from dstools.models import SaveSource
-from dstools.qt import dialogs, frpc_tool
-from dstools.qt.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
-from dstools.qt.lolia_oauth_dialog import LoliaOAuthAppDialog
-from dstools.qt.node_picker import NodeChoice, NodePickerDialog
+from dstools.qt import dialogs
+from dstools.qt.tunnel import frpc_tool
+from dstools.qt.tunnel.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
+from dstools.qt.tunnel.lolia_oauth_dialog import LoliaOAuthAppDialog
+from dstools.qt.tunnel.node_picker import NodeChoice, NodePickerDialog
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, clear_layout, section_card
