@@ -394,7 +394,7 @@ STRINGS = {
         "mod.workshop_link_btn": "创意工坊",
         "mod.no_workshop_link": "无工坊链接",
         "mod.open_location_missing": "当前找不到这个 Mod 的实际目录。",
-        "mod.local_badge": "本地",
+        "mod.local_badge": "客户端",
         "mod.locked_switch_hover": "LuaJIT 补丁生效中，此项不可更改",
         "mod.recommend_btn": "订阅推荐模组",
         "mod.columns_option": "{count}列",
@@ -1153,7 +1153,7 @@ STRINGS = {
         "mod.add_value_btn": "+ 新增",
         "mod.unsupported_schema": "⚠ 该模组的配置定义格式比较特殊（例如依赖翻译表或游戏内部函数），本工具暂不支持解析，请在游戏内的 Mod 配置菜单中修改设置。开启/关闭该模组不受影响。",
         "mod.dynamic_banner": "⚠ 有 {count} 项设置由模组内部逻辑动态生成，已尝试自动解析但未成功，无法在此编辑，请在游戏内修改。",
-        "mod.read_only_local": "该模组为本地模组（client_only），不需要在存档中配置，此处仅供查看，不可编辑。",
+        "mod.read_only_local": "该模组为客户端模组（client_only），不需要在存档中配置，此处仅供查看，不可编辑。",
         "mod.read_only_local_save": "当前选中的是本地存档：游戏以存档 Master/save/shardindex 中记录的 Mod 为准，开服时会据此重写 modoverrides.lua。此存档暂不支持在这里编辑，仅供查看，如需修改请在游戏内的 Mods 菜单操作。",
         "mod.local_shardindex_banner": (
             "当前选中的是本地存档：Mod 状态读取自存档的 shardindex（游戏以它为准），保存时会同时写入各世界的 "
@@ -2164,7 +2164,7 @@ STRINGS = {
         "mod.workshop_link_btn": "Workshop",
         "mod.no_workshop_link": "No Workshop Link",
         "mod.open_location_missing": "The Mod directory is currently unavailable.",
-        "mod.local_badge": "Local",
+        "mod.local_badge": "Client",
         "mod.locked_switch_hover": "The LuaJIT patch is active -- this can't be changed",
         "mod.recommend_btn": "Subscribe Recommended Mods",
         "mod.columns_option": "{count} col",
@@ -2933,7 +2933,7 @@ STRINGS = {
         "mod.add_value_btn": "+ Add",
         "mod.unsupported_schema": "⚠ This mod defines its configuration in an unusual format (e.g. relying on translation tables or in-game engine functions) that this tool can't parse yet -- please change its settings from the in-game Mod Configuration menu instead. Enabling/disabling this mod is not affected.",
         "mod.dynamic_banner": "⚠ {count} setting(s) are computed by the mod's own logic; automatic resolution was attempted but didn't succeed, so they can't be edited here -- please change them in-game.",
-        "mod.read_only_local": "This is a local (client_only) mod -- it doesn't need a save-file entry to work. Shown here for reference only, not editable.",
+        "mod.read_only_local": "This is a client-only (client_only) mod -- it doesn't need a save-file entry to work. Shown here for reference only, not editable.",
         "mod.read_only_local_save": "The selected save is a local one: the game uses the mods recorded in the save's Master/save/shardindex and rewrites modoverrides.lua from it when the world starts. Editing this save here isn't supported yet -- shown for reference only. To change it, use the in-game Mods menu.",
         "mod.local_shardindex_banner": (
             "The selected save is a local one: mod states are read from the save's shardindex (which the game "
