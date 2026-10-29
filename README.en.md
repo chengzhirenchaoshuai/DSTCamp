@@ -108,25 +108,32 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.7.9 changes
+## 1.8.0 changes
 
-### ✨ New features
+### 🐞 Fixes
+
+- After a power loss or forced shutdown, a corrupted `server.ini` in a save stopped DSTCamp from opening: corrupted content is now skipped and only recognizable settings are read; `cluster.ini`/`server.ini` are written in full and then swapped in, making further corruption less likely.
+- Client-only Mods are now labeled "Client" instead of "Local", distinguishing them from local Mods placed manually in the mods folder.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.7.9)</strong></summary>
+
+### 1.7.9
+
+#### ✨ New features
 
 - **Reset World Offline**: the Save Info tab gains "Reset World Offline", which resets worlds without starting the server: it backs up first, then deletes each world's session saves, and the game generates new worlds from the current world settings on the next start. World settings, Mods and server configuration are kept.
 - **Lite mode**: the Settings menu gains "Lite mode (for cloud servers)", which hides the background image, text outlines and window ornaments, skips toast fade animations and doesn't pre-warm the Mod cache at startup. When running on a server edition of Windows or in Remote Desktop, DSTCamp suggests it once after launch.
 
-### ⚡ Performance
+#### ⚡ Performance
 
 - Faster startup and lower resident memory: the World, Mod, Server Config and Save Info tabs are built the first time you open them; only the Local Server and tunneling tabs are built at startup.
 - Lower idle CPU and memory: the settings file is cached by modification time, Local Server status polling is split into fast and slow paths and slows down while the window is minimized, status labels restyle only when they change, and bundled fonts load on demand.
 - The server console keeps 5,000 lines per world instead of 20,000 (about 27 MB per 20,000 lines measured); the full log stays in server_log.txt.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - Local Mods placed manually in the mods folder (such as Chinese-Pro) were read as Workshop Mods, so Mods that detect their source from the folder name showed the wrong name.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.7.8)</strong></summary>
 
 ### 1.7.8
 
