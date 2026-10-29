@@ -20,7 +20,7 @@ from pathlib import Path
 from dstools.shared.http_download import ProgressCallback, download_verified, matches
 from dstools.shared.resource_paths import data_dir
 
-TOOLS_RELEASE_TAG = "tools-1"
+TOOLS_RELEASE_TAG = "tools-2"
 TOOLS_PACKAGE_NAME = f"DSTCamp-{TOOLS_RELEASE_TAG}.zip"
 # 网盘工具包的蓝奏云单文件分享（与 TOOLS_RELEASE_TAG 一一对应，换工具版本时一起换）
 TOOLS_LANZOU_URL = "https://wwblt.lanzout.com/iJeFk4cozrra"
@@ -49,8 +49,8 @@ TOOLS = (
               "f7c8b4508c90a7a94ae42b03dd9cc7faadc0c05d365722311182404733d5e4f1"),
     StoreTool("frp_selfhost/frps_linux_arm64.xz", "frps_linux_arm64.xz", 4896496,
               "01b026e7a894f361aaa9dd8d5d6d4e77ea5941062619a8e56f0a2e477f866d64"),
-    StoreTool("frpc-sakura/sakura-frpc.exe.xz", "sakura-frpc.exe.xz", 4231284,
-              "6a38087a46ec48fc603d670b56281ccc45c2151c22f1830c5d3544df90c24246"),
+    StoreTool("frpc-sakura/sakura-frpc.exe.xz", "sakura-frpc.exe.xz", 4255628,
+              "70c47f8afe6930aaafc886293dc3c9c45a48b0bb71eddbe93004c4694abf2b08"),
     StoreTool("vcredist/VC++ 2013 x86.exe", "vcredist_2013_x86.exe", 6510136,
               "53b605d1100ab0a88b867447bbf9274b5938125024ba01f5105a9e178a3dcdbd",
               official_url="https://aka.ms/highdpimfc2013x86enu"),
