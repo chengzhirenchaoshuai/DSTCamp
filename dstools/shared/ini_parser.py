@@ -1,11 +1,18 @@
 """cluster.ini/server.ini 的 INI 读写（基于 configparser，保留 key 大小写）。"""
 
+import io
+import os
+import tempfile
+import time
 from configparser import ConfigParser
+from configparser import Error as ConfigParserError
 from pathlib import Path
 from typing import Any
 
 from dstools.features.cluster_config.ini_field_info import NO_TYPE_COERCE_FIELDS
 from dstools.models import ClusterConfig, ShardConfig
+
+_REPLACE_ATTEMPTS = 5
 
 
 class _CaseSensitiveConfigParser(ConfigParser):
@@ -23,6 +30,46 @@ def _write_ini_value(f, key: str, val_str: str) -> None:
         f.write(f"    {cont}\n")
 
 
+def _write_ini_atomically(path: Path, sections: list[tuple[str, dict]]) -> None:
+    """在同一目录写临时文件、落盘后再替换：断电或强制关机时目标文件要么是旧内容，要么是新内容。"""
+    buf = io.StringIO()
+    first = True
+    for section_name, section_data in sections:
+        if not section_data:
+            continue
+        if not first:
+            buf.write("\n\n")
+        first = False
+        buf.write(f"[{section_name}]\n")
+        for key, value in section_data.items():
+            val_str = str(value).lower() if isinstance(value, bool) else str(value)
+            _write_ini_value(buf, key, val_str)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_name = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as temp:
+            temp_name = temp.name
+            temp.write(buf.getvalue())
+            temp.flush()
+            os.fsync(temp.fileno())
+        # 目标偶尔被杀软扫描等短暂打开，替换会报拒绝访问，稍等重试几次
+        for attempt in range(_REPLACE_ATTEMPTS):
+            try:
+                os.replace(temp_name, path)
+                break
+            except PermissionError:
+                if attempt == _REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+    finally:
+        if temp_name and os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
 def _read_ini(path: Path) -> _CaseSensitiveConfigParser:
     """读取 INI 并保留 key 大小写。
 
@@ -38,11 +85,31 @@ def _read_ini(path: Path) -> _CaseSensitiveConfigParser:
             continue
     if text is None:
         text = data.decode("utf-8", errors="replace")
+    # 断电或强制关机后文件可能被填成整块 NUL 字节（元数据已落盘、内容没写进去）
+    text = text.replace("\x00", "")
 
     parser = _CaseSensitiveConfigParser()
     parser.optionxform = str  # type: ignore[method-assign]
-    parser.read_string(text)
+    try:
+        parser.read_string(text)
+    except ConfigParserError:
+        # 文件损坏时只取能认出的段和键值行，不能让一个坏文件拖垮整个界面
+        parser = _CaseSensitiveConfigParser(strict=False)
+        parser.optionxform = str  # type: ignore[method-assign]
+        parser.read_string(_salvage_ini_text(text))
     return parser
+
+
+def _salvage_ini_text(text: str) -> str:
+    """丢掉第一个段标题之前的内容和既不是段标题、注释也不是 ``key = value`` 的行。"""
+    kept: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            kept.append(stripped)
+        elif kept and ("=" in stripped or ":" in stripped) and not stripped.startswith(("=", ":")):
+            kept.append(stripped)
+    return "\n".join(kept)
 
 
 def _section_to_dict(parser: ConfigParser, section: str) -> dict[str, str]:
@@ -106,19 +173,7 @@ def write_cluster_ini(config: ClusterConfig, path: Path) -> None:
         ("STEAM", config.steam),
     ]
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        first = True
-        for section_name, section_data in sections:
-            if not section_data:
-                continue
-            if not first:
-                f.write("\n\n")
-            first = False
-            f.write(f"[{section_name}]\n")
-            for key, value in section_data.items():
-                val_str = str(value).lower() if isinstance(value, bool) else str(value)
-                _write_ini_value(f, key, val_str)
+    _write_ini_atomically(path, sections)
 
 
 # ── Server INI ─────────────────────────────────────────────────────────
@@ -142,17 +197,4 @@ def write_server_ini(config: ShardConfig, path: Path) -> None:
         ("ACCOUNT", config.account),
         ("STEAM", config.steam),
     ]
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        first = True
-        for section_name, section_data in sections:
-            if not section_data:
-                continue
-            if not first:
-                f.write("\n\n")
-            first = False
-            f.write(f"[{section_name}]\n")
-            for key, value in section_data.items():
-                val_str = str(value).lower() if isinstance(value, bool) else str(value)
-                _write_ini_value(f, key, val_str)
+    _write_ini_atomically(path, sections)

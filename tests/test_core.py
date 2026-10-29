@@ -208,6 +208,12 @@ def test_ini_parser():
         assert server.network["server_port"] == 10999
         assert server.shard["is_master"] is True
 
+        # 断电后被填成 NUL 或混入乱码的文件不能抛异常，能认出的键值照常读出
+        server_ini.write_bytes(b"\x00" * 64)
+        assert parse_server_ini(server_ini).network == {}
+        server_ini.write_bytes(b"\x01junk\n[NETWORK]\nserver_port = 11000\nbad line\n" + b"\x00" * 32)
+        assert parse_server_ini(server_ini).network == {"server_port": 11000}
+
 
 def test_discovery():
     """用临时目录验证服务器/本地同名存档发现，不依赖本机环境。"""

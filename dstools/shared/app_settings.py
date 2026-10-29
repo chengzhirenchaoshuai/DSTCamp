@@ -115,7 +115,7 @@ def load_settings() -> dict:
 
 
 def save_settings(data: dict) -> None:
-    """写入设置文件：先写临时文件再 os.replace() 原子替换，避免进程中途崩溃留下半个文件。
+    """写入设置文件：先写临时文件并落盘，再 os.replace() 原子替换，避免崩溃或断电留下半个文件。
 
     坑：目标文件偶尔被杀软扫描、搜索索引等短暂打开，替换会报 WinError 5（拒绝访问），
     稍等重试几次（最多约 0.5 秒）；仍失败才抛出，原文件保持完好。"""
@@ -123,7 +123,11 @@ def save_settings(data: dict) -> None:
     settings_dir.mkdir(parents=True, exist_ok=True)
     path = settings_dir / _SETTINGS_FILE
     tmp_path = path.with_suffix(".tmp")
-    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 替换前先落盘：只替换不 fsync 时，断电后可能留下内容全是 NUL 的设置文件
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(data, ensure_ascii=False, indent=2))
+        f.flush()
+        os.fsync(f.fileno())
     for attempt in range(_REPLACE_ATTEMPTS):
         try:
             os.replace(tmp_path, path)
