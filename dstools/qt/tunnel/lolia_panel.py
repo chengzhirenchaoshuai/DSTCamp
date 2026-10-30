@@ -36,7 +36,7 @@ from dstools.qt.tunnel.node_picker import NodeChoice, NodePickerDialog
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, clear_layout, section_card
-from dstools.shared import app_settings
+from dstools.shared import app_settings, frpc_diagnosis
 from dstools.shared.frpc_log import FrpcOutputLog
 from dstools.shared.resource_paths import data_dir
 from dstools.shared.server_ports import stable_path_key
@@ -567,6 +567,8 @@ class LoliaPanel(QWidget):
             reason = lolia_config.frpc_failure_reason(list(tail))
             if reason and "流量" in reason:
                 reason += t("lolia.traffic_hint")
+            elif hint := frpc_diagnosis.tunnel_hint(tail, exited=False):
+                reason = hint  # 认得的 frp 故障（端口被占用、连不上节点等）换成处理建议
             if reason or proc.status != FrpcStatus.CRASHED:
                 del self._reason_pending[key]
             if reason and proc.status == FrpcStatus.CRASHED:

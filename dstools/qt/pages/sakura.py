@@ -5,6 +5,7 @@
 
 import time
 import webbrowser
+from collections import deque
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QGuiApplication
@@ -32,7 +33,7 @@ from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.tool_download import download_tool_with_dialog
 from dstools.qt.widgets import AutoHideLabel, Card, PillTabBar, VScrollArea, clear_layout, section_card
-from dstools.shared import app_settings, tool_store
+from dstools.shared import app_settings, frpc_diagnosis, tool_store
 from dstools.qt.tunnel.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
 from dstools.shared.server_ports import stable_path_key
 from dstools.shared.token_manager import mask_token
@@ -264,9 +265,16 @@ class _SakuraMappingPanel(QWidget):
 
         # frpc 状态和启停按钮放在"开启/关闭映射"的下一行。
         self._frpc_row = QWidget()
-        frpc_layout = QHBoxLayout(self._frpc_row)
-        frpc_layout.setContentsMargins(0, 0, 0, 0)
+        frpc_outer = QVBoxLayout(self._frpc_row)
+        frpc_outer.setContentsMargins(0, 0, 0, 0)
+        frpc_layout = QHBoxLayout()
         frpc_layout.setSpacing(8)
+        frpc_outer.addLayout(frpc_layout)
+        # frpc 输出里认出的故障或它自己报的原因，直接显示（只放悬停提示、只说"退出码 1"时用户无从下手）
+        self._frpc_hint_label = AutoHideLabel()
+        self._frpc_hint_label.setStyleSheet(f"color: {theme.hex('ERROR')};")
+        self._frpc_hint_label.setWordWrap(True)
+        frpc_outer.addWidget(self._frpc_hint_label)
         self._frpc_status_label = QLabel(t("sakura.frpc_status_stopped"))
         frpc_layout.addWidget(self._frpc_status_label)
         self._frpc_toggle_btn = QPushButton(t("sakura.frpc_start_btn"))
@@ -279,6 +287,7 @@ class _SakuraMappingPanel(QWidget):
         shards_layout.addWidget(self._frpc_row)
         self._frpc_row.setVisible(False)
         self._frpc_shown_running = False
+        self._frpc_tails: dict[int, deque] = {}  # id(frpc 进程) → 最近输出
         # frpc 会被本地服务器页的停服流程停掉、也可能自己退出，状态行要定时跟上实际状态
         self._frpc_timer = QTimer(self, interval=1000)
         self._frpc_timer.timeout.connect(self._tick_frpc_row)
@@ -673,6 +682,7 @@ class _SakuraMappingPanel(QWidget):
         self._frpc_status_label.setText(text)
         self._frpc_status_label.setStyleSheet(f"color: {color};")
         self._frpc_status_label.setToolTip(self._frpc_failed_error(cluster) or "" if cluster else "")
+        self._frpc_hint_label.setText(self._frpc_hints(cluster) if cluster else "")
         if not_downloaded:
             button_text = t("sakura.frpc_download_btn")
         elif self._frpc_health is not None and not self._frpc_health.ready:
@@ -680,6 +690,17 @@ class _SakuraMappingPanel(QWidget):
         else:
             button_text = t("sakura.frpc_stop_btn" if running else "sakura.frpc_start_btn")
         self._frpc_toggle_btn.setText(button_text)
+
+    def _frpc_hints(self, cluster) -> str:
+        hints = []
+        for shard in self._mapped_shards(cluster):
+            proc = self.frpc.get(cluster.path, shard.name)
+            if proc is not None and proc.status in (FrpcStatus.RUNNING, FrpcStatus.CRASHED):
+                hint = frpc_diagnosis.tunnel_hint(self._frpc_tails.get(id(proc)) or (),
+                                                  exited=proc.status == FrpcStatus.CRASHED)
+                if hint:
+                    hints.append(f"{shard.name}: {hint}")
+        return "\n".join(hints)
 
     def _on_frpc_toggle(self) -> None:
         cluster = self._current_cluster
@@ -714,7 +735,13 @@ class _SakuraMappingPanel(QWidget):
     def _tick_frpc_row(self) -> None:
         """把已退出的 frpc 标记为失败，并在显示状态与实际不一致时刷新状态行。"""
         exited = False
-        for proc in self.frpc.processes():
+        procs = self.frpc.processes()
+        # 持续收走输出、只留最后几十行，供 frpc_diagnosis 找原因；已不跟踪的进程一并清掉
+        self._frpc_tails = {id(p): self._frpc_tails.get(id(p)) or deque(maxlen=60) for p in procs}
+        for proc in procs:
+            if lines := proc.read_available_lines():
+                self._frpc_tails[id(proc)].extend(lines)
+                exited = True  # 有新输出就重新诊断
             if proc.status == FrpcStatus.RUNNING and (code := proc.poll_exit_code()) is not None:
                 proc.status = FrpcStatus.CRASHED
                 proc.error = t("sakura.frpc_exited", code=code)

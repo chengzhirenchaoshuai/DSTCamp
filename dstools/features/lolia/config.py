@@ -24,6 +24,7 @@ except ModuleNotFoundError:  # Python 3.10 没有 tomllib；打包版用的是 3
     tomllib = None
 
 from dstools import __version__
+from dstools.shared import frpc_diagnosis
 from dstools.shared.ssl_context import default_ssl_context
 
 API_BASE = "https://api.lolia.link/api/v1"
@@ -157,21 +158,9 @@ def local_config_from(config: dict) -> tuple[str, int, str]:
     return dump_toml(local), ports["_"], local["serverAddr"]
 
 
-_ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
-
 def frpc_failure_reason(lines: list[str]) -> str:
-    """从 frpc 输出里提取最后一条失败原因（如 Lolia 服务端拒绝登录时的
-    "可用流量已耗尽"），找不到返回空字符串。frpc 输出带 ANSI 颜色码，先去掉。"""
-    for raw in reversed(lines):
-        line = _ANSI.sub("", raw).strip()
-        m = re.search(r"login to the server failed: (.*?)(?:\. With loginFailExit.*)?$", line)
-        if m:
-            return m.group(1)
-        m = re.search(r"\[[EW]\] \[[^\]]*\] (.*)$", line)
-        if m:
-            return m.group(1)
-    return ""
+    """从 frpc 输出里提取最后一条失败原因；实现已移到 shared/frpc_diagnosis，三种穿透共用。"""
+    return frpc_diagnosis.failure_reason(lines)
 
 
 def dump_toml(data: dict) -> str:

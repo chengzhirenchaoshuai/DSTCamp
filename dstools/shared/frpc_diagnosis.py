@@ -34,6 +34,30 @@ class FrpcProblem:
     line: str = ""  # frpc 原文（去掉颜色码）
 
 
+def failure_reason(lines: Iterable[str]) -> str:
+    """frpc 最后报的失败原因原文（如 Lolia 拒绝登录时的"可用流量已耗尽"），找不到返回空字符串。"""
+    for raw in reversed(list(lines)):
+        line = _ANSI.sub("", raw).strip()
+        if m := re.search(r"login to the server failed: (.*?)(?:\. With loginFailExit.*)?$", line):
+            return m.group(1)
+        if m := re.search(r"\[[EW]\] \[[^\]]*\] (.*)$", line):
+            return m.group(1)
+    return ""
+
+
+def tunnel_hint(lines: Iterable[str], exited: bool) -> str:
+    """樱花/Lolia 的 frpc 提示：认得的故障给处理建议；认不出的只在已退出时给出 frpc 原文，不凭猜测编原因。
+    （樱花的 frpc 是闭源改版，报错原文无从核对，所以只匹配 frp 原版就有的那几类。）"""
+    from dstools.i18n import t
+
+    lines = list(lines)
+    if problem := diagnose(lines):
+        return t(f"frpc_hint_tunnel.{problem.kind}")
+    if exited and (reason := failure_reason(lines)):
+        return t("frpc_hint_tunnel.raw", reason=reason)
+    return ""
+
+
 def diagnose(lines: Iterable[str]) -> FrpcProblem | None:
     """从最新一行往前找：先遇到登录成功说明之后（含重连后）没再出登录类问题，返回 None；
     映射启动失败的行在登录成功之后，所以会先被找到。"""

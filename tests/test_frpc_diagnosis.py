@@ -1,6 +1,7 @@
 """frpc 输出诊断：退出码 1 时要能说出原因（实测共用节点 Token 被换、端口被占用排查了一个小时）。"""
 
-from dstools.shared.frpc_diagnosis import diagnose
+from dstools.i18n import t
+from dstools.shared.frpc_diagnosis import diagnose, tunnel_hint
 from _harness import run  # noqa: E402
 
 # 取自真实日志（2026-10-30，自建节点被共用者重新部署后）
@@ -33,6 +34,14 @@ def test_port_conflict_while_running_names_the_proxy() -> None:
              "2026-10-30 22:12:37.308 [W] [client/control.go:163] [caedd8674438e419] [save-a0e01ff4-Master] start error: port already used"]
     problem = diagnose(lines)
     assert problem.kind == "port_used" and problem.proxy == "save-a0e01ff4-Master"
+
+
+def test_tunnel_hint_shows_raw_reason_only_after_exit() -> None:
+    # 樱花/Lolia：认不出的原因不凭猜测编提示，只在 frpc 退出后给出它自己报的原文（真机 Lolia 拒绝登录）
+    rejected = ["\x1b[1;33m2026-10-05 13:52:10.117 [W] [client/service.go:322] connect to server error: 可用流量已耗尽"]
+    assert tunnel_hint(rejected, exited=False) == ""
+    assert "可用流量已耗尽" in tunnel_hint(rejected, exited=True)
+    assert tunnel_hint(_TOKEN_FAIL, exited=False) == t("frpc_hint_tunnel.token_mismatch")
 
 
 if __name__ == "__main__":
