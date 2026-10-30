@@ -7,7 +7,7 @@ import time
 import webbrowser
 from collections import deque
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget,
@@ -140,43 +140,46 @@ class _NodeSettingsDialog(QDialog):
         hint = QLabel(t("selfhost.node_settings_hint"))
         hint.setWordWrap(True)
         hint.setFont(theme.font("FONT_SIZE_SM"))
+        hint.setProperty("muted", True)
         layout.addWidget(hint)
 
+        # 概览只显示文字，每行"标题 / 内容 / 操作"；端口和 Token 只在「连接设置」里改（误改后 frpc 连不上，原因不直观）
         grid = QGridLayout()
-        grid.addWidget(QLabel(t("selfhost.host_label")), 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(12)
+        grid.setColumnStretch(1, 1)
         self._host_label = QLabel()
-        grid.addWidget(self._host_label, 0, 1, 1, 2)
-        # 端口和 Token 平时只读，改动统一走「连接设置」弹窗（误改后 frpc 连不上，原因不直观）
-        grid.addWidget(QLabel(t("selfhost.bind_port_label")), 1, 0)
-        self._port_edit = QLineEdit(str(panel._pending_bind_port))
-        self._port_edit.setReadOnly(True)
-        self._port_edit.setToolTip(t("selfhost.bind_port_hint"))
-        grid.addWidget(self._port_edit, 1, 1)
+        self._conn_label = QLabel()
+        self._conn_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        deploy_note = QLabel(t("selfhost.deploy_note"))
+        deploy_note.setWordWrap(True)
+        deploy_note.setFont(theme.font("FONT_SIZE_SM"))
+        deploy_note.setProperty("muted", True)
+        auth_btn = QPushButton(t("selfhost.ssh_auth_btn"))
+        auth_btn.clicked.connect(panel._open_ssh_auth_dialog)
         self._conn_settings_btn = QPushButton(t("selfhost.conn_settings_btn"))
         self._conn_settings_btn.clicked.connect(self._on_conn_settings_clicked)
-        grid.addWidget(self._conn_settings_btn, 1, 2)
-        grid.addWidget(QLabel(t("selfhost.token_label")), 2, 0)
-        self._token_edit = QLineEdit(panel._pending_token)
-        self._token_edit.setReadOnly(True)
-        self._token_edit.setFont(QFont("Consolas", 10))
-        grid.addWidget(self._token_edit, 2, 1)
-        self._regen_btn = QPushButton(t("selfhost.regen_token_btn"))
-        self._regen_btn.clicked.connect(self._on_regen_clicked)
-        grid.addWidget(self._regen_btn, 2, 2)
+        self._deploy_btn = QPushButton(t("selfhost.ssh_deploy_btn"))
+        self._deploy_btn.clicked.connect(self._on_deploy_clicked)
+        rows = (("selfhost.row_server", self._host_label, auth_btn),
+                ("selfhost.row_connection", self._conn_label, self._conn_settings_btn),
+                ("selfhost.row_deploy", deploy_note, self._deploy_btn))
+        for row, (title_key, content, button) in enumerate(rows):
+            title = QLabel(t(title_key))
+            title.setFont(theme.font("FONT_SIZE_BASE", bold=True))
+            grid.addWidget(title, row, 0, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(content, row, 1)
+            grid.addWidget(button, row, 2, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(grid)
 
         actions = QHBoxLayout()
-        auth_btn = QPushButton(t("selfhost.ssh_auth_btn"))
-        auth_btn.clicked.connect(panel._open_ssh_auth_dialog)
-        actions.addWidget(auth_btn)
-        self._deploy_btn = QPushButton(t("selfhost.ssh_deploy_btn"))
-        self._deploy_btn.clicked.connect(self._on_deploy_clicked)
-        actions.addWidget(self._deploy_btn)
         actions.addStretch()
         close_btn = dialogs.style_button(QPushButton(t("dlg.close_btn")), "secondary")
         close_btn.clicked.connect(self.close)
         actions.addWidget(close_btn)
+        layout.addSpacing(6)
         layout.addLayout(actions)
+        self.set_connection_display(panel._pending_bind_port, panel._pending_token)
         self.refresh()
 
     def _on_deploy_clicked(self) -> None:
@@ -187,15 +190,12 @@ class _NodeSettingsDialog(QDialog):
         if dialog.exec() and dialog.result is not None:
             self.panel._save_connection(*dialog.result)
 
-    def _on_regen_clicked(self) -> None:
-        self.panel._regenerate_token()
-
     def set_connection_display(self, bind_port, token: str) -> None:
-        self._port_edit.setText(str(bind_port))
-        self._token_edit.setText(token)
+        # 概览里 Token 只露首尾，完整值在「连接设置」里看
+        masked = f"{token[:4]}…{token[-4:]}" if len(token) > 10 else token
+        self._conn_label.setText(t("selfhost.conn_summary", port=bind_port, token=masked or "-"))
 
-    def set_regen_enabled(self, enabled: bool) -> None:
-        self._regen_btn.setEnabled(enabled)
+    def set_conn_settings_enabled(self, enabled: bool) -> None:
         self._conn_settings_btn.setEnabled(enabled)
 
     def refresh(self) -> None:
@@ -206,11 +206,7 @@ class _NodeSettingsDialog(QDialog):
             t("selfhost.ssh_redeploy_btn") if self.panel._is_service_active() else t("selfhost.ssh_deploy_btn"))
         self._deploy_btn.setToolTip("" if authed else t("selfhost.deploy_needs_auth_hint"))
         self._conn_settings_btn.setEnabled(not self.panel._any_mapped)
-        self._conn_settings_btn.setToolTip(
-            t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.conn_settings_hint"))
-        self._regen_btn.setEnabled(not self.panel._any_mapped)
-        self._regen_btn.setToolTip(
-            t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.regen_token_hint"))
+        self._conn_settings_btn.setToolTip(t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else "")
 
 
 class _ConnectionSettingsDialog(dialogs.Dialog):
@@ -230,6 +226,12 @@ class _ConnectionSettingsDialog(dialogs.Dialog):
         self._token_edit = QLineEdit(token)
         self._token_edit.setFont(QFont("Consolas", 10))
         grid.addWidget(self._token_edit, 1, 1)
+        # 只填进输入框，点保存才生效；新 Token 还要重新部署写到服务器，见按钮提示
+        regen_btn = QPushButton(t("selfhost.regen_token_btn"))
+        regen_btn.setToolTip(t("selfhost.regen_token_hint"))
+        regen_btn.setAutoDefault(False)
+        regen_btn.clicked.connect(lambda: self._token_edit.setText(deploy.generate_token()))
+        grid.addWidget(regen_btn, 1, 2)
         self.body.addLayout(grid)
         self._error = self.error_label()
         self._error.hide()
@@ -649,15 +651,6 @@ class SelfHostPanel(QWidget):
 
         run_async(work, done, error)
 
-    def _regenerate_token(self) -> None:
-        if self._any_mapped:
-            return
-        if not dialogs.ask_yes_no(self.window(), t("selfhost.regen_token_btn"), t("selfhost.regen_token_confirm_msg")):
-            return
-        self._pending_token = deploy.generate_token()
-        if self._node_dialog is not None:
-            self._node_dialog.set_connection_display(self._pending_bind_port, self._pending_token)
-
     def _save_connection(self, bind_port: int, token: str) -> None:
         """「连接设置」里填的端口和 Token（已校验）立即存入设置，不必重新部署（共用别人部署的节点时照服务器填）；
         还没部署过时只记下，部署时一并保存。只改本机，不动服务器。"""
@@ -867,7 +860,7 @@ class SelfHostPanel(QWidget):
         self._conn_check_btn.setEnabled(any_mapped)
         self._conn_check_btn.setToolTip("" if any_mapped else t("selfhost.conn_check_needs_mapping_hint"))
         if self._node_dialog is not None:
-            self._node_dialog.set_regen_enabled(not any_mapped)
+            self._node_dialog.set_conn_settings_enabled(not any_mapped)
         if any_mapped:
             self._frpc_row.setVisible(True)
             self._refresh_frpc_row()
