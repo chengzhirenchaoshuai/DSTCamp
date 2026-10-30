@@ -26,6 +26,18 @@ def is_valid_token(token: str) -> bool:
     return bool(_TOKEN_RE.fullmatch(token))
 
 
+FRPS_TOML_PATH = "/opt/dstcamp-frp/frps.toml"  # 与部署脚本的 INSTALL_DIR 一致
+_FRPS_PORT_RE = re.compile(r'^bindPort\s*=\s*(\d+)\s*$', re.MULTILINE)
+_FRPS_TOKEN_RE = re.compile(r'^token\s*=\s*"([^"\\]*)"\s*$', re.MULTILINE)
+
+
+def parse_frps_toml(text: str) -> tuple[int | None, str | None]:
+    """从 build_frps_toml 写出的配置里读回 (端口, Token)，读不到的项为 None；共用别人部署的节点时据此填连接设置。"""
+    port = _FRPS_PORT_RE.search(text)
+    token = _FRPS_TOKEN_RE.search(text)
+    return (int(port.group(1)) if port else None), (token.group(1) if token else None)
+
+
 def build_frps_toml(bind_port: int, token: str) -> str:
     """服务端 frps.toml：只开鉴权与监听，不开 dashboard（避免多暴露一个公网管理页）。"""
     return (

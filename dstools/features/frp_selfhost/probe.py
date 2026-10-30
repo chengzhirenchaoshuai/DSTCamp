@@ -121,3 +121,13 @@ def probe_server_status(host: str, port: int, username: str, connect_timeout: fl
         return ServerStatus(reachable=False, error=str(e))
     finally:
         client.close()
+
+
+def read_frps_connection(host: str, port: int, username: str) -> tuple[int | None, str | None]:
+    """只读服务器上 DSTCamp 部署的 frps.toml，返回 (端口, Token)；同步阻塞，失败抛 host_firewall.FirewallError。"""
+    from dstools.features.frp_selfhost import deploy, host_firewall
+
+    with host_firewall.ssh_session(host, port, username) as (client, sudo):
+        _stdin, stdout, _stderr = client.exec_command(f"{sudo}cat {deploy.FRPS_TOML_PATH}", timeout=15)
+        text = stdout.read().decode("utf-8", errors="replace")
+    return deploy.parse_frps_toml(text)
