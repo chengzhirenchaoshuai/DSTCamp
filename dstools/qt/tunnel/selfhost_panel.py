@@ -146,23 +146,23 @@ class _NodeSettingsDialog(QDialog):
         grid.addWidget(QLabel(t("selfhost.host_label")), 0, 0)
         self._host_label = QLabel()
         grid.addWidget(self._host_label, 0, 1, 1, 2)
+        # 端口和 Token 平时只读，改动统一走「连接设置」弹窗（误改后 frpc 连不上，原因不直观）
         grid.addWidget(QLabel(t("selfhost.bind_port_label")), 1, 0)
         self._port_edit = QLineEdit(str(panel._pending_bind_port))
+        self._port_edit.setReadOnly(True)
         self._port_edit.setToolTip(t("selfhost.bind_port_hint"))
         grid.addWidget(self._port_edit, 1, 1)
+        self._conn_settings_btn = QPushButton(t("selfhost.conn_settings_btn"))
+        self._conn_settings_btn.clicked.connect(self._on_conn_settings_clicked)
+        grid.addWidget(self._conn_settings_btn, 1, 2)
         grid.addWidget(QLabel(t("selfhost.token_label")), 2, 0)
         self._token_edit = QLineEdit(panel._pending_token)
         self._token_edit.setReadOnly(True)
         self._token_edit.setFont(QFont("Consolas", 10))
         grid.addWidget(self._token_edit, 2, 1)
-        token_btns = QHBoxLayout()
-        self._set_token_btn = QPushButton(t("selfhost.set_token_btn"))
-        self._set_token_btn.clicked.connect(self._on_set_token_clicked)
-        token_btns.addWidget(self._set_token_btn)
         self._regen_btn = QPushButton(t("selfhost.regen_token_btn"))
         self._regen_btn.clicked.connect(self._on_regen_clicked)
-        token_btns.addWidget(self._regen_btn)
-        grid.addLayout(token_btns, 2, 2)
+        grid.addWidget(self._regen_btn, 2, 2)
         layout.addLayout(grid)
 
         actions = QHBoxLayout()
@@ -180,25 +180,23 @@ class _NodeSettingsDialog(QDialog):
         self.refresh()
 
     def _on_deploy_clicked(self) -> None:
-        self.panel._pending_bind_port = self._port_edit.text().strip()
         self.panel._start_deploy()
 
-    def _on_set_token_clicked(self) -> None:
-        dialog = dialogs.TextInputDialog(
-            self, t("selfhost.set_token_title"), t("selfhost.token_edit_hint"), initial=self.panel._pending_token,
-            validator=lambda v: None if deploy.is_valid_token(v) else t("selfhost.invalid_token"))
-        if dialog.exec() and dialog.result_text:
-            self.panel._save_token(dialog.result_text)
+    def _on_conn_settings_clicked(self) -> None:
+        dialog = _ConnectionSettingsDialog(self, str(self.panel._pending_bind_port), self.panel._pending_token)
+        if dialog.exec() and dialog.result is not None:
+            self.panel._save_connection(*dialog.result)
 
     def _on_regen_clicked(self) -> None:
         self.panel._regenerate_token()
 
-    def set_token_display(self, token: str) -> None:
+    def set_connection_display(self, bind_port, token: str) -> None:
+        self._port_edit.setText(str(bind_port))
         self._token_edit.setText(token)
 
     def set_regen_enabled(self, enabled: bool) -> None:
         self._regen_btn.setEnabled(enabled)
-        self._set_token_btn.setEnabled(enabled)
+        self._conn_settings_btn.setEnabled(enabled)
 
     def refresh(self) -> None:
         self._host_label.setText(self.panel._authenticated_host or t("selfhost.host_pending_auth"))
@@ -207,12 +205,49 @@ class _NodeSettingsDialog(QDialog):
         self._deploy_btn.setText(
             t("selfhost.ssh_redeploy_btn") if self.panel._is_service_active() else t("selfhost.ssh_deploy_btn"))
         self._deploy_btn.setToolTip("" if authed else t("selfhost.deploy_needs_auth_hint"))
-        self._set_token_btn.setEnabled(not self.panel._any_mapped)
-        self._set_token_btn.setToolTip(
-            t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.token_edit_hint"))
+        self._conn_settings_btn.setEnabled(not self.panel._any_mapped)
+        self._conn_settings_btn.setToolTip(
+            t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.conn_settings_hint"))
         self._regen_btn.setEnabled(not self.panel._any_mapped)
         self._regen_btn.setToolTip(
             t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.regen_token_hint"))
+
+
+class _ConnectionSettingsDialog(dialogs.Dialog):
+    """改本机记录的 frps 端口和 Token，不动服务器：共用别人部署的节点时照服务器填。"""
+
+    def __init__(self, parent, bind_port: str, token: str):
+        super().__init__(parent, t("selfhost.conn_settings_title"), "md")
+        self.result: tuple[int, str] | None = None
+        self.body.addWidget(self.text_label(t("selfhost.conn_settings_hint")))
+        grid = QGridLayout()
+        grid.setColumnStretch(1, 1)
+        grid.addWidget(QLabel(t("selfhost.bind_port_label")), 0, 0)
+        self._port_edit = QLineEdit(bind_port)
+        self._port_edit.setMaxLength(5)
+        grid.addWidget(self._port_edit, 0, 1)
+        grid.addWidget(QLabel(t("selfhost.token_label")), 1, 0)
+        self._token_edit = QLineEdit(token)
+        self._token_edit.setFont(QFont("Consolas", 10))
+        grid.addWidget(self._token_edit, 1, 1)
+        self.body.addLayout(grid)
+        self._error = self.error_label()
+        self._error.hide()
+        self.body.addWidget(self._error)
+        self.add_buttons()
+
+    def accept_if_valid(self) -> None:
+        port_text, token = self._port_edit.text().strip(), self._token_edit.text().strip()
+        if not (port_text.isascii() and port_text.isdigit() and 1 <= int(port_text) <= 65535):
+            error = t("selfhost.invalid_port")
+        elif not deploy.is_valid_token(token):
+            error = t("selfhost.invalid_token")
+        else:
+            self.result = (int(port_text), token)
+            self.accept()
+            return
+        self._error.setText(error)
+        self._error.show()
 
 
 class _LobbySettingsDialog(QDialog):
@@ -621,19 +656,19 @@ class SelfHostPanel(QWidget):
             return
         self._pending_token = deploy.generate_token()
         if self._node_dialog is not None:
-            self._node_dialog.set_token_display(self._pending_token)
+            self._node_dialog.set_connection_display(self._pending_bind_port, self._pending_token)
 
-    def _save_token(self, token: str) -> None:
-        """手填的 Token（已由输入框校验）立即存入设置，不必重新部署（共用别人部署的节点时填服务器上那个）；
-        还没部署过时只记下，部署时一并保存。"""
-        if self._any_mapped or token == self._pending_token:
+    def _save_connection(self, bind_port: int, token: str) -> None:
+        """「连接设置」里填的端口和 Token（已校验）立即存入设置，不必重新部署（共用别人部署的节点时照服务器填）；
+        还没部署过时只记下，部署时一并保存。只改本机，不动服务器。"""
+        if self._any_mapped:
             return
-        self._pending_token = token
+        self._pending_bind_port, self._pending_token = bind_port, token
         server = app_settings.get_selfhost_frp_server()
         if server:
-            app_settings.set_selfhost_frp_server(server["host"], server["bind_port"], token)
+            app_settings.set_selfhost_frp_server(server["host"], bind_port, token)
         if self._node_dialog is not None:
-            self._node_dialog.set_token_display(token)
+            self._node_dialog.set_connection_display(bind_port, token)
 
     def _start_deploy(self) -> None:
         if not self._is_authenticated():
