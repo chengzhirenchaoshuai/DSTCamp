@@ -21,6 +21,9 @@ _RULES = (
     ("port_not_allowed", re.compile(r"\[(?P<proxy>[^\]]+)\] start error: port not allowed")),
     ("server_unreachable", re.compile(
         r"connect to server error: .*(refused|i/o timeout|timed out|no such host|unreachable)", re.IGNORECASE)),
+    # 连上了但对方没按 frps 应答就断开。实测：控制端口已被别人重新部署改掉，本机 Clash TUN 先接下 TCP 再断开，
+    # 本该是"连接被拒绝"却显示成这样
+    ("server_closed", re.compile(r"connect to server error: (session shutdown|EOF)\b")),
 )
 
 

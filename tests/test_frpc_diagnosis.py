@@ -20,6 +20,13 @@ def test_token_mismatch_and_recovery() -> None:
     assert diagnose(_TOKEN_FAIL + [_LOGIN_OK]) is None
 
 
+def test_session_shutdown_points_to_wrong_control_port() -> None:
+    # 真实日志：控制端口被别人改掉，本机 Clash TUN 下表现为 session shutdown 而不是连接被拒绝
+    lines = ["\x1b[0m\x1b[1;33m2026-10-30 23:04:08.300 [W] [client/service.go:322] connect to server error: session shutdown",
+             "\x1b[0mlogin to the server failed: session shutdown. With loginFailExit enabled, no additional retries will be attempted"]
+    assert diagnose(lines).kind == "server_closed"
+
+
 def test_port_conflict_while_running_names_the_proxy() -> None:
     lines = [_LOGIN_OK,
              "2026-10-30 22:12:37.307 [I] [client/control.go:165] [caedd8674438e419] [save-a0e01ff4-Caves] start proxy success",
