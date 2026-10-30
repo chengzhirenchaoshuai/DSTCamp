@@ -1,4 +1,15 @@
-# 源码与文档统一使用 LF 换行
-*.py text eol=lf
-*.md text eol=lf
-*.toml text eol=lf
+# 换行符统一规则：文本文件仓库与工作区一律 LF（含原先单独指定的 .py/.md/.toml）
+* text=auto eol=lf
+
+# Windows 批处理必须是 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件
+*.png binary
+*.ico binary
+*.ttf binary
+*.dll binary
+*.exe binary
+*.xz  binary
+*.gz  binary
