@@ -143,39 +143,55 @@ class _NodeSettingsDialog(QDialog):
         hint.setProperty("muted", True)
         layout.addWidget(hint)
 
-        # 概览只显示文字（"标题 / 内容"两列），操作按钮横排在下方；端口和 Token 只在「连接设置」里改
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(10)
-        grid.setColumnStretch(1, 1)
+        # 两张主题卡片：「节点信息」是两列表格（行间细分隔线），「部署」放说明；操作按钮横排在最下方。
+        # 端口和 Token 只在「连接设置」里改
+        info_card, info_layout = section_card(t("selfhost.card_node"))
+        table = QGridLayout()
+        table.setContentsMargins(0, 4, 0, 0)
+        table.setHorizontalSpacing(20)
+        table.setVerticalSpacing(0)
+        table.setColumnStretch(1, 1)
         self._host_label = QLabel()
-        self._conn_label = QLabel()
-        self._conn_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._service_label = QLabel()
+        self._port_label = QLabel()
+        self._token_label = QLabel()
+        mono = theme.font("FONT_SIZE_BASE")
+        mono.setFamilies(["Consolas", "monospace"])
+        self._token_label.setFont(mono)
+        rows = ((t("selfhost.host_label"), self._host_label),
+                (t("selfhost.row_service"), self._service_label),
+                (t("selfhost.bind_port_label"), self._port_label),
+                (t("selfhost.token_label"), self._token_label))
+        for index, (key_text, value) in enumerate(rows):
+            if index:
+                divider = QWidget()
+                divider.setFixedHeight(1)
+                divider.setStyleSheet(f"background: {theme.hex('CARD_BORDER')};")
+                table.addWidget(divider, index * 2 - 1, 0, 1, 2)
+            key = QLabel(key_text.rstrip(":："))
+            key.setFont(theme.font("FONT_SIZE_SM"))
+            key.setProperty("muted", True)
+            key.setMinimumHeight(32)
+            value.setFont(value.font() if value is self._token_label else theme.font("FONT_SIZE_BASE"))
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            table.addWidget(key, index * 2, 0, Qt.AlignmentFlag.AlignVCenter)
+            table.addWidget(value, index * 2, 1, Qt.AlignmentFlag.AlignVCenter)
+        info_layout.addLayout(table)
         # 服务器上 frps 的实际端口与本机记录不一致时的提醒（探测结果到了才有）
         self._conn_warning = AutoHideLabel()
         self._conn_warning.setWordWrap(True)
         self._conn_warning.setFont(theme.font("FONT_SIZE_SM"))
         self._conn_warning.setStyleSheet(f"color: {theme.hex('ERROR')};")
-        conn_box = QVBoxLayout()
-        conn_box.setSpacing(2)
-        conn_box.addWidget(self._conn_label)
-        conn_box.addWidget(self._conn_warning)
+        info_layout.addWidget(self._conn_warning)
+        layout.addWidget(info_card)
+
+        deploy_card, deploy_layout = section_card(t("selfhost.row_deploy"))
         deploy_note = QLabel(t("selfhost.deploy_note"))
         deploy_note.setWordWrap(True)
         deploy_note.setFont(theme.font("FONT_SIZE_SM"))
         deploy_note.setProperty("muted", True)
-        rows = (("selfhost.row_server", self._host_label),
-                ("selfhost.row_connection", conn_box),
-                ("selfhost.row_deploy", deploy_note))
-        for row, (title_key, content) in enumerate(rows):
-            title = QLabel(t(title_key))
-            title.setFont(theme.font("FONT_SIZE_BASE", bold=True))
-            grid.addWidget(title, row, 0, Qt.AlignmentFlag.AlignTop)
-            if isinstance(content, QVBoxLayout):
-                grid.addLayout(content, row, 1)
-            else:
-                grid.addWidget(content, row, 1)
-        layout.addLayout(grid)
+        deploy_layout.addWidget(deploy_note)
+        layout.addWidget(deploy_card)
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
@@ -192,7 +208,7 @@ class _NodeSettingsDialog(QDialog):
         close_btn = dialogs.style_button(QPushButton(t("dlg.close_btn")), "secondary")
         close_btn.clicked.connect(self.close)
         actions.addWidget(close_btn)
-        layout.addSpacing(6)
+        layout.addSpacing(4)
         layout.addLayout(actions)
         self.set_connection_display(panel._pending_bind_port, panel._pending_token)
         self.refresh()
@@ -209,14 +225,16 @@ class _NodeSettingsDialog(QDialog):
 
     def set_connection_display(self, bind_port, token: str) -> None:
         # 概览里 Token 只露首尾，完整值在「连接设置」里看
-        masked = f"{token[:4]}…{token[-4:]}" if len(token) > 10 else token
-        self._conn_label.setText(t("selfhost.conn_summary", port=bind_port, token=masked or "-"))
+        self._port_label.setText(str(bind_port))
+        self._token_label.setText((f"{token[:4]}…{token[-4:]}" if len(token) > 10 else token) or "-")
 
     def set_conn_settings_enabled(self, enabled: bool) -> None:
         self._conn_settings_btn.setEnabled(enabled)
 
     def refresh(self) -> None:
         self._host_label.setText(self.panel._authenticated_host or t("selfhost.host_pending_auth"))
+        self._service_label.setText(self.panel._service_status_text())
+        self._service_label.setStyleSheet(f"color: {self.panel._service_status_color()};")
         authed = self.panel._is_authenticated()
         self._deploy_btn.setEnabled(authed)
         self._deploy_btn.setText(
@@ -239,20 +257,23 @@ class _ConnectionSettingsDialog(dialogs.Dialog):
         self.result: tuple[int, str] | None = None
         self._ssh_conn = ssh_conn
         self.body.addWidget(self.text_label(t("selfhost.conn_settings_hint"), muted=True))
-        self.body.addSpacing(4)
 
-        # 字段标题在上、输入框在下，标题紧贴自己的输入框；端口很短，输入框收窄
+        # 字段与工具按钮放进一张主题卡片（与「管理节点」一致）；标题紧贴自己的输入框，端口很短，输入框收窄
+        card, card_layout = section_card()
+        card_layout.setSpacing(10)
         self._port_edit = QLineEdit(bind_port)
         self._port_edit.setMaxLength(5)
         self._port_edit.setFixedWidth(120)
         self._token_edit = QLineEdit(token)
-        self._token_edit.setFont(QFont("Consolas", 10))
+        mono = theme.font("FONT_SIZE_BASE")
+        mono.setFamilies(["Consolas", "monospace"])
+        self._token_edit.setFont(mono)
         for title, edit in ((t("selfhost.bind_port_label"), self._port_edit), (t("selfhost.token_label"), self._token_edit)):
             field = QVBoxLayout()
             field.setSpacing(4)
             field.addWidget(self._field_title(title))
             field.addWidget(edit)
-            self.body.addLayout(field)
+            card_layout.addLayout(field)
 
         tools = QHBoxLayout()
         tools.setSpacing(8)
@@ -269,8 +290,8 @@ class _ConnectionSettingsDialog(dialogs.Dialog):
         regen_btn.clicked.connect(lambda: self._token_edit.setText(deploy.generate_token()))
         tools.addWidget(regen_btn)
         tools.addStretch()
-        self.body.addSpacing(4)
-        self.body.addLayout(tools)
+        card_layout.addLayout(tools)
+        self.body.addWidget(card)
 
         self._status = AutoHideLabel()
         self._status.setWordWrap(True)
