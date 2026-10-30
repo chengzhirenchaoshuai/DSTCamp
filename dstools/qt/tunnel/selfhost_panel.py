@@ -1118,10 +1118,14 @@ class SelfHostPanel(QWidget):
             return
         if not ensure_lan_free_for_mapping(self.window(), self.ctx, cluster):
             return
+        shards = list(cluster.shards)
+        port_dialog = dialogs.RemotePortDialog(self.window(), [shard.name for shard in shards], t("selfhost.enable_btn"))
+        if not port_dialog.exec():
+            return
+        requested = {name: port for name, port in port_dialog.result_ports.items() if port is not None}
 
         progress = dialogs.LogDialog(self.window(), t("selfhost.setup_progress_title"))
         progress.show()
-        shards = list(cluster.shards)
         base_port = server["bind_port"] + 1
 
         def work():
@@ -1133,10 +1137,19 @@ class SelfHostPanel(QWidget):
                 if fresh_status.reachable:
                     fresh_used_ports = fresh_status.used_ports
                     post_to_ui(lambda _a, s=fresh_status: setattr(self, "_last_status", s))
+            # 手填端口先全部校验再落盘：frps 拒绝时只在 frpc 日志里报错，界面上看不到
+            # （共用节点时别人的映射端口也在服务器的占用列表里）
+            taken = set(app_settings.get_all_selfhost_frp_ports()) | fresh_used_ports | {server["bind_port"]}
             for shard in shards:
-                remote_port = app_settings.get_selfhost_frp_mapping(cluster.path, shard.name)
+                port = requested.get(shard.name)
+                if port is not None and port in taken \
+                        and port != app_settings.get_selfhost_frp_mapping(cluster.path, shard.name):
+                    raise ValueError(t("selfhost.remote_port_taken", shard=shard.name, port=port))
+            for shard in shards:
+                remote_port = requested.get(shard.name) or app_settings.get_selfhost_frp_mapping(cluster.path, shard.name)
                 if remote_port is None:
-                    remote_port = self._next_free_port(base_port, extra_used=fresh_used_ports)
+                    remote_port = self._next_free_port(
+                        base_port, extra_used=fresh_used_ports | frozenset(requested.values()))
                     app_settings.set_selfhost_frp_mapping(cluster.path, shard.name, remote_port)
                 shard_config = load_shard_config(shard.path)
                 set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
