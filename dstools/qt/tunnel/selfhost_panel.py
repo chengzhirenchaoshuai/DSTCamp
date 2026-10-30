@@ -5,6 +5,7 @@
 import threading
 import time
 import webbrowser
+from collections import deque
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont, QGuiApplication
@@ -30,7 +31,7 @@ from dstools.qt.tunnel import frpc_tool
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, PillTabBar, ToggleSwitch, clear_layout, section_card
-from dstools.shared import app_settings
+from dstools.shared import app_settings, frpc_diagnosis
 from dstools.qt.tunnel.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping
 from dstools.shared.frpc_log import FrpcOutputLog
 from dstools.shared.resource_paths import data_dir
@@ -407,9 +408,16 @@ class SelfHostPanel(QWidget):
         action_row.addWidget(self._conn_check_btn)
         # frpc 状态和启停按钮放在操作行的下一行，跟樱花映射面板一致。
         self._frpc_row = QWidget()
-        frpc_layout = QHBoxLayout(self._frpc_row)
-        frpc_layout.setContentsMargins(0, 0, 0, 0)
+        frpc_outer = QVBoxLayout(self._frpc_row)
+        frpc_outer.setContentsMargins(0, 0, 0, 0)
+        frpc_layout = QHBoxLayout()
         frpc_layout.setSpacing(8)
+        frpc_outer.addLayout(frpc_layout)
+        # frpc 输出里认出的故障与处理建议，直接显示（只放悬停提示时用户看不到）
+        self._frpc_hint_label = AutoHideLabel()
+        self._frpc_hint_label.setStyleSheet(f"color: {theme.hex('ERROR')};")
+        self._frpc_hint_label.setWordWrap(True)
+        frpc_outer.addWidget(self._frpc_hint_label)
         self._frpc_status_label = QLabel(self._frpc_status_text(False))
         frpc_layout.addWidget(self._frpc_status_label)
         self._frpc_toggle_btn = QPushButton(t("sakura.frpc_start_btn"))
@@ -422,6 +430,7 @@ class SelfHostPanel(QWidget):
         layout.addWidget(self._frpc_row)
         self._frpc_row.setVisible(False)
         self._frpc_shown_running = False
+        self._frpc_tails: dict[int, deque] = {}  # id(frpc 进程) → 最近输出
         self._frpc_shown_blocked = False  # 状态行正显示"被安全软件拦截"，按钮此时是"处理拦截"
         self._frpc_shown_download_failed = False  # 状态行正显示"客户端下载失败"，按钮此时是"下载客户端"
         frpc_tool.add_listener(self._refresh_frpc_row)
@@ -997,8 +1006,15 @@ class SelfHostPanel(QWidget):
         """把自己启动后已退出的 frpc 标记为失败，并在显示状态与实际不一致时刷新状态行。
         只看已跟踪的进程，不做 reconcile 的进程表扫描（每秒跑一次太重）。"""
         exited = False
-        for proc in self.frpc.processes():
-            if proc.proc is not None and proc.status == FrpcStatus.RUNNING                     and (code := proc.poll_exit_code()) is not None:
+        procs = self.frpc.processes()
+        # 持续收走输出、只留最后几十行，供 frpc_diagnosis 找原因；已不跟踪的进程一并清掉
+        self._frpc_tails = {id(p): self._frpc_tails.get(id(p)) or deque(maxlen=60) for p in procs}
+        for proc in procs:
+            if lines := proc.read_available_lines():
+                self._frpc_tails[id(proc)].extend(lines)
+                exited = True  # 有新输出就重新诊断
+            if proc.proc is not None and proc.status == FrpcStatus.RUNNING \
+                    and (code := proc.poll_exit_code()) is not None:
                 proc.status = FrpcStatus.CRASHED
                 proc.error = t("sakura.frpc_exited", code=code)
                 exited = True
@@ -1009,6 +1025,16 @@ class SelfHostPanel(QWidget):
         running = tracked is not None and tracked.status == FrpcStatus.RUNNING
         if exited or running != self._frpc_shown_running:
             self._refresh_frpc_row()
+
+    def _frpc_hint(self, cluster) -> str:
+        proc = self.frpc.get(cluster.path)
+        if proc is None or proc.status not in (FrpcStatus.RUNNING, FrpcStatus.CRASHED):
+            return ""
+        problem = frpc_diagnosis.diagnose(self._frpc_tails.get(id(proc)) or ())
+        if problem is None:
+            return ""
+        # 代理名是"存档-哈希-世界名"，提示里只说世界名
+        return t(f"frpc_hint.{problem.kind}", shard=problem.proxy.rsplit("-", 1)[-1])
 
     def _reconcile_once(self, cluster):
         if str(cluster.path) in self._scanned:
@@ -1087,6 +1113,7 @@ class SelfHostPanel(QWidget):
         self._frpc_status_label.setText(text)
         self._frpc_status_label.setStyleSheet(f"color: {color};")
         self._frpc_status_label.setToolTip(error or "")
+        self._frpc_hint_label.setText(self._frpc_hint(cluster) if cluster and not self._scanning else "")
         self._frpc_toggle_btn.setText(t("sakura.frpc_download_btn") if self._frpc_shown_download_failed
                                       else t("selfhost.frpc_blocked_btn") if self._frpc_shown_blocked
                                       else t("sakura.frpc_stop_btn") if running else t("sakura.frpc_start_btn"))
