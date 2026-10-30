@@ -4,6 +4,7 @@ FRP_VERSION 只影响脚本自行下载的版本；打包的 frpc v0.70.1 与 fr
 这里用到的 UDP 代理 + token 鉴权无关）。
 """
 
+import re
 import secrets
 
 FRP_VERSION = "0.70.0"
@@ -15,6 +16,14 @@ def generate_token() -> str:
     """生成一个给 frps/frpc 双方鉴权用的随机 token——32 个十六进制字符，
     足够长、不需要用户自己想一个（也不该自己想，容易图省事用弱口令）。"""
     return secrets.token_hex(16)
+
+
+# 手填 Token 只收可见 ASCII 且不含双引号、反斜杠：frps.toml 把它原样拼进双引号字符串
+_TOKEN_RE = re.compile(r'[!#-\[\]-~]{1,256}')
+
+
+def is_valid_token(token: str) -> bool:
+    return bool(_TOKEN_RE.fullmatch(token))
 
 
 def build_frps_toml(bind_port: int, token: str) -> str:

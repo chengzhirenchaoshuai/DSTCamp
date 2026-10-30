@@ -147,8 +147,8 @@ class _NodeSettingsDialog(QDialog):
         grid.addWidget(self._port_edit, 1, 1)
         grid.addWidget(QLabel(t("selfhost.token_label")), 2, 0)
         self._token_edit = QLineEdit(panel._pending_token)
-        self._token_edit.setReadOnly(True)
         self._token_edit.setFont(QFont("Consolas", 10))
+        self._token_edit.editingFinished.connect(self._on_token_edited)
         grid.addWidget(self._token_edit, 2, 1)
         self._regen_btn = QPushButton(t("selfhost.regen_token_btn"))
         self._regen_btn.clicked.connect(self._on_regen_clicked)
@@ -171,8 +171,12 @@ class _NodeSettingsDialog(QDialog):
 
     def _on_deploy_clicked(self) -> None:
         self.panel._pending_bind_port = self._port_edit.text().strip()
-        self.panel._pending_token = self._token_edit.text().strip()
+        if not self.panel._save_token(self._token_edit.text()):
+            return
         self.panel._start_deploy()
+
+    def _on_token_edited(self) -> None:
+        self.panel._save_token(self._token_edit.text())
 
     def _on_regen_clicked(self) -> None:
         self.panel._regenerate_token()
@@ -190,6 +194,9 @@ class _NodeSettingsDialog(QDialog):
         self._deploy_btn.setText(
             t("selfhost.ssh_redeploy_btn") if self.panel._is_service_active() else t("selfhost.ssh_deploy_btn"))
         self._deploy_btn.setToolTip("" if authed else t("selfhost.deploy_needs_auth_hint"))
+        self._token_edit.setReadOnly(self.panel._any_mapped)
+        self._token_edit.setToolTip(
+            t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.token_edit_hint"))
         self._regen_btn.setEnabled(not self.panel._any_mapped)
         self._regen_btn.setToolTip(
             t("selfhost.regen_token_disabled_hint") if self.panel._any_mapped else t("selfhost.regen_token_hint"))
@@ -594,6 +601,27 @@ class SelfHostPanel(QWidget):
         self._pending_token = deploy.generate_token()
         if self._node_dialog is not None:
             self._node_dialog.set_token_display(self._pending_token)
+
+    def _save_token(self, text: str) -> bool:
+        """手填的 Token 校验后立即存入设置，不必重新部署（共用别人部署的节点时填服务器上那个）；
+        还没部署过时只记下，部署时一并保存。无效时恢复原值，返回 False。"""
+        token = text.strip()
+        if token == self._pending_token:
+            return True
+        if self._any_mapped or not deploy.is_valid_token(token):
+            # 先恢复原值再弹框：弹框抢走焦点会再触发一次 editingFinished
+            if self._node_dialog is not None:
+                self._node_dialog.set_token_display(self._pending_token)
+            if not self._any_mapped:
+                dialogs.show_warning(self.window(), t("selfhost.token_label"), t("selfhost.invalid_token"))
+            return False
+        self._pending_token = token
+        server = app_settings.get_selfhost_frp_server()
+        if server:
+            app_settings.set_selfhost_frp_server(server["host"], server["bind_port"], token)
+        if self._node_dialog is not None:
+            self._node_dialog.set_token_display(token)
+        return True
 
     def _start_deploy(self) -> None:
         if not self._is_authenticated():
