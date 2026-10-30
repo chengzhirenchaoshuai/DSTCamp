@@ -23,7 +23,7 @@ from dstools.shared.resource_paths import data_dir
 TOOLS_RELEASE_TAG = "tools-2"
 TOOLS_PACKAGE_NAME = f"DSTCamp-{TOOLS_RELEASE_TAG}.zip"
 # 网盘工具包的蓝奏云单文件分享（与 TOOLS_RELEASE_TAG 一一对应，换工具版本时一起换）
-TOOLS_LANZOU_URL = "https://wwblt.lanzout.com/iJeFk4cozrra"
+TOOLS_LANZOU_URL = "https://wwblt.lanzout.com/i6y4M4e1ippi"
 TOOLS_LANZOU_PASSWORD = "6666"
 _RELEASE_URLS = (
     "https://gitee.com/orange-blade/DSTCamp/releases/download/{tag}/{asset}",
