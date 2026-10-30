@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from dstools.features.cluster_config.config_manager import (
     get_cluster_option, load_cluster_config, load_shard_config, save_shard_config, set_shard_option,
 )
-from dstools.features.frp_selfhost import connectivity, deploy, probe, remote_deploy, wireguard_deploy
+from dstools.features.frp_selfhost import connectivity, deploy, host_firewall, probe, remote_deploy, wireguard_deploy
 from dstools.features.frp_selfhost.client import FrpcManager, FrpcStatus, build_frpc_toml
 from dstools.features.frp_selfhost.lobby_accel import LobbyAccelCoordinator, LobbyAccelError, LobbyAccelStatus
 from dstools.features.frp_selfhost.lobby_diagnostics import ConnectionKind, DiagnosticRoute, LobbyDiagnosticSession
@@ -47,6 +47,10 @@ _UDP_CHECK_KEY_BY_STATUS = {
     "responded": "selfhost.conn_udp_responded", "refused": "selfhost.conn_udp_refused",
     "unknown": "selfhost.conn_udp_unknown", "error": "selfhost.conn_udp_error",
 }
+
+
+def _format_ports(ports: list[tuple[int, str]]) -> str:
+    return "、".join(f"{proto.upper()} {port}" for port, proto in ports)
 
 
 def _frpc_exe_path():
@@ -876,11 +880,65 @@ class SelfHostPanel(QWidget):
                                             detail=detail or ""): progress.append(ln))
             if tcpdump_probe:
                 tcpdump_probe.close()
+            return self._check_host_firewall(cluster, progress)
 
-        def done(_result) -> None:
+        def done(result) -> None:
             progress.finish()
+            self._offer_open_firewall(result)
 
         run_async(work, done, lambda exc: (progress.append(str(exc)), progress.finish()))
+
+    # ── 服务器系统防火墙 ─────────────────────────────────────────────────
+    def _firewall_ports(self, cluster) -> list[tuple[int, str]]:
+        server = app_settings.get_selfhost_frp_server()
+        ports = [(server["bind_port"], "tcp")] if server else []
+        for shard in cluster.shards:
+            if (port := app_settings.get_selfhost_frp_mapping(cluster.path, shard.name)) is not None:
+                ports.append((port, "udp"))
+        return ports
+
+    def _check_host_firewall(self, cluster, progress=None) -> host_firewall.FirewallCheck | None:
+        """后台线程调用：抓包只能证明包到了网卡，还要看 ufw/firewalld 是否放行。没鉴权或查不了返回 None。"""
+        conn = app_settings.get_selfhost_ssh_connection()
+        ports = self._firewall_ports(cluster)
+        if not conn or not ports:
+            return None
+        try:
+            with host_firewall.ssh_session(conn["host"], conn["port"], conn["username"]) as (client, sudo):
+                result = host_firewall.check(client, sudo, ports)
+        except host_firewall.FirewallError as exc:
+            if progress is not None:
+                post_to_ui(lambda _a, d=str(exc): progress.append(t("selfhost.firewall_check_failed", detail=d)))
+            return None
+        if progress is not None and result.tool:
+            line = (t("selfhost.firewall_blocked", tool=result.tool, ports=_format_ports(result.blocked))
+                    if result.blocked else t("selfhost.firewall_ok", tool=result.tool))
+            post_to_ui(lambda _a, ln=line: progress.append(ln))
+        return result
+
+    def _check_host_firewall_async(self, cluster) -> None:
+        run_async(lambda: self._check_host_firewall(cluster), self._offer_open_firewall, lambda _exc: None)
+
+    def _offer_open_firewall(self, result: host_firewall.FirewallCheck | None) -> None:
+        if not result or not result.blocked:
+            return
+        title = t("selfhost.firewall_open_title")
+        if not dialogs.ask_yes_no(self.window(), title, t(
+                "selfhost.firewall_open_confirm", tool=result.tool, ports=_format_ports(result.blocked))):
+            return
+        conn = app_settings.get_selfhost_ssh_connection()
+        if not conn:
+            return
+
+        def work():
+            with host_firewall.ssh_session(conn["host"], conn["port"], conn["username"]) as (client, sudo):
+                host_firewall.open_ports(client, sudo, result)
+
+        run_async(work,
+                  lambda _r: dialogs.show_info(self.window(), title, t(
+                      "selfhost.firewall_open_done", ports=_format_ports(result.blocked))),
+                  lambda exc: dialogs.show_error(self.window(), title, t(
+                      "selfhost.firewall_open_failed", detail=str(exc))))
 
     # ── frpc 本地进程 ───────────────────────────────────────────────────
     def _frpc_config_path(self, cluster_path):
@@ -1176,6 +1234,8 @@ class SelfHostPanel(QWidget):
                                t("sakura.setup_done_msg_restart", shards="、".join(running)))
         self._render_shard_rows()
         self.ctx.cluster_config_saved.emit(cluster)
+        if cluster:
+            self._check_host_firewall_async(cluster)
 
     def _disable_mapping(self) -> None:
         cluster = self._current_cluster
