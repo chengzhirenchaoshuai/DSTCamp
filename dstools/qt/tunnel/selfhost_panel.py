@@ -855,6 +855,7 @@ class SelfHostPanel(QWidget):
             return
         host, bind_port = server["host"], server["bind_port"]
         ssh_conn = app_settings.get_selfhost_ssh_connection()
+        running = set(self._running_shard_names(cluster))
         progress = dialogs.LogDialog(self.window(), t("selfhost.conn_check_title"))
         progress.show()
 
@@ -880,7 +881,17 @@ class SelfHostPanel(QWidget):
                                             detail=detail or ""): progress.append(ln))
             if tcpdump_probe:
                 tcpdump_probe.close()
-            return self._check_host_firewall(cluster, progress)
+            result = self._check_host_firewall(cluster, progress)
+            # 端到端：前面只能分段看云安全组/系统防火墙，frps → frpc → 饥荒这段（Token、端口冲突、frpc 没跑）只有它能发现
+            for shard_name, remote_port in mappings:
+                if connectivity.raknet_ping(host, remote_port):
+                    key = "selfhost.conn_e2e_ok"
+                elif shard_name in running:
+                    key = "selfhost.conn_e2e_fail"
+                else:
+                    key = "selfhost.conn_e2e_not_running"
+                post_to_ui(lambda _a, ln=t(key, shard=shard_name, port=remote_port): progress.append(ln))
+            return result
 
         def done(result) -> None:
             progress.finish()
