@@ -42,13 +42,12 @@ class StoreTool:
 
 
 TOOLS = (
-    StoreTool("frp_selfhost/frpc.exe.xz", "frpc.exe.xz", 4770108,
-              "04829ce3d730afd87e24b522d4aee7b70903e32cc470f21146ada16d68987291",
-              unpacked_sha256="1320325b3fd46d83ef7b2161d5e19f2b5dd9341b3391084a58d75ad82ef374d3"),
-    StoreTool("frp_selfhost/frps_linux_amd64.xz", "frps_linux_amd64.xz", 5802848,
-              "f7c8b4508c90a7a94ae42b03dd9cc7faadc0c05d365722311182404733d5e4f1"),
-    StoreTool("frp_selfhost/frps_linux_arm64.xz", "frps_linux_arm64.xz", 4896496,
-              "01b026e7a894f361aaa9dd8d5d6d4e77ea5941062619a8e56f0a2e477f866d64"),
+    StoreTool("frp_selfhost/frpc.exe.xz", "frpc.exe.xz", 4860156,
+              "2e2808b3d75ad9dc3692592ef374d27997ed32311a83dd9f0f2959f3eb444a97"),
+    StoreTool("frp_selfhost/frps_linux_amd64.xz", "frps_linux_amd64.xz", 5768668,
+              "c41e118df89cf35c895a3b6649c02b072e03864a4c4f2751fbfe8198008fac10"),
+    StoreTool("frp_selfhost/frps_linux_arm64.xz", "frps_linux_arm64.xz", 4872256,
+              "96667fc7e2bed83e2d30490295c26a8517f3235c6d2806c2895821f34f5f60e7"),
     StoreTool("frpc-sakura/sakura-frpc.exe.xz", "sakura-frpc.exe.xz", 4255628,
               "70c47f8afe6930aaafc886293dc3c9c45a48b0bb71eddbe93004c4694abf2b08"),
     StoreTool("vcredist/VC++ 2013 x86.exe", "vcredist_2013_x86.exe", 6510136,

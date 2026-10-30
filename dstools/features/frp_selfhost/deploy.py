@@ -1,13 +1,13 @@
 """生成自建 frps 的配置文本和一键部署脚本（纯字符串拼接，SSH 执行在 remote_deploy.py）。
 
-FRP_VERSION 只影响脚本自行下载的版本；打包的 frpc v0.70.1 与 frps v0.70.0 协议兼容（v0.70.1 的修复与
-这里用到的 UDP 代理 + token 鉴权无关）。
+FRP_VERSION 须与 tools/ 里按需下载的 frpc、frps 版本一致：服务器自行下载时按它取发行包，
+远程 frps 缓存路径也带上它，换版本后重新部署才会上传新版。
 """
 
 import re
 import secrets
 
-FRP_VERSION = "0.70.0"
+FRP_VERSION = "0.71.1"
 
 DEFAULT_BIND_PORT = 7000
 

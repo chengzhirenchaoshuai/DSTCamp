@@ -2,7 +2,7 @@
 
 frpc 失败只有退出码 1，界面只显示"退出码 1"时用户无从下手（实测：共用的自建节点被别人重新部署换了 Token，
 排查了一个小时）；映射端口被占用时 frpc 甚至不退出，只在输出里留一行 start error。
-匹配的原文取自 frp v0.70.0 源码（pkg/auth/token.go、server/ports/ports.go、server/control.go、client/service.go）。
+匹配的原文取自 frp v0.70.0 源码，已核对 v0.71.1 未变（pkg/auth/token.go、server/ports/ports.go、server/control.go、client/service.go）。
 """
 
 from __future__ import annotations
