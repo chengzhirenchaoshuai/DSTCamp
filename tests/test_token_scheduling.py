@@ -160,6 +160,7 @@ def test_token_classification_and_selection() -> None:
         from dstools.qt.pages.local_service import LocalServicePage
         crash_service = LocalServicePage.__new__(LocalServicePage)
         crash_service._auto_restart = Mock()
+        crash_service._luajit_boot_retry = Mock()
         crash_service.manager = SimpleNamespace(running=lambda: [])
         crash_service._token_reservations = {str(crash_cluster): NEW_A}
         app_settings.set_global_tokens([NEW_A])

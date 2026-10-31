@@ -2513,6 +2513,73 @@ def test_luajit_cache_reset_after_game_update():
             assert not plugin.exists()
             assert not needs_regeneration(install_dir), "同一游戏版本只清一次"
 
+            # 启动即崩后的自动修复不看记录，强制再清一次并补回路径标记
+            plugin.write_bytes(b"stale mirror")
+            with patch.object(lj, "_file_in_use", return_value=True):
+                assert not lj.reset_after_boot_crash(install_dir)
+            assert plugin.exists()
+            assert lj.reset_after_boot_crash(install_dir)
+            assert not plugin.exists() and lj.read_injector_path_marker(install_dir) is not None
+
+
+def test_luajit_boot_retry():
+    """启动即崩后等同存档的世界都结束再清理一次、拉起崩溃的世界；再崩不重试，注册成功后恢复机会。"""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    import dstools.qt.server.luajit_boot_retry as module
+    from dstools.features.local_service.dedicated_server import ServerStatus
+
+    cluster = SimpleNamespace(path=Path("C:/fake/Cluster_2"), name="Cluster_2",
+                              shards=[SimpleNamespace(name="Master"), SimpleNamespace(name="Caves")])
+    procs = {}
+    started, resets = [], []
+    page = SimpleNamespace(
+        ctx=SimpleNamespace(env=SimpleNamespace(clusters=[cluster], klei_root=None),
+                            ensure_lobby_accel=lambda _c, callback: callback(True, "")),
+        manager=SimpleNamespace(get=lambda _path, name: procs.get(name)),
+        _install_dir=Path("C:/fake/game"), _launching_keys=set(),
+        _choose_start_token=lambda _c, allow_switch=True, retry_current=False: True,
+        _release_token_reservation_if_stopped=lambda _path: None,
+        _continue_start_shard=lambda _c, shard, _args: started.append(shard.name),
+        _select_master_console_tab=lambda _c: None,
+        window=lambda: None,
+    )
+
+    def proc(name, status):
+        procs[name] = SimpleNamespace(cluster_path=cluster.path, shard_name=name, status=status)
+        return procs[name]
+
+    crash = SimpleNamespace(category="luajit_boot_crash")
+    key = str(cluster.path)
+    with patch.object(module.QTimer, "singleShot"), \
+            patch.object(module, "run_async", side_effect=lambda work, done, _err: done(work())), \
+            patch.object(module.luajit_injector, "reset_after_boot_crash",
+                         side_effect=lambda _dir: (resets.append(1), True)[1]), \
+            patch.object(module.dialogs, "show_toast"), \
+            patch.object(module, "ordered_shards", side_effect=lambda c: c.shards), \
+            patch.object(module, "resolve_storage_args", return_value=[]):
+        retry = module.LuajitBootRetry.__new__(module.LuajitBootRetry)
+        module.QObject.__init__(retry)
+        retry._page, retry._pending, retry._checks, retry._used = page, {}, {}, set()
+
+        retry.on_failure(proc("Master", ServerStatus.CRASHED), crash)
+        proc("Caves", ServerStatus.STARTING)
+        retry._settle(key)
+        assert not resets, "还有世界在启动，先等它结束"
+        retry.on_failure(proc("Caves", ServerStatus.CRASHED), crash)
+        retry._settle(key)
+        assert resets == [1] and started == ["Master", "Caves"], "清理一次、拉起全部崩溃的世界"
+
+        started.clear()
+        retry.on_failure(proc("Master", ServerStatus.CRASHED), crash)
+        assert key not in retry._pending and not started, "清理重试过仍崩溃，不再重试"
+        retry.on_failure(proc("Master", ServerStatus.CRASHED), SimpleNamespace(category="unknown"))
+        assert key not in retry._pending, "其它失败不管"
+        retry.on_registered(procs["Master"])
+        retry.on_failure(proc("Master", ServerStatus.CRASHED), crash)
+        assert key in retry._pending, "注册成功后恢复一次机会"
+
 
 def test_luajit_full_uninstall():
     """独立专服彻底卸载：删除副本、中断遗留的临时目录和路径标记并停用配套 Mod；

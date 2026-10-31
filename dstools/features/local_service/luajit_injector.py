@@ -323,6 +323,20 @@ def reset_runtime_cache(install_dir: Path, log) -> bool:
     return True
 
 
+def reset_after_boot_crash(install_dir: Path, on_log=None) -> bool:
+    """专服 LuaJIT 启动即崩后的自动修复：不管本游戏版本是否清理过，都再清一次缓存并重写路径标记。
+    返回是否清理完成（缓存被占用、找不到订阅内容或删除失败为 False）。"""
+    def log(line: str) -> None:
+        if on_log:
+            on_log(line)
+
+    injector_path = _injector_payload_file()
+    if injector_path is None or not reset_runtime_cache(install_dir, log):
+        return False
+    write_injector_path_marker(install_dir, injector_path)
+    return True
+
+
 def _runtime_ready(install_dir: Path) -> bool:
     luajit_dir = get_luajit_dir(install_dir)
     return (
