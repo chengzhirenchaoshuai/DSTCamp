@@ -46,6 +46,7 @@ _KEY_BACKUP_AUTO_ENABLED = "backup_auto_enabled"
 _KEY_SAKURA_TOKEN = "sakura_api_token"
 _KEY_SAKURA_LAST_NODE = "sakura_last_node_id"
 _KEY_LUAJIT_ENABLED = "luajit_enabled"
+_KEY_LUAJIT_CACHE_RESET_BUILDS = "luajit_cache_reset_builds"
 _KEY_MOD_LIST_COLUMNS = "mod_list_columns"
 MOD_LIST_COLUMN_CHOICES = (1, 2, 3)
 _KEY_MOD_CONFIG_SYNC = "mod_config_sync_enabled"
@@ -667,6 +668,22 @@ def get_luajit_enabled() -> bool:
 def set_luajit_enabled(value: bool) -> None:
     data = load_settings()
     data[_KEY_LUAJIT_ENABLED] = bool(value)
+    save_settings(data)
+
+
+def get_luajit_cache_reset_build(install_dir: Path) -> str | None:
+    """上次清理 LuaJIT 运行时缓存时的游戏版本（按开服程序目录记录），游戏更新后据此再清一次。"""
+    builds = load_settings().get(_KEY_LUAJIT_CACHE_RESET_BUILDS)
+    return builds.get(str(install_dir)) if isinstance(builds, dict) else None
+
+
+def set_luajit_cache_reset_build(install_dir: Path, build: str) -> None:
+    data = load_settings()
+    builds = data.get(_KEY_LUAJIT_CACHE_RESET_BUILDS)
+    if not isinstance(builds, dict):
+        builds = {}
+    builds[str(install_dir)] = build
+    data[_KEY_LUAJIT_CACHE_RESET_BUILDS] = builds
     save_settings(data)
 
 

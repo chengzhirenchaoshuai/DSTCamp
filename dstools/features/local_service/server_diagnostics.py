@@ -26,6 +26,9 @@ _STARTUP_FAILURE_MARKERS = (
     "error during game initialization!",
     "luaerror but no error string",
 )
+# 启动早期的最后一行；注入器在这之后、挂载数据包之前崩溃时日志就停在这里
+_BOOT_STALL_MARKER = "curlrequestmanager::clientthread::main()"
+_BOOT_PROGRESS_MARKER = "mounting file system"
 
 
 @dataclass(frozen=True)
@@ -159,10 +162,12 @@ def diagnose_server_failure(
     loaded_mods: Iterable[str] = (),
     intentional_stop: bool = False,
     ignore_token_conflict: bool = False,
+    luajit_injected: bool = False,
 ) -> DiagnosticReport | None:
     """根据一次世界启动或运行日志生成保守诊断，``None`` 表示无需提醒（正常停止不生成）。
 
     令牌注册冲突不会让进程退出，可能发生在世界就绪后，所以要在"进程仍在运行"的快速返回之前判断。
+    ``luajit_injected`` 表示启动目录里有 LuaJIT 注入壳，用于识别注入器启动即崩。
     """
     lines = [str(line) for line in log_lines]
     if intentional_stop:
@@ -227,6 +232,16 @@ def diagnose_server_failure(
 
     if any(marker in lower for marker in _RUNTIME_LUA_ERROR_MARKERS):
         return _lua_report(shard_name, world_ready, lines, related_mods)
+
+    # 2026-10 用户实例：游戏更新后 LuaJIT 配套 Mod 残留文件不匹配，专服还没挂载数据包就退出，
+    # 日志停在 CurlRequestManager 一行；Lua Mod 此时尚未加载，只可能是原生注入器
+    if (luajit_injected and not world_ready and exit_code not in (None, 0)
+            and _BOOT_STALL_MARKER in lower and _BOOT_PROGRESS_MARKER not in lower):
+        return DiagnosticReport(
+            "luajit_boot_crash", t("diag.luajit_boot_crash.title"),
+            t("diag.luajit_boot_crash.summary", shard=shard_name), _tips("luajit_boot_crash"),
+            _evidence(lines, (_BOOT_STALL_MARKER,), limit=1), (),
+        )
 
     # 世界已就绪过说明是运行中退出（崩溃、被强制结束等），不能再叫"启动失败"
     return DiagnosticReport(

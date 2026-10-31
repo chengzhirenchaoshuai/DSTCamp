@@ -2469,6 +2469,51 @@ def test_luajit_game_bin64_install():
             assert lj.runtime_dlls()[-1] == packaged, "运行库版本应按 .pkg 判断"
 
 
+def test_luajit_cache_reset_after_game_update():
+    """安装和游戏更新后按作者 install.bat 清理运行时缓存：删有 .pkg 正本的 DLL 副本、清空 unsafedata；
+    被占用时不清也不阻止开服（2026-10 用户残留副本致专服启动即崩，重新订阅才恢复）。"""
+    from unittest.mock import patch
+
+    import dstools.features.local_service.luajit_injector as lj
+
+    with _isolated_settings_dir(), tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        install_dir = root / "steamapps" / "common" / "Don't Starve Together"
+        bin64 = install_dir / "bin64"
+        bin64.mkdir(parents=True)
+        (bin64 / "dontstarve_dedicated_server_nullrenderer_x64.exe").write_bytes(b"server")
+        (bin64 / "dontstarve_steam_x64.exe").write_bytes(b"client")
+        (install_dir / "version.txt").write_text("100\n", encoding="utf-8")
+        stale_state = install_dir / "data" / "unsafedata" / "boot.log"
+        stale_state.parent.mkdir(parents=True)
+        stale_state.write_text("old", encoding="utf-8")
+        with _fake_workshop_dir(root, [WORKSHOP_ID], with_injector_files=True) as workshop:
+            mod_dir = workshop / WORKSHOP_ID
+            plugin = mod_dir / "plugins" / "plugin_core_vm" / "plugin_core_vm.dll"
+            plugin.parent.mkdir(parents=True)
+            plugin.with_name(plugin.name + ".pkg").write_bytes(b"pkg")
+            plugin.write_bytes(b"stale mirror")
+            shell_pkg = mod_dir / "bin64" / "windows" / "Winmm.dll.pkg"
+            shell_pkg.write_bytes(b"pkg")
+
+            assert lj.apply_install(bin64, []).ok
+            assert not plugin.exists() and plugin.with_name(plugin.name + ".pkg").exists()
+            assert (mod_dir / "Injector.dll").exists(), "没有 .pkg 正本的 DLL 是真模块，不能删"
+            assert (mod_dir / "bin64" / "windows" / "Winmm.dll").exists(), "Mod 自带 bin64 的注入壳不删"
+            assert not stale_state.exists(), "注入器旧状态应清空"
+            assert lj.read_injector_path_marker(install_dir) is not None, "清空后要重写路径标记"
+            assert not needs_regeneration(install_dir)
+
+            plugin.write_bytes(b"stale mirror")
+            (install_dir / "version.txt").write_text("101\n", encoding="utf-8")
+            with patch.object(lj, "_file_in_use", return_value=True):
+                assert not needs_regeneration(install_dir), "缓存被占用时先不清，不阻止开服"
+            assert needs_regeneration(install_dir), "游戏更新后应在启动前清理缓存"
+            assert regenerate(bin64).ok
+            assert not plugin.exists()
+            assert not needs_regeneration(install_dir), "同一游戏版本只清一次"
+
+
 def test_luajit_full_uninstall():
     """独立专服彻底卸载：删除副本、中断遗留的临时目录和路径标记并停用配套 Mod；
     不带 version.json 的同名文件夹和真实 bin64 不碰。"""
@@ -2611,6 +2656,9 @@ def test_luajit_injector():
                         trigger_sha256=trigger_hash,
                     )
                 )
+                # 手写标记跳过了安装流程，补上"本游戏版本已清理过缓存"的记录
+                from dstools.shared.app_settings import set_luajit_cache_reset_build
+                set_luajit_cache_reset_build(install_dir, "111")
                 assert needs_regeneration(install_dir) is False, (
                     "游戏版本、配套 Mod 版本都一致，不需要重新生成"
                 )

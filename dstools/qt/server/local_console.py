@@ -795,7 +795,8 @@ class ConsolePane(QWidget):
                 exit_code=exit_code, world_ready=self.proc.world_ready,
                 log_lines=self._diagnostic_log_lines(),
                 enabled_mods=self.proc.mods_enabled, loaded_mods=self.proc.mods_loaded,
-                ignore_token_conflict=crash_after_conflict)
+                ignore_token_conflict=crash_after_conflict,
+                luajit_injected=getattr(self.proc, "luajit_injected", False))
             if report is not None:
                 if first_report and self._on_failure is not None:
                     self._on_failure(self.proc, report)

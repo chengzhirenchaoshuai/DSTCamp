@@ -319,6 +319,8 @@ class ServerProcess:
         self.extra_args = extra_args
         # LuaJIT 模式下实际运行的 exe 目录（隔离副本），install_dir 仍表示所属安装根目录
         self.bin64_override = bin64_override
+        # 启动目录里有 LuaJIT 注入壳（启动时确定），供启动即崩的诊断使用
+        self.luajit_injected = False
         self.status = ServerStatus.STARTING
         # 明确请求过关服后，退出及其后到达的尾部日志都不触发崩溃诊断
         # （进程退出后状态变 STOPPED，读取线程仍可能晚一轮送来最后几行）
@@ -364,6 +366,7 @@ class ServerProcess:
         bin64_dir = self.bin64_override if self.bin64_override is not None \
             else self.install_dir / _BIN_DIRS[bitness]
         exe = bin64_dir / _EXE_NAMES[bitness]
+        self.luajit_injected = (exe.parent / "Winmm.dll").is_file()
         args = build_launch_args(
             self.cluster_name, self.shard_name, self.storage_args,
             self.ugc_directory, self.extra_args

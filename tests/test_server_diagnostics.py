@@ -208,5 +208,26 @@ def test_server_failure_diagnostics() -> None:
     ) is None
 
 
+def test_luajit_boot_crash() -> None:
+    """2026-10-31 用户日志：游戏更新后专服停在 CurlRequestManager 一行退出，五个世界都一样。"""
+    stalled = [
+        "[00:00:00]: Command Line Arguments: -console -cluster Cluster_2 -shard Master",
+        "[00:00:00]: THREAD - started 'GAClient' (3004)",
+        "[00:00:00]: CurlRequestManager::ClientThread::Main()",
+    ]
+    report = diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, log_lines=stalled, luajit_injected=True,
+    )
+    assert report is not None and report.category == "luajit_boot_crash"
+    # 没装注入壳，或已挂载数据包往后走了，都不能归到 LuaJIT
+    assert diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, log_lines=stalled,
+    ).category == "unknown"
+    assert diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, luajit_injected=True,
+        log_lines=stalled + ["[00:00:01]: Mounting file system databundles/klump.zip successful."],
+    ).category == "unknown"
+
+
 if __name__ == "__main__":
     run(globals())

@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 # 不会因为重启而自愈的失败：重启只会原样再失败一次
-NON_RECOVERABLE_CATEGORIES = frozenset({"runtime", "permission", "port", "world_generation"})
+NON_RECOVERABLE_CATEGORIES = frozenset({"runtime", "permission", "port", "world_generation", "luajit_boot_crash"})
 
 CRASH_RESTART_DELAY = 15.0        # 崩溃后稍等再拉起，让旧进程、frpc 与日志收尾
 CRASH_WINDOW = 30 * 60            # 统计崩溃次数的时间窗

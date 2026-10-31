@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from dstools.shared.app_settings import get_luajit_enabled, set_luajit_enabled
+from dstools.shared.app_settings import (
+    get_luajit_cache_reset_build, get_luajit_enabled, set_luajit_cache_reset_build, set_luajit_enabled,
+)
 from dstools.features.mod.manager import enable_mod, load_mod_overrides, save_mod_overrides
 from dstools.features.mod.parser import find_workshop_dir, parse_modinfo
 from dstools.shared.steam_discovery import read_game_version_file
@@ -272,6 +274,55 @@ def read_injector_path_marker(install_dir: Path) -> Path | None:
     return candidate if _module_present(candidate) else None
 
 
+def _materialized_mirrors() -> list[Path]:
+    """配套 Mod 目录里由 ``.dll.pkg`` 就地生成的 DLL 副本；Mod 自带 ``bin64`` 里的注入壳是普通 DLL，不算。"""
+    mod_dir = _workshop_mod_dir()
+    if mod_dir is None:
+        return []
+    shell_dir = mod_dir / "bin64"
+    mirrors = []
+    for pkg in mod_dir.rglob("*.dll.pkg"):
+        mirror = pkg.with_suffix("")
+        if not mirror.is_relative_to(shell_dir) and mirror.is_file():
+            mirrors.append(mirror)
+    return mirrors
+
+
+def _cache_reset_pending(install_dir: Path) -> bool:
+    """游戏更新后尚未清理过运行时缓存；缓存文件被占用时先不清，等游戏和服务器都关闭后的下次启动。"""
+    build = current_game_build_id(install_dir)
+    if build is None or get_luajit_cache_reset_build(install_dir) == build:
+        return False
+    return not any(_file_in_use(path) for path in _materialized_mirrors())
+
+
+def reset_runtime_cache(install_dir: Path, log) -> bool:
+    """按作者 install.bat 清理运行时缓存：删掉有 ``.pkg`` 正本的 DLL 副本、清空 ``data/unsafedata``，
+    下次启动由注入壳重新生成。调用方之后须重写路径标记。
+
+    坑：副本可能是旧包或中断复制的残留，取消订阅再订阅、重装游戏都不会清掉；
+    2026-10 游戏更新后曾让专服停在 ``CurlRequestManager::ClientThread::Main()`` 启动即崩，
+    删掉 Mod 目录重新订阅才恢复。任一副本被占用时整体跳过，避免只清一半；返回是否清理完成。"""
+    mirrors = _materialized_mirrors()
+    if any(_file_in_use(path) for path in mirrors):
+        log(t("local.luajit_log_cache_busy"))
+        return False
+    try:
+        for path in mirrors:
+            path.unlink(missing_ok=True)
+        data_dir = install_dir / _INJECTOR_PATH_MARKER.parent
+        if data_dir.is_dir():
+            shutil.rmtree(data_dir)
+    except OSError as exc:
+        log(t("local.luajit_log_cache_reset_failed", detail=f"{type(exc).__name__}: {exc}"))
+        return False
+    log(t("local.luajit_log_cache_reset", n=len(mirrors)))
+    build = current_game_build_id(install_dir)
+    if build is not None:
+        set_luajit_cache_reset_build(install_dir, build)
+    return True
+
+
 def _runtime_ready(install_dir: Path) -> bool:
     luajit_dir = get_luajit_dir(install_dir)
     return (
@@ -418,7 +469,7 @@ def apply_install(bin64_dir: Path, mod_overrides_paths: list[Path], on_log=None)
 
     1. 从已订阅的配套 Mod 取注入文件（不联网，Steam 负责保持稳定版）；
     2. 复制真实 bin64 到同级 luajit/ 隔离副本；
-    3. 只把 Winmm.dll 放进副本，写入 Injector.dll 路径及版本/哈希标记；
+    3. 只把 Winmm.dll 放进副本，清理 Mod 运行时缓存，写入 Injector.dll 路径及版本/哈希标记；
     4. 在各 modoverrides.lua 启用配套 Mod，并打开 LuaJIT 开关。
     日志通过 on_log 输出。"""
     def log(line: str) -> None:
@@ -442,10 +493,12 @@ def apply_install(bin64_dir: Path, mod_overrides_paths: list[Path], on_log=None)
         if game_bin64:
             # 作者方式：只把注入壳放进游戏 bin64，客户端与游戏专服共用。
             _copy_injector_shell_into(source_dir, bin64_dir, on_log=log)
+            reset_runtime_cache(install_dir, log)
             write_injector_path_marker(install_dir, injector_path)
             _remove_stale_luajit_copy(install_dir, log)
         else:
             _rebuild_luajit_copy(bin64_dir, luajit_dir, source_dir, on_log=log)
+            reset_runtime_cache(install_dir, log)
             write_injector_path_marker(install_dir, injector_path)
 
             build_id = current_game_build_id(install_dir) or ""
@@ -646,17 +699,20 @@ def needs_regeneration(install_dir: Path) -> bool:
         or layout_changed
         or trigger_changed
         or payload_moved
+        or _cache_reset_pending(install_dir)
     )
 
 
 def _game_needs_refresh(install_dir: Path) -> bool:
-    """游戏专服：仅在已安装时检查。路径标记缺失/过期需修复，注入壳不一致需更新；
-    文件被游戏或服务器占用时沿用当前版本，不阻止开服。"""
+    """游戏专服：仅在已安装时检查。路径标记缺失/过期需修复，注入壳不一致或游戏更新后
+    缓存未清理需更新；文件被游戏或服务器占用时沿用当前版本，不阻止开服。"""
     bin64_dir = install_dir / "bin64"
     trigger = _game_trigger_file(bin64_dir)
     current_payload = _injector_payload_file()
     if trigger is None or current_payload is None:
         return False
+    if _cache_reset_pending(install_dir):
+        return True
     marked = read_injector_path_marker(install_dir)
     if marked is None or marked.resolve() != current_payload.resolve():
         return True
@@ -684,6 +740,8 @@ def _refresh_game_install(bin64_dir: Path, log) -> InstallResult:
                 log(t("local.luajit_log_shell_locked"))
             else:
                 _copy_injector_shell_into(source_dir, bin64_dir, on_log=log)
+        if _cache_reset_pending(install_dir):
+            reset_runtime_cache(install_dir, log)
         write_injector_path_marker(install_dir, injector_path)
         _remove_stale_luajit_copy(install_dir, log)
         result.ok = True
@@ -699,7 +757,7 @@ def regenerate(bin64_dir: Path, on_log=None) -> InstallResult:
     - 游戏版本变化：删除并重建整个副本（bin64 可能全变）；
     - 只有配套 Mod 版本或 Winmm.dll 变化：只覆盖注入壳并刷新路径标记；
     - 标记缺失或布局需要迁移：完整重建，顺带清掉旧版复制进来的 Injector/deps/plugins。
-    找不到完整订阅内容时返回失败，不用残缺文件启动。"""
+    游戏更新后还会清一次 Mod 的运行时缓存（见 reset_runtime_cache）。找不到完整订阅内容时返回失败，不用残缺文件启动。"""
     def log(line: str) -> None:
         if on_log:
             on_log(line)
@@ -731,6 +789,8 @@ def regenerate(bin64_dir: Path, on_log=None) -> InstallResult:
         else:
             _copy_injector_shell_into(source_dir, luajit_dir, on_log=log)
 
+        if _cache_reset_pending(install_dir):
+            reset_runtime_cache(install_dir, log)
         write_injector_path_marker(install_dir, injector_path)
         write_marker(luajit_dir, LuajitMarker(
             DST_version=build_id,
