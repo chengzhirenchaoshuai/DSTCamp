@@ -32,6 +32,8 @@ TRIGGER_FILE = "Winmm.dll"
 # 真正的 hook 逻辑留在创意工坊 Mod 目录，由路径标记指向，不再复制进游戏目录。
 _CORE_PAYLOAD_FILE = "Injector.dll"
 _INJECTOR_PATH_MARKER = Path("data/unsafedata/ds_luajit_injector.path")
+# unsafedata 里注入器自己的状态文件（路径标记、启动日志、插件配置）的文件名前缀
+_INJECTOR_STATE_PREFIXES = ("ds_luajit", "luajit_")
 _LAYOUT_VERSION = 2
 _LEGACY_PAYLOAD_FILES = (
     "Injector.dll",
@@ -297,8 +299,11 @@ def _cache_reset_pending(install_dir: Path) -> bool:
 
 
 def reset_runtime_cache(install_dir: Path, log) -> bool:
-    """按作者 install.bat 清理运行时缓存：删掉有 ``.pkg`` 正本的 DLL 副本、清空 ``data/unsafedata``，
-    下次启动由注入壳重新生成。调用方之后须重写路径标记。
+    """按作者 install.bat 清理运行时缓存：删掉有 ``.pkg`` 正本的 DLL 副本和 ``data/unsafedata`` 里的
+    注入器状态，下次启动由注入壳重新生成。调用方之后须重写路径标记。
+
+    坑：作者脚本整个删 ``unsafedata``，但游戏自己也往里放文件（``dropsdata_KU_*.json`` 掉落记录、
+    随包的 ``fileforpackaging``），所以只删 ``ds_luajit``/``luajit_`` 开头的（2026-11-01 本机实测）。
 
     坑：副本可能是旧包或中断复制的残留，取消订阅再订阅、重装游戏都不会清掉；
     2026-10 游戏更新后曾让专服停在 ``CurlRequestManager::ClientThread::Main()`` 启动即崩，
@@ -312,7 +317,9 @@ def reset_runtime_cache(install_dir: Path, log) -> bool:
             path.unlink(missing_ok=True)
         data_dir = install_dir / _INJECTOR_PATH_MARKER.parent
         if data_dir.is_dir():
-            shutil.rmtree(data_dir)
+            for path in data_dir.iterdir():
+                if path.is_file() and path.name.lower().startswith(_INJECTOR_STATE_PREFIXES):
+                    path.unlink()
     except OSError as exc:
         log(t("local.luajit_log_cache_reset_failed", detail=f"{type(exc).__name__}: {exc}"))
         return False

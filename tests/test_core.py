@@ -2484,9 +2484,11 @@ def test_luajit_cache_reset_after_game_update():
         (bin64 / "dontstarve_dedicated_server_nullrenderer_x64.exe").write_bytes(b"server")
         (bin64 / "dontstarve_steam_x64.exe").write_bytes(b"client")
         (install_dir / "version.txt").write_text("100\n", encoding="utf-8")
-        stale_state = install_dir / "data" / "unsafedata" / "boot.log"
+        stale_state = install_dir / "data" / "unsafedata" / "ds_luajit_boot.log"
         stale_state.parent.mkdir(parents=True)
         stale_state.write_text("old", encoding="utf-8")
+        game_drops = stale_state.with_name("dropsdata_KU_test.json")
+        game_drops.write_text("{}", encoding="utf-8")
         with _fake_workshop_dir(root, [WORKSHOP_ID], with_injector_files=True) as workshop:
             mod_dir = workshop / WORKSHOP_ID
             plugin = mod_dir / "plugins" / "plugin_core_vm" / "plugin_core_vm.dll"
@@ -2501,6 +2503,7 @@ def test_luajit_cache_reset_after_game_update():
             assert (mod_dir / "Injector.dll").exists(), "没有 .pkg 正本的 DLL 是真模块，不能删"
             assert (mod_dir / "bin64" / "windows" / "Winmm.dll").exists(), "Mod 自带 bin64 的注入壳不删"
             assert not stale_state.exists(), "注入器旧状态应清空"
+            assert game_drops.exists(), "游戏自己放在 unsafedata 的文件不能删"
             assert lj.read_injector_path_marker(install_dir) is not None, "清空后要重写路径标记"
             assert not needs_regeneration(install_dir)
 
