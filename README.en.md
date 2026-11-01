@@ -108,20 +108,27 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.8.3 changes
+## 1.8.4 changes
 
-### 🐞 Fixes
+### ✨ New features
+
+- **Switch Sakura nodes while mapping is on**: existing tunnels are migrated to the new node and the remote port usually stays the same; if it changes, the local port and server.ini are synced and frpc is restarted automatically, with no need to turn mapping off and on again. If some worlds fail to migrate (each tunnel has a cooldown of about 2 minutes after a migration), the migrated worlds stay on the new node; select that node again later to move the rest.
+- **Switch Lolia nodes while mapping is on**: tunnels are created on the new node, keeping the original remote port where possible; the old tunnels are deleted and frpc restarted only after the configuration is written, and everything is restored if a step fails.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.8.3)</strong></summary>
+
+### 1.8.3
+
+#### 🐞 Fixes
 
 - **Found the real cause of LuaJIT crashing at startup**: a file name in the save root (Documents\Klei\DoNotStarveTogether) that the system code page can't convert, usually a garbled empty folder the game creates itself when a save folder was renamed to Chinese and then started. With LuaJIT on, these entries are now checked before starting and listed (with the original name recovered where possible), and the crash diagnosis now first suggests deleting the garbled folder.
 - Save or world folder names with Chinese or other non-English characters are now caught before starting, with a prompt to rename them: the dedicated server can't read such a save and reads a garbled empty folder instead. The room name shown in game is not affected and can stay in Chinese.
 - Removed the automatic LuaJIT cache clearing and retry added in 1.8.2; they don't help with the real cause.
 
-### ✨ Improvements
+#### ✨ Improvements
 
 - Log bundles include the server console output (including LuaJIT injector lines that aren't written to server_log.txt), to help diagnose startup crashes.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.8.2)</strong></summary>
 
 ### 1.8.2
 
