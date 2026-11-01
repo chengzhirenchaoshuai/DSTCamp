@@ -62,7 +62,6 @@ from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async, run_async_with_log
 from dstools.qt.server.auto_restart import AutoRestartController
-from dstools.qt.server.luajit_boot_retry import LuajitBootRetry
 from dstools.qt.widgets import Banner, Card, ToggleSwitch, VScrollArea
 from dstools.shared.app_settings import (
     blocking_token_holds, get_auto_restart_enabled, get_backup_auto_enabled, get_backup_interval_minutes,
@@ -881,7 +880,6 @@ class LocalServicePage(Page):
         self._restarting_keys: set[tuple[str, str]] = set()
         self._token_reservations: dict[str, str] = {}
         self._auto_restart = AutoRestartController(self)
-        self._luajit_boot_retry = LuajitBootRetry(self)
         # 开服程序只从 server_runtime.resolve_runtime() 取；_install_dir 保留给自动重启等旧调用方。
         self._runtime_resolution = None
         self._runtime = None
@@ -2244,7 +2242,6 @@ class LocalServicePage(Page):
     def _on_server_failure(self, proc, report) -> None:
         self._record_token_hold(proc, report)
         self._auto_restart.on_failure(proc, report)  # 要在令牌等待标记更新之后，它按标记决定等多久
-        self._luajit_boot_retry.on_failure(proc, report)
 
     def _record_token_hold(self, proc, report) -> None:
         """主世界崩溃或注册冲突时，记录新令牌在 Klei 端尚未释放（TOKEN_HOLD_DURATION 内不分给别的存档）。
@@ -2279,7 +2276,6 @@ class LocalServicePage(Page):
         if classify_token(token) == ServerTokenKind.NEW:
             clear_token_hold(token_fingerprint(token))
         self._auto_restart.on_registered(proc)
-        self._luajit_boot_retry.on_registered(proc)
 
     # ── 启动前预检 ──────────────────────────────────────────────────────
     def _lan_port_blocked(self, cluster, shards, issues, target_running, restarting=False) -> bool:

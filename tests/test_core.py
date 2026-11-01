@@ -2469,62 +2469,6 @@ def test_luajit_game_bin64_install():
             assert lj.runtime_dlls()[-1] == packaged, "运行库版本应按 .pkg 判断"
 
 
-def test_luajit_cache_reset_after_game_update():
-    """安装和游戏更新后按作者 install.bat 清理运行时缓存：删有 .pkg 正本的 DLL 副本、清空 unsafedata；
-    被占用时不清也不阻止开服（2026-10 用户残留副本致专服启动即崩，重新订阅才恢复）。"""
-    from unittest.mock import patch
-
-    import dstools.features.local_service.luajit_injector as lj
-
-    with _isolated_settings_dir(), tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        install_dir = root / "steamapps" / "common" / "Don't Starve Together"
-        bin64 = install_dir / "bin64"
-        bin64.mkdir(parents=True)
-        (bin64 / "dontstarve_dedicated_server_nullrenderer_x64.exe").write_bytes(b"server")
-        (bin64 / "dontstarve_steam_x64.exe").write_bytes(b"client")
-        (install_dir / "version.txt").write_text("100\n", encoding="utf-8")
-        stale_state = install_dir / "data" / "unsafedata" / "ds_luajit_boot.log"
-        stale_state.parent.mkdir(parents=True)
-        stale_state.write_text("old", encoding="utf-8")
-        game_drops = stale_state.with_name("dropsdata_KU_test.json")
-        game_drops.write_text("{}", encoding="utf-8")
-        with _fake_workshop_dir(root, [WORKSHOP_ID], with_injector_files=True) as workshop:
-            mod_dir = workshop / WORKSHOP_ID
-            plugin = mod_dir / "plugins" / "plugin_core_vm" / "plugin_core_vm.dll"
-            plugin.parent.mkdir(parents=True)
-            plugin.with_name(plugin.name + ".pkg").write_bytes(b"pkg")
-            plugin.write_bytes(b"stale mirror")
-            shell_pkg = mod_dir / "bin64" / "windows" / "Winmm.dll.pkg"
-            shell_pkg.write_bytes(b"pkg")
-
-            assert lj.apply_install(bin64, []).ok
-            assert not plugin.exists() and plugin.with_name(plugin.name + ".pkg").exists()
-            assert (mod_dir / "Injector.dll").exists(), "没有 .pkg 正本的 DLL 是真模块，不能删"
-            assert (mod_dir / "bin64" / "windows" / "Winmm.dll").exists(), "Mod 自带 bin64 的注入壳不删"
-            assert not stale_state.exists(), "注入器旧状态应清空"
-            assert game_drops.exists(), "游戏自己放在 unsafedata 的文件不能删"
-            assert lj.read_injector_path_marker(install_dir) is not None, "清空后要重写路径标记"
-            assert not needs_regeneration(install_dir)
-
-            plugin.write_bytes(b"stale mirror")
-            (install_dir / "version.txt").write_text("101\n", encoding="utf-8")
-            with patch.object(lj, "_file_in_use", return_value=True):
-                assert not needs_regeneration(install_dir), "缓存被占用时先不清，不阻止开服"
-            assert needs_regeneration(install_dir), "游戏更新后应在启动前清理缓存"
-            assert regenerate(bin64).ok
-            assert not plugin.exists()
-            assert not needs_regeneration(install_dir), "同一游戏版本只清一次"
-
-            # 启动即崩后的自动修复不看记录，强制再清一次并补回路径标记
-            plugin.write_bytes(b"stale mirror")
-            with patch.object(lj, "_file_in_use", return_value=True):
-                assert not lj.reset_after_boot_crash(install_dir)
-            assert plugin.exists()
-            assert lj.reset_after_boot_crash(install_dir)
-            assert not plugin.exists() and lj.read_injector_path_marker(install_dir) is not None
-
-
 def test_launch_name_check():
     """中文存档名开服时游戏会在 Klei 根目录建乱码文件夹，开 LuaJIT 必崩（2026-11-01 用户转储+本机复现）。"""
     from dstools.features.local_service.launch_name_check import (
@@ -2569,65 +2513,6 @@ def test_console_only_log_in_bundle():
             previous = archive.read("Master/dstcamp_console_prev.txt").decode("utf-8")
         assert "[ds-shell] DllMain" in current and "CurlRequestManager" not in current and "Memory Load" not in current
         assert "loaded Injector" in previous and "0xE06D7363" in previous, "上一次运行的记录和退出码要留下"
-
-
-def test_luajit_boot_retry():
-    """启动即崩后等同存档的世界都结束再清理一次、拉起崩溃的世界；再崩不重试，注册成功后恢复机会。"""
-    from types import SimpleNamespace
-    from unittest.mock import patch
-
-    import dstools.qt.server.luajit_boot_retry as module
-    from dstools.features.local_service.dedicated_server import ServerStatus
-
-    cluster = SimpleNamespace(path=Path("C:/fake/Cluster_2"), name="Cluster_2",
-                              shards=[SimpleNamespace(name="Master"), SimpleNamespace(name="Caves")])
-    procs = {}
-    started, resets = [], []
-    page = SimpleNamespace(
-        ctx=SimpleNamespace(env=SimpleNamespace(clusters=[cluster], klei_root=None),
-                            ensure_lobby_accel=lambda _c, callback: callback(True, "")),
-        manager=SimpleNamespace(get=lambda _path, name: procs.get(name)),
-        _install_dir=Path("C:/fake/game"), _launching_keys=set(),
-        _choose_start_token=lambda _c, allow_switch=True, retry_current=False: True,
-        _release_token_reservation_if_stopped=lambda _path: None,
-        _continue_start_shard=lambda _c, shard, _args: started.append(shard.name),
-        _select_master_console_tab=lambda _c: None,
-        window=lambda: None,
-    )
-
-    def proc(name, status):
-        procs[name] = SimpleNamespace(cluster_path=cluster.path, shard_name=name, status=status)
-        return procs[name]
-
-    crash = SimpleNamespace(category="luajit_boot_crash")
-    key = str(cluster.path)
-    with patch.object(module.QTimer, "singleShot"), \
-            patch.object(module, "run_async", side_effect=lambda work, done, _err: done(work())), \
-            patch.object(module.luajit_injector, "reset_after_boot_crash",
-                         side_effect=lambda _dir: (resets.append(1), True)[1]), \
-            patch.object(module.dialogs, "show_toast"), \
-            patch.object(module, "ordered_shards", side_effect=lambda c: c.shards), \
-            patch.object(module, "resolve_storage_args", return_value=[]):
-        retry = module.LuajitBootRetry.__new__(module.LuajitBootRetry)
-        module.QObject.__init__(retry)
-        retry._page, retry._pending, retry._checks, retry._used = page, {}, {}, set()
-
-        retry.on_failure(proc("Master", ServerStatus.CRASHED), crash)
-        proc("Caves", ServerStatus.STARTING)
-        retry._settle(key)
-        assert not resets, "还有世界在启动，先等它结束"
-        retry.on_failure(proc("Caves", ServerStatus.CRASHED), crash)
-        retry._settle(key)
-        assert resets == [1] and started == ["Master", "Caves"], "清理一次、拉起全部崩溃的世界"
-
-        started.clear()
-        retry.on_failure(proc("Master", ServerStatus.CRASHED), crash)
-        assert key not in retry._pending and not started, "清理重试过仍崩溃，不再重试"
-        retry.on_failure(proc("Master", ServerStatus.CRASHED), SimpleNamespace(category="unknown"))
-        assert key not in retry._pending, "其它失败不管"
-        retry.on_registered(procs["Master"])
-        retry.on_failure(proc("Master", ServerStatus.CRASHED), crash)
-        assert key in retry._pending, "注册成功后恢复一次机会"
 
 
 def test_luajit_full_uninstall():
@@ -2772,9 +2657,6 @@ def test_luajit_injector():
                         trigger_sha256=trigger_hash,
                     )
                 )
-                # 手写标记跳过了安装流程，补上"本游戏版本已清理过缓存"的记录
-                from dstools.shared.app_settings import set_luajit_cache_reset_build
-                set_luajit_cache_reset_build(install_dir, "111")
                 assert needs_regeneration(install_dir) is False, (
                     "游戏版本、配套 Mod 版本都一致，不需要重新生成"
                 )
