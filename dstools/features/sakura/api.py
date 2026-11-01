@@ -101,6 +101,20 @@ def edit_tunnel(token: str, tunnel_id: int, **fields) -> dict:
     return _request(token, "POST", "/tunnel/edit", {"id": tunnel_id, **fields})
 
 
+def tunnel_node_id(tunnel: dict) -> int | None:
+    """隧道所在节点 ID。list_tunnels 返回的是整数，创建接口的返回里实测为空。"""
+    try:
+        return int(tunnel.get("node"))
+    except (TypeError, ValueError):
+        return None
+
+
+def migrate_tunnel(token: str, tunnel_id: int, node: int) -> None:
+    """把隧道迁移到另一个节点，隧道 ID 不变（成功返回 204）。实测目标节点上原远程端口空闲时端口保持不变，
+    端口是否一定保留文档未说明，调用方要重新读取隧道的 remote。"""
+    _request(token, "POST", "/tunnel/migrate", {"id": tunnel_id, "node": node})
+
+
 def delete_tunnel(token: str, tunnel_ids: list[int]) -> dict:
     ids = ",".join(str(i) for i in tunnel_ids[:10])
     return _request(token, "POST", "/tunnel/delete", {"ids": ids})

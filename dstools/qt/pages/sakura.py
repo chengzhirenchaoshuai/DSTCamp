@@ -323,6 +323,7 @@ class _SakuraMappingPanel(QWidget):
         self._selected_node_id = dialog.result_id
         app_settings.set_sakura_last_node_id(dialog.result_id)
         self._update_node_display()
+        self._maybe_switch_node(dialog.result_id)
 
     def _build_picker_choices(self) -> list[NodeChoice]:
         """按中国大陆 / 海外及港澳台分组（_node_choices 已按 node_sort_key 排好），卡片上补充实时负载、
@@ -775,6 +776,118 @@ class _SakuraMappingPanel(QWidget):
         return [s.name for s in cluster.shards
                 if (proc := self.ctx.manager.get(cluster.path, s.name)) and proc.status in RUNNING_LIKE]
 
+    # ── 映射开启时切换节点 ──────────────────────────────────────────────
+    def _maybe_switch_node(self, node_id: int) -> None:
+        """映射开着时改选了节点：确认后把现有隧道迁移到新节点并重启 frpc，不用关了再开。"""
+        cluster = self._current_cluster
+        token = app_settings.get_sakura_token()
+        if not cluster or not self._any_mapped or not token:
+            return
+        targets = [(shard, tunnel) for shard in cluster.shards
+                   if (tunnel := self._tunnels_by_key.get((str(cluster.path), shard.name)))
+                   and sakura_frp.tunnel_node_id(tunnel) != node_id]
+        if not targets:
+            return
+        node_name = self._nodes.get(str(node_id), {}).get("name") or str(node_id)
+        if not dialogs.ask_yes_no(self.window(), t("sakura.switch_node_title"),
+                                  t("sakura.switch_node_confirm", node=node_name)):
+            return
+        progress = dialogs.LogDialog(self.window(), t("sakura.switch_node_title"))
+        progress.show()
+
+        def log(text: str) -> None:
+            post_to_ui(lambda _a: progress.append(text))
+
+        migrated: list[tuple[int, int | None]] = []
+
+        def work() -> list[str]:
+            try:
+                for shard, tunnel in targets:
+                    log(t("sakura.switch_step_migrating", shard=shard.name))
+                    sakura_frp.migrate_tunnel(token, tunnel["id"], node_id)
+                    migrated.append((tunnel["id"], sakura_frp.tunnel_node_id(tunnel)))
+            except Exception:
+                # 只迁了一部分时迁回原节点，避免各世界分散在不同节点上
+                self._migrate_back(token, migrated, log)
+                raise
+            # 实测远程端口通常不变；变了就跟开启映射一样把本地端口和 server.ini 改成新端口
+            changed = []
+            for shard, tunnel in targets:
+                remote = self._tunnel_remote(token, tunnel["id"])
+                remote_port = int(remote) if remote and str(remote).isdigit() else None
+                if remote_port is None or not (1 <= remote_port <= 65535):
+                    raise sakura_frp.SakuraApiError(f"invalid remote port for {shard.name}: {remote}")
+                if str(remote_port) != str(tunnel.get("remote")):
+                    sakura_frp.edit_tunnel(token, tunnel["id"], local_port=remote_port)
+                    shard_config = load_shard_config(shard.path)
+                    set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
+                    save_shard_config(shard_config, shard.path)
+                    changed.append(shard.name)
+                log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
+            return changed
+
+        def done(changed: list[str]) -> None:
+            progress.finish()
+            self._restart_frpc(cluster, [shard for shard, _tunnel in targets])
+            running = [name for name in self._running_shard_names(cluster) if name in changed]
+            if running:
+                dialogs.show_info(self.window(), t("sakura.setup_done_title"),
+                                   t("sakura.setup_done_msg_restart", shards="、".join(running)))
+            self._reload_async()
+            if changed:
+                self.ctx.cluster_config_saved.emit(cluster)
+
+        def error(exc: Exception) -> None:
+            progress.append(t("sakura.api_error", detail=str(exc)), "result_error")
+            progress.finish()
+            if migrated:
+                # 迁移已部分生效（迁回也可能失败），重启 frpc，让进程连到隧道当前所在的节点
+                self._restart_frpc(cluster, [shard for shard, _tunnel in targets])
+            self._reload_async()
+
+        run_async(work, done, error)
+
+    @staticmethod
+    def _tunnel_remote(token: str, tunnel_id: int):
+        """（工作线程）迁移后重新读取隧道的远程端口。"""
+        tunnel = next((x for x in sakura_frp.list_tunnels(token) if x.get("id") == tunnel_id), None)
+        if tunnel is None:
+            raise sakura_frp.SakuraApiError(f"tunnel {tunnel_id} not found after migrate")
+        return tunnel.get("remote")
+
+    @staticmethod
+    def _migrate_back(token: str, migrated: list[tuple[int, int | None]], log) -> bool:
+        """（工作线程）把已迁移的隧道迁回原节点，全部成功返回 True。"""
+        ok = True
+        for tunnel_id, old_node in migrated:
+            if old_node is None:
+                continue
+            try:
+                sakura_frp.migrate_tunnel(token, tunnel_id, old_node)
+            except sakura_frp.SakuraApiError as exc:
+                ok = False
+                log(t("sakura.switch_migrate_back_failed", id=tunnel_id, detail=exc))
+        return ok
+
+    def _restart_frpc(self, cluster, shards) -> None:
+        """frpc 启动时按隧道 ID 向樱花拉取配置，换节点后要重启才会连到新节点。
+        正在运行的停掉再启动，已崩溃的直接重启；从没启动过或用户手动停掉的不主动拉起。"""
+        for shard in shards:
+            proc = self.frpc.get(cluster.path, shard.name)
+            if proc is None or proc.status in (FrpcStatus.STOPPED, FrpcStatus.STOPPING):
+                continue
+            if proc.status == FrpcStatus.CRASHED:
+                self.maybe_start_frpc(cluster, shard)
+                continue
+            self.stop_frpc_for_shard(cluster, shard, on_done=lambda s=shard: post_to_ui(
+                lambda _a: self._start_after_restart(cluster, s)))
+        self._refresh_frpc_row()
+
+    def _start_after_restart(self, cluster, shard) -> None:
+        self.maybe_start_frpc(cluster, shard)
+        if self._current_cluster is cluster:
+            self._refresh_frpc_row()
+
     # ── 开启/关闭映射 ────────────────────────────────────────────────────
     def _on_action_btn(self) -> None:
         if self._any_mapped:
@@ -819,9 +932,11 @@ class _SakuraMappingPanel(QWidget):
         def log(text: str) -> None:
             post_to_ui(lambda _a: progress.append(text))
 
-        def rollback(created_ids: list[int], originals: dict) -> None:
-            # 任何一个世界失败：先删这次新建的隧道（复用的旧隧道不动），再把改过的 server.ini 和指针原样写回
+        def rollback(created_ids: list[int], migrated: list[tuple[int, int]], originals: dict) -> None:
+            # 任何一个世界失败：先删这次新建的隧道、把迁移过的旧隧道迁回原节点，再把改过的 server.ini 和指针原样写回
             ok = True
+            if not self._migrate_back(token, migrated, log):
+                ok = False
             if created_ids:
                 try:
                     sakura_frp.delete_tunnel(token, created_ids)
@@ -847,6 +962,7 @@ class _SakuraMappingPanel(QWidget):
 
         def work():
             created_ids: list[int] = []
+            migrated: list[tuple[int, int]] = []
             originals: dict[str, tuple] = {}
             try:
                 # 第一步只动樱花后台：所有世界的隧道都建好/复用成功后，才改本地端口和指针
@@ -860,6 +976,13 @@ class _SakuraMappingPanel(QWidget):
                     existing = self._find_cluster_tunnel(tunnels, cluster, shard)
                     if existing:
                         tunnel_id, remote = existing["id"], existing.get("remote")
+                        old_node = sakura_frp.tunnel_node_id(existing)
+                        if old_node is not None and old_node != node_id:
+                            # 复用的旧隧道不在当前选的节点上（如上次关闭时远程没删掉），先迁过去
+                            log(t("sakura.switch_step_migrating", shard=shard.name))
+                            sakura_frp.migrate_tunnel(token, tunnel_id, node_id)
+                            migrated.append((tunnel_id, old_node))
+                            remote = self._tunnel_remote(token, tunnel_id)
                     else:
                         created = sakura_frp.create_tunnel(token, name=name, type="udp", node=node_id,
                                                             local_ip="127.0.0.1", local_port=local_port,
@@ -883,7 +1006,7 @@ class _SakuraMappingPanel(QWidget):
                     save_shard_config(shard_config, shard.path)
                     log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
             except Exception:
-                rollback(created_ids, originals)
+                rollback(created_ids, migrated, originals)
                 raise
 
         def done(_result) -> None:
