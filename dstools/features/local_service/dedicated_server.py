@@ -19,6 +19,7 @@ from pathlib import Path
 from dstools.shared import app_settings
 from dstools.features.cluster_config.config_manager import get_shard_option, load_shard_config
 from dstools.features.mod.manager import load_mod_overrides
+from dstools.features.local_service.console_log import ConsoleOnlyLog
 from dstools.features.local_service.server_diagnostics import analyze_mod_loading
 from dstools.shared.steam_discovery import find_all_steam_libraries
 
@@ -321,6 +322,7 @@ class ServerProcess:
         self.bin64_override = bin64_override
         # 启动目录里有 LuaJIT 注入壳（启动时确定），供启动即崩的诊断使用
         self.luajit_injected = False
+        self._console_log: ConsoleOnlyLog | None = None
         self.status = ServerStatus.STARTING
         # 明确请求过关服后，退出及其后到达的尾部日志都不触发崩溃诊断
         # （进程退出后状态变 STOPPED，读取线程仍可能晚一轮送来最后几行）
@@ -367,6 +369,7 @@ class ServerProcess:
             else self.install_dir / _BIN_DIRS[bitness]
         exe = bin64_dir / _EXE_NAMES[bitness]
         self.luajit_injected = (exe.parent / "Winmm.dll").is_file()
+        self._console_log = ConsoleOnlyLog(self.cluster_path, self.shard_name, exe.parent)
         args = build_launch_args(
             self.cluster_name, self.shard_name, self.storage_args,
             self.ugc_directory, self.extra_args
@@ -399,6 +402,9 @@ class ServerProcess:
                 if recent_lines is None:
                     recent_lines = self._recent_log_lines = deque(maxlen=500)
                 recent_lines.append(line)
+                console_log = getattr(self, "_console_log", None)
+                if console_log is not None:
+                    console_log.line(line)
                 if not self.world_ready:
                     m = _MOD_ENABLING_RE.search(line)
                     if m:
@@ -434,6 +440,13 @@ class ServerProcess:
                 self._out_queue.put(line)
         except (OSError, ValueError):
             pass
+        console_log = getattr(self, "_console_log", None)
+        if console_log is not None:
+            try:
+                code = self.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                code = None
+            console_log.exited(code)
 
     @property
     def recent_log_lines(self) -> tuple[str, ...]:

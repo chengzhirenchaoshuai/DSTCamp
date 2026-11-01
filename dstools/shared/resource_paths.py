@@ -13,6 +13,7 @@
         legacy_v1_read                                                      V1 Mod 包临时解压
         connection_log                                                      专服日志连接记录
         frpc_log                                                            frpc 输出（日志包会收录）
+        console_log                                                         专服控制台独有输出（日志包会收录）
         lobby_accel_mihomo                                                  Mihomo 运行文件
         runtime/{ktools,ktech_jobs}                                         ktech 的 ASCII 运行副本与任务目录
         steamcmd                                                            内置 SteamCMD（清空后需重新登录）

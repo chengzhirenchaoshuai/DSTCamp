@@ -98,6 +98,13 @@ def _files_for_shard(shard_path: Path, shard_name: str) -> list[tuple[Path, str]
     # 这些配置有助于定位 Mod/世界配置问题，但不包含 cluster_token.txt。
     for filename in ("server.ini", "modoverrides.lua", "leveldataoverride.lua"):
         _add_file(files, shard_path / filename, f"{shard_name}/{filename}")
+
+    # 控制台独有的输出（LuaJIT 注入器等），本次和上一次运行各一份
+    from dstools.features.local_service.console_log import console_log_paths
+
+    current, previous = console_log_paths(shard_path.parent, shard_name)
+    _add_file(files, current, f"{shard_name}/dstcamp_console.txt")
+    _add_file(files, previous, f"{shard_name}/dstcamp_console_prev.txt")
     return files
 
 

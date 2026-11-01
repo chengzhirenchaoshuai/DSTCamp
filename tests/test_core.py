@@ -2525,6 +2525,32 @@ def test_luajit_cache_reset_after_game_update():
             assert not plugin.exists() and lj.read_injector_path_marker(install_dir) is not None
 
 
+def test_console_only_log_in_bundle():
+    """注入器走 stderr 的输出只在控制台：落盘时只记这类行，上次运行留作 prev，日志包都收（2026-11-01）。"""
+    from dstools.features.local_service.console_log import ConsoleOnlyLog
+    from dstools.features.local_service.log_bundle import create_log_bundle
+
+    with _isolated_settings_dir(), tempfile.TemporaryDirectory() as tmp:
+        cluster = Path(tmp) / "Cluster_X"
+        (cluster / "Master").mkdir(parents=True)
+        (cluster / "Master" / "server_log.txt").write_text("[00:00:00]: Starting Up\n", encoding="utf-8")
+
+        first = ConsoleOnlyLog(cluster, "Master", Path("C:/fake/luajit"))
+        first.line("[ds-bootstrap] loaded Injector: C:/x/Injector.dll")
+        first.exited(-529697949)
+        second = ConsoleOnlyLog(cluster, "Master", Path("C:/fake/luajit"))
+        for line in ("[ds-shell] DllMain mode=0", "[00:00:00]: CurlRequestManager::ClientThread::Main()",
+                     "\tMemory Load: 22%", ""):
+            second.line(line)
+
+        zip_path = create_log_bundle(cluster, output_dir=Path(tmp) / "out")
+        with zipfile.ZipFile(zip_path) as archive:
+            current = archive.read("Master/dstcamp_console.txt").decode("utf-8")
+            previous = archive.read("Master/dstcamp_console_prev.txt").decode("utf-8")
+        assert "[ds-shell] DllMain" in current and "CurlRequestManager" not in current and "Memory Load" not in current
+        assert "loaded Injector" in previous and "0xE06D7363" in previous, "上一次运行的记录和退出码要留下"
+
+
 def test_luajit_boot_retry():
     """启动即崩后等同存档的世界都结束再清理一次、拉起崩溃的世界；再崩不重试，注册成功后恢复机会。"""
     from types import SimpleNamespace
