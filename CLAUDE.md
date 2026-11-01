@@ -29,7 +29,7 @@ dstools/i18n/strings.py  中英文文案唯一来源
 icons/、tools/        随发布打包的固定资源（白名单见 scripts/build_exe.py；按需下载的工具不打包）
 scripts/              run_gui.py 发布入口、build_exe.py 打包、make_tools_release.py、sync_gitee_releases.ps1
 tests/                脚本式测试，run_all.py 逐文件隔离运行
-reference/            开发核对资料（含 tk_legacy/ 旧 Tk 代码、dev_scripts/），不进 Git、不参与运行
+reference/            开发核对资料（含 dev_scripts/、old_releases/），不进 Git、不参与运行
 build/、release/      可重建的构建中间产物与发布产物，不进 Git
 ```
 
