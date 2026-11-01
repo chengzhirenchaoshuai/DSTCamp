@@ -2525,6 +2525,26 @@ def test_luajit_cache_reset_after_game_update():
             assert not plugin.exists() and lj.read_injector_path_marker(install_dir) is not None
 
 
+def test_launch_name_check():
+    """中文存档名开服时游戏会在 Klei 根目录建乱码文件夹，开 LuaJIT 必崩（2026-11-01 用户转储+本机复现）。"""
+    from dstools.features.local_service.launch_name_check import (
+        guess_original_name, non_ascii_names, unencodable_entries,
+    )
+
+    garbled = "".join(map(chr, (0xB7, 0xE8, 0xBF, 0xF1, 0xC0, 0xCF, 0xBB, 0xA2, 0xBB, 0xFA)))
+    assert non_ascii_names(["Cluster_1", "疯狂老虎机", "Master", "森林"]) == ["疯狂老虎机", "森林"]
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for name in ("Cluster_1", "疯狂老虎机", garbled):
+            (root / name).mkdir()
+        deep = root / "123" / "client_save" / "world_presets"
+        deep.mkdir(parents=True)
+        (deep / "CUSTOM_æµ\u008b.wsp").write_text("x", encoding="utf-8")
+        assert unencodable_entries(root, encoding="gbk") == [garbled], "正常中文能编码；深层的预设文件不算"
+    assert guess_original_name(garbled, encoding="gbk") == "疯狂老虎机"
+    assert guess_original_name("Cluster_1", encoding="gbk") is None
+
+
 def test_console_only_log_in_bundle():
     """注入器走 stderr 的输出只在控制台：落盘时只记这类行，上次运行留作 prev，日志包都收（2026-11-01）。"""
     from dstools.features.local_service.console_log import ConsoleOnlyLog

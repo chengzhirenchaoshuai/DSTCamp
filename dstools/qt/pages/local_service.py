@@ -42,6 +42,7 @@ from dstools.features.local_service.server_runtime import (
     get_runtime_mode, remember_install_dir,
     resolve_runtime, set_runtime_mode,
 )
+from dstools.features.local_service.launch_name_check import guess_original_name, non_ascii_names, unencodable_entries
 from dstools.features.local_service.log_bundle import create_log_bundle
 from dstools.features.local_service.steam_backend import (
     SteamBackend, get_backend, set_backend, update_blocker,
@@ -2325,6 +2326,8 @@ class LocalServicePage(Page):
             dialogs.show_info(self.window(), t("local.port_preflight_title"),
                                t("local.launch_already_pending", shards="、".join(duplicate)))
             return False
+        if not self._check_launch_names(cluster, shards):
+            return False
         if cluster.platform == Platform.STEAM:
             server_snapshot = self._runtime_snapshot()
             if steam_client_updater.action_for_snapshot(
@@ -2360,6 +2363,44 @@ class LocalServicePage(Page):
             dialogs.show_error(self.window(), t("local.port_preflight_title"), t("local.port_preflight_invalid", details="\n".join(lines)))
             return False
         return self._check_port_conflicts(cluster, shards, target_names, candidate_claims, allow_repair, restarting)
+
+    def _check_launch_names(self, cluster, shards) -> bool:
+        """专服读不了非英文的存档/世界文件夹名；开着 LuaJIT 时 Klei 根目录有系统编码转不了的名字会启动即崩。
+        两种都必然失败，直接拦下并说明（规则见 launch_name_check）。"""
+        bad = non_ascii_names([cluster.path.name] + [shard.name for shard in shards])
+        if bad:
+            choice = dialogs.ask_choice(
+                self.window(), t("local.name_check_title"),
+                t("local.name_check_non_ascii", names="、".join(bad)),
+                [(t("dlg.cancel_btn"), "cancel"), (t("local.name_check_open_btn"), "open")],
+                default="open", min_width=dialogs.DIALOG_WIDTHS["md"])
+            if choice == "open":
+                os.startfile(str(cluster.path.parent))
+            return False
+        if self._install_dir is None:
+            return True
+        bin64_dir = find_bin64_dir(self._install_dir)
+        if bin64_dir is None or luajit_injector.detect_state(bin64_dir) is not luajit_injector.InjectorState.ACTIVE:
+            return True
+        if self.ctx.env.klei_root is None:
+            return True
+        root = Path(self.ctx.env.klei_root)  # 与开服的 resolve_storage_args 用同一个根目录
+        entries = unencodable_entries(root)
+        if not entries:
+            return True
+        lines = []
+        for name in entries:
+            original = guess_original_name(name)
+            lines.append(t("local.luajit_name_check_entry_guess", name=name, original=original) if original
+                         else t("local.luajit_name_check_entry", name=name))
+        choice = dialogs.ask_choice(
+            self.window(), t("local.name_check_title"),
+            t("local.luajit_name_check", root=str(root), entries="\n".join(lines)),
+            [(t("dlg.cancel_btn"), "cancel"), (t("local.name_check_open_btn"), "open")],
+            default="open", min_width=dialogs.DIALOG_WIDTHS["md"])
+        if choice == "open":
+            os.startfile(str(root))
+        return False
 
     def _offer_lan_port_repair(self, cluster, shards, lines, restarting) -> bool:
         scan = scan_udp_ports()
