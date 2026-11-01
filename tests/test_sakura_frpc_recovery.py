@@ -93,7 +93,6 @@ def test_enable_mapping_rolls_back_when_a_later_shard_fails() -> None:
             _ensure_frpc_available=lambda **_kwargs: object(),
             _enable_mapping=lambda: None,
             _find_cluster_tunnel=lambda *_args: None,
-            _migrate_back=sakura_page._SakuraMappingPanel._migrate_back,
             _reload_async=lambda: None,
             ctx=SimpleNamespace(env=None, cluster_config_saved=SimpleNamespace(emit=lambda _c: None)),
             window=lambda: None,
