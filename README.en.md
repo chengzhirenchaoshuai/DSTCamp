@@ -108,9 +108,19 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.8.1 changes
+## 1.8.2 changes
 
-### ✨ New features
+### 🐞 Fixes
+
+- After a game update, dedicated servers with the LuaJIT Speed Patch could exit right at startup: this crash is now recognized and the cause and fix are shown directly (delete the companion Mod's folder and resubscribe in Steam; if you need the server up right away, uninstall the patch on the "LuaJIT Speed Patch" row first), and auto-restart no longer keeps retrying.
+- The LuaJIT runtime cache is cleared automatically when the patch is installed or reinstalled and on the first start after a game update; if the server still crashes at startup, the cache is cleared once more and the start retried once, without any pop-up.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.8.1)</strong></summary>
+
+### 1.8.1
+
+#### ✨ New features
 
 - **Share a self-hosted FRP node with others**: "Manage node → Connection settings" lets you enter the frps port and token by hand; they are validated and take effect immediately, no redeploy needed. "Read from server" fills in the server's actual port and token over SSH, and you are warned when they don't match this PC.
 - When enabling self-hosted mapping you can set each world's remote port by hand (leave blank to auto-assign); it is checked against the frps port, this PC's other mappings and ports already in use on the server.
@@ -119,13 +129,10 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 - When frpc fails, the cause and a suggested fix are shown directly (previously just "exit code 1"): token mismatch, remote port in use/unavailable/not allowed, a mapping with the same name already online, frps unreachable, disconnected after connecting, and more — for self-hosted, Sakura and Lolia alike.
 - "Manage node" has a new layout: server, connection and deployment are shown on separate cards, with the token partly masked in a monospace font.
 
-### 🔧 Component updates
+#### 🔧 Component updates
 
 - frpc and the self-hosted frps are updated to frp 0.71.1: fixes connections that could get stuck and never reconnect after a drop, and an frps crash that could be triggered remotely. Already-deployed self-hosted nodes need a redeploy from "Manage node" (check with others first on a shared node — redeploying overwrites the token on the server).
 - Sakura frpc is updated to 0.51.0-sakura-15.1: updated built-in certificates, blocks the leaked eMudhra key, and supports Sakura Mux.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.8.0)</strong></summary>
 
 ### 1.8.0
 
