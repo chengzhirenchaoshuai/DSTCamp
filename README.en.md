@@ -108,15 +108,22 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.8.4 changes
+## 1.8.5 changes
 
-### ✨ New features
+### 🐞 Fixes
+
+- After switching Sakura/Lolia nodes while a world was running and getting a new port, restarting the world as prompted let the game write the old port back, so direct connections timed out: ports are now checked against the mapping records and corrected before every start (including Start All and auto-restart).
+- With an invalid server token (E_INVALID_TOKEN or no token found) the server didn't exit and frpc kept running, which looked like a tunneling problem: the console now reports "invalid server token", explains that switching nodes won't help, and points you to regenerate and replace the token on the Klei website; auto-restart no longer retries this kind of failure.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.8.4)</strong></summary>
+
+### 1.8.4
+
+#### ✨ New features
 
 - **Switch Sakura nodes while mapping is on**: existing tunnels are migrated to the new node and the remote port usually stays the same; if it changes, the local port and server.ini are synced and frpc is restarted automatically, with no need to turn mapping off and on again. If some worlds fail to migrate (each tunnel has a cooldown of about 2 minutes after a migration), the migrated worlds stay on the new node; select that node again later to move the rest.
 - **Switch Lolia nodes while mapping is on**: tunnels are created on the new node, keeping the original remote port where possible; the old tunnels are deleted and frpc restarted only after the configuration is written, and everything is restored if a step fails.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.8.3)</strong></summary>
 
 ### 1.8.3
 
