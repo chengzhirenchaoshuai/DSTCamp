@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.cluster_config.config_manager import (
-    get_cluster_option, get_shard_option, load_cluster_config, load_shard_config,
+    get_cluster_option, get_shard_option, load_cluster_config, load_shard_config, save_shard_config,
+    set_shard_option,
 )
 from dstools.features.local_service import luajit_injector, luajit_runtime, steam_client_updater, steamcmd_updater
 from dstools.features.local_service.backup_manager import changed_since_last_backup, create_backup
@@ -2823,8 +2824,22 @@ class LocalServicePage(Page):
 
         run_async_with_log(work, log_dialog.append, done, error)
 
+    def _sync_mapped_port(self, cluster, shard) -> None:
+        """开服前把 server_port 改回映射的远程端口。专服关服时会按内存里的配置重写 server.ini
+        （2026-11-02 实测），世界运行中切换映射节点写入的新端口会被冲回旧值，frpc 转发到的本地端口就没人监听。"""
+        port = self.ctx.mapped_server_port(cluster, shard)
+        if port is None:
+            return
+        config = load_shard_config(shard.path)
+        if get_shard_option(config, "NETWORK", "server_port") == port:
+            return
+        set_shard_option(config, "NETWORK", "server_port", port)
+        save_shard_config(config, shard.path)
+        self.ctx.cluster_config_saved.emit(cluster)
+
     def _continue_start_shard(self, cluster, shard, storage_args) -> None:
         self._save_extra_args()
+        self._sync_mapped_port(cluster, shard)
         is_master = load_shard_config(shard.path).shard.get("is_master", True)
         from dstools.features.mod.parser import find_shared_ugc_directory
         ugc_directory = find_shared_ugc_directory()

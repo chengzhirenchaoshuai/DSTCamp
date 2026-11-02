@@ -610,6 +610,18 @@ class _SakuraMappingPanel(QWidget):
     def has_active_mapping(self, cluster, shard) -> bool:
         return self.has_pointer(cluster, shard)
 
+    def mapped_remote_port(self, cluster, shard) -> int | None:
+        """最近一次读到的隧道远程端口（本地只存隧道 ID）；没加载过或已不是指针里的隧道时返回 None。"""
+        tunnel = self._tunnels_by_key.get((str(cluster.path), shard.name))
+        try:
+            pointer_id = int(_frpc_pointer_path(cluster.path, shard.name, self.ctx.env).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        remote = str((tunnel or {}).get("remote", ""))
+        if not tunnel or tunnel.get("id") != pointer_id or not remote.isdigit():
+            return None
+        return int(remote)
+
     def frpc_all_running(self, cluster) -> bool:
         shards = self._mapped_shards(cluster)
         if not shards:
@@ -1127,6 +1139,7 @@ class SakuraPage(Page):
             self._stack.setCurrentIndex(index)
 
         ctx.mapping_owner = self._mapping_owner
+        ctx.mapped_server_port = self._mapped_server_port
         ctx.ensure_lobby_accel = self._selfhost.ensure_lobby_accel
         ctx.stop_lobby_accel_async = self._selfhost.stop_lobby_accel_async
         ctx.poll_lobby_accel = self._selfhost.poll_lobby_accel
@@ -1152,6 +1165,13 @@ class SakuraPage(Page):
         if self._selfhost.has_active_mapping(cluster, shard):
             return "selfhost"
         return None
+
+    def _mapped_server_port(self, cluster, shard) -> int | None:
+        if self._mapping.has_pointer(cluster, shard):
+            return self._mapping.mapped_remote_port(cluster, shard)
+        if (mapping := app_settings.get_lolia_mapping(cluster.path, shard.name)) is not None:
+            return mapping["remote_port"]
+        return app_settings.get_selfhost_frp_mapping(cluster.path, shard.name)
 
     def _stop_frpc_for_shard(self, cluster, shard, on_done=None) -> None:
         if self._mapping.frpc.get(cluster.path, shard.name):

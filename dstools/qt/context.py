@@ -34,6 +34,7 @@ class AppContext(QObject):
         self.manager = ServerManager()
         # 跨页钩子：由对应页面迁移后接管，默认值等价于"没有这个功能在占用"
         self.mapping_owner = lambda cluster, shard: None   # 端口是否被映射接管："sakura"/"lolia"/"selfhost"/None
+        self.mapped_server_port = lambda cluster, shard: None  # 映射要求的 server_port（远程端口），本地不知道时为 None
         self.token_uses = lambda: ()                        # 各存档正在使用的令牌（本地服务器页提供）
         # 大厅加速：内网穿透页迁移后接管这两个钩子。关闭时视为"已就绪"直接放行；
         # 开启但穿透页尚未迁移时明确失败，不能悄悄跳过用户已经打开的功能。
