@@ -229,5 +229,17 @@ def test_luajit_boot_crash() -> None:
     ).category == "unknown"
 
 
+def test_invalid_token_while_process_alive() -> None:
+    """2026-11-02 用户日志：令牌失效后专服进程不退出、frpc 正常，用户以为是穿透问题，换节点也进不去。"""
+    lines = [
+        '[00:00:15]: [200] Account Failed (6): "E_INVALID_TOKEN"',
+        "[00:00:15]: !!!! Your Server Will Not Start !!!!",
+        "[00:00:15]: No auth token could be found.",
+    ]
+    assert contains_startup_failure(lines)
+    report = diagnose_server_failure(shard_name="Master", exit_code=None, world_ready=False, log_lines=lines)
+    assert report is not None and report.category == "token_invalid"
+
+
 if __name__ == "__main__":
     run(globals())

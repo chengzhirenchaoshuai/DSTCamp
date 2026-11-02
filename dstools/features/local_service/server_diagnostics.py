@@ -9,6 +9,11 @@ from dstools.i18n import t
 
 _WORKSHOP_RE = re.compile(r"workshop-\d+", re.IGNORECASE)
 _TOKEN_CONFLICT_MARKER = "e_rowid_exist"
+# Klei 不认这个令牌（被删除或重新生成过、内容残缺）或令牌文件为空：进程不退出，但服务器不会上线
+_TOKEN_INVALID_MARKERS = (
+    "e_invalid_token",
+    "no auth token could be found",
+)
 _RUNTIME_LUA_ERROR_MARKERS = (
     "lua error",
     "stack traceback",
@@ -18,6 +23,7 @@ _SERVER_REGISTRATION_SUCCESS_MARKERS = (
 )
 _STARTUP_FAILURE_MARKERS = (
     "server failed to start!",
+    "your server will not start",
     "unhandled exception during server startup:",
     "socket_port_already_in_use",
     "error loading worldgen_main.lua",
@@ -186,6 +192,13 @@ def diagnose_server_failure(
             _tips("token_conflict"),
             _evidence(lines, ("e_rowid_exist", "master server broadcast error")),
             (),
+        )
+
+    if any(marker in lower for marker in _TOKEN_INVALID_MARKERS):
+        return DiagnosticReport(
+            "token_invalid", t("diag.token_invalid.title"),
+            t("diag.token_invalid.summary", shard=shard_name), _tips("token_invalid"),
+            _evidence(lines, _TOKEN_INVALID_MARKERS + ("your server will not start",)), (),
         )
 
     # 已就绪且仍存活的世界通常不属于“启动/退出诊断”，但 Lua 错误可能只
