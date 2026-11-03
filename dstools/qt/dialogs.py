@@ -229,6 +229,15 @@ def show_info(parent, title: str, text: str) -> None:
     MessageDialog(parent, "info", title, text, _ok_buttons(), default=True).ask()
 
 
+def show_info_with_copy(parent, title: str, text: str, copy_label: str, copy_text: str,
+                        copied_message: str) -> None:
+    """信息框带一个复制按钮：点它把 copy_text 放进剪贴板、关闭弹窗并提示已复制。"""
+    buttons = [(t("dlg.close_btn"), False, "secondary"), (copy_label, True, "primary")]
+    if MessageDialog(parent, "info", title, text, buttons, default=True, escape=False, size="md").ask():
+        QGuiApplication.clipboard().setText(copy_text)
+        show_toast(parent, copied_message)
+
+
 def show_warning(parent, title: str, text: str, min_width: int = 0) -> None:
     MessageDialog(parent, "warning", title, text, _ok_buttons(), default=True,
                   size=width_tier(min_width)).ask()

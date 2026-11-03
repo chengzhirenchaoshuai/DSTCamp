@@ -29,6 +29,7 @@ from dstools.qt.pages.base import Page
 from dstools.qt.tunnel.lolia_panel import LoliaPanel
 from dstools.qt.tunnel.node_picker import NodeChoice, NodePickerDialog
 from dstools.qt.tunnel.selfhost_panel import SelfHostPanel
+from dstools.qt.tunnel.switch_notice import show_switch_done
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.tool_download import download_tool_with_dialog
@@ -812,6 +813,7 @@ class _SakuraMappingPanel(QWidget):
 
         migrated: list = []  # 已迁到新节点的世界
         changed: list[str] = []  # 远程端口有变化的世界名
+        ports: dict[str, int] = {}  # 已迁世界的远程端口
 
         def work() -> None:
             failure = None
@@ -839,6 +841,7 @@ class _SakuraMappingPanel(QWidget):
                     set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
                     save_shard_config(shard_config, shard.path)
                     changed.append(shard.name)
+                ports[shard.name] = remote_port
                 log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
             if failure is not None:
                 if migrated:
@@ -850,13 +853,18 @@ class _SakuraMappingPanel(QWidget):
             progress.finish()
             # 迁移已（部分）生效时重启 frpc，让进程连到隧道当前所在的节点
             self._restart_frpc(cluster, migrated)
+            self._reload_async()
+            if migrated:
+                # 节点地址必变：端口没变也要通知本地服务器页重取直连代码，否则一直显示旧节点
+                self.ctx.cluster_config_saved.emit(cluster)
             running = [name for name in self._running_shard_names(cluster) if name in changed]
-            if running:
+            master = next((s for s in migrated if s.name in ports and self._is_master_shard(s)), None)
+            if master is not None:
+                host = self._nodes.get(str(node_id), {}).get("host", "")
+                show_switch_done(self.window(), cluster, host, ports[master.name], running)
+            elif running:
                 dialogs.show_info(self.window(), t("sakura.setup_done_title"),
                                    t("sakura.setup_done_msg_restart", shards="、".join(running)))
-            self._reload_async()
-            if changed:
-                self.ctx.cluster_config_saved.emit(cluster)
 
         def error(exc: Exception) -> None:
             progress.append(t("sakura.api_error", detail=str(exc)), "result_error")

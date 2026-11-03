@@ -33,6 +33,7 @@ from dstools.qt.tunnel import frpc_tool
 from dstools.qt.tunnel.lan_mapping_guard import ensure_lan_free_for_mapping, ensure_no_other_mapping, remote_failure_item
 from dstools.qt.tunnel.lolia_oauth_dialog import LoliaOAuthAppDialog
 from dstools.qt.tunnel.node_picker import NodeChoice, NodePickerDialog
+from dstools.qt.tunnel.switch_notice import show_switch_done
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import AutoHideLabel, clear_layout, section_card
@@ -868,13 +869,17 @@ class LoliaPanel(QWidget):
 
         def finish(changed: list[str]) -> None:
             progress.finish()
-            running = [name for name in self._running_shard_names(cluster) if name in changed]
-            if running:
-                dialogs.show_info(self.window(), t("sakura.setup_done_title"),
-                                   t("sakura.setup_done_msg_restart", shards="、".join(running)))
             self._render_shard_rows()
             self._reload_async()
             self.ctx.cluster_config_saved.emit(cluster)
+            running = [name for name in self._running_shard_names(cluster) if name in changed]
+            master = next((s for s in shards if self._is_master_shard(s)), None)
+            mapping = app_settings.get_lolia_mapping(cluster.path, master.name) if master else None
+            if mapping is not None:
+                show_switch_done(self.window(), cluster, mapping["host"], mapping["remote_port"], running)
+            elif running:
+                dialogs.show_info(self.window(), t("sakura.setup_done_title"),
+                                   t("sakura.setup_done_msg_restart", shards="、".join(running)))
 
         def error(exc: Exception) -> None:
             detail = t("lolia.relogin_needed") if isinstance(exc, lolia_api.LoliaAuthError) else str(exc)
