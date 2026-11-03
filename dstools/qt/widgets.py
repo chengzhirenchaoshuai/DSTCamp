@@ -239,9 +239,17 @@ class PillTabBar(QWidget):
                                    theme.color("TEXT_MUTED"))
 
 
-WM_NCHITTEST, WM_NCLBUTTONDBLCLK = 0x0084, 0x00A3
+WM_SETCURSOR, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONDBLCLK = 0x0020, 0x0084, 0x00A1, 0x00A3
 HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT = range(10, 18)
 _RESIZE_EDGE, _RESIZE_CORNER = 6, 12  # 边宽、角边长（逻辑像素）
+_E = Qt.Edge
+# 命中码 -> (系统光标 IDC_SIZE*，Qt 缩放边)
+_RESIZE_HITS = {
+    HTLEFT: (32644, _E.LeftEdge), HTRIGHT: (32644, _E.RightEdge),
+    HTTOP: (32645, _E.TopEdge), HTBOTTOM: (32645, _E.BottomEdge),
+    HTTOPLEFT: (32642, _E.TopEdge | _E.LeftEdge), HTBOTTOMRIGHT: (32642, _E.BottomEdge | _E.RightEdge),
+    HTTOPRIGHT: (32643, _E.TopEdge | _E.RightEdge), HTBOTTOMLEFT: (32643, _E.BottomEdge | _E.LeftEdge),
+}
 
 
 class _WinRect(ctypes.Structure):
@@ -252,12 +260,24 @@ class _WinRect(ctypes.Structure):
 def resize_border_result(window: QWidget, msg) -> int | None:
     """无边框窗口的边/角缩放热区，在顶层窗口的 nativeEvent 里调用；返回值不为 None 时原样作为消息结果返回。
 
-    边/角在 WM_NCHITTEST 里报成系统缩放边框（HTLEFT 等），指针形状和拖动缩放都由系统处理。
+    边/角在 WM_NCHITTEST 里报成缩放边框（HTLEFT 等），成为非客户区。
     不用子控件 setCursor：Qt 只在光标形状变化且它记录的"鼠标所在窗口"正好是本窗口时才调 SetCursor，
     从其他窗口移入时这份记录可能过时，移回内容区的那次恢复被跳过，"拖动"指针就一直留着。
-    报成边框后，鼠标从边框回到内容区会触发离开/进入，Qt 按正常路径重新应用指针。"""
-    if msg.message == WM_NCLBUTTONDBLCLK and HTLEFT <= msg.wParam <= HTBOTTOMRIGHT:
-        return 0  # 系统双击上下边框会把窗口竖向拉满，破坏 16:9，吞掉
+    报成边框后，鼠标从边框回到内容区会触发离开/进入，Qt 按正常路径重新应用指针。
+    Qt 的无边框窗口是 WS_POPUP、没有 WS_THICKFRAME，系统默认处理不会给这些命中码换缩放指针（已实测仍是箭头），
+    所以指针在 WM_SETCURSOR 里自己设（每次鼠标移动系统都会发），按下时仍走 startSystemResize。"""
+    if msg.message == WM_SETCURSOR and (msg.lParam & 0xFFFF) in _RESIZE_HITS:
+        user32 = ctypes.windll.user32
+        user32.LoadCursorW.restype = wintypes.HANDLE
+        user32.LoadCursorW.argtypes = [wintypes.HINSTANCE, ctypes.c_void_p]
+        user32.SetCursor.argtypes = [wintypes.HANDLE]
+        user32.SetCursor(user32.LoadCursorW(None, _RESIZE_HITS[msg.lParam & 0xFFFF][0]))
+        return 1
+    if msg.message == WM_NCLBUTTONDOWN and msg.wParam in _RESIZE_HITS:
+        window.windowHandle().startSystemResize(_RESIZE_HITS[msg.wParam][1])
+        return 0
+    if msg.message == WM_NCLBUTTONDBLCLK and msg.wParam in _RESIZE_HITS:
+        return 0  # 双击边框不做任何事（原先的热区也没有双击行为）
     if msg.message != WM_NCHITTEST or not window.isEnabled():
         return None
     rect = _WinRect()
