@@ -55,7 +55,7 @@ from dstools.features.local_service.shard_helpers import RUNNING_LIKE, STATUS_TE
 from dstools.features.local_service.auto_restart import TOKEN_HOLD_DURATION, TOKEN_WAIT_LIMIT
 from dstools.features.local_service.token_scheduler import TokenSelection, TokenUse, select_token_for_cluster
 from dstools.features.sakura import api as sakura_frp
-from dstools.i18n import t
+from dstools.i18n import get_lang, t
 from dstools.models import Platform, SaveSource
 from dstools.qt import dialogs
 from dstools.qt.server.local_console import ConsolePane, ConsoleTabWidget, status_color
@@ -102,6 +102,11 @@ _CONNECT_RETRY_DELAYS_S = (5, 15, 30, 60)
 # 网盘里的 VC++ x64 运行库（14.51.36247）：官网下载失败时的备用
 _LUAJIT_VCREDIST_DOWNLOAD_URL = "https://wwblt.lanzout.com/i9oFG4d3r92j"
 _LUAJIT_VCREDIST_PASSWORD = "6666"
+# LuaJIT 补丁作者的说明文档：中文界面打开 README.md，英文界面打开 README_EN.md
+_LUAJIT_README_URLS = {
+    "zh": "https://github.com/fesily/dontstarveluajit2/blob/master/README.md",
+    "en": "https://github.com/fesily/dontstarveluajit2/blob/master/README_EN.md",
+}
 _PUBLIC_IP_SOURCES = (
     ("https://cip.cc/", "curl/8.0"),
     ("https://myip.ipip.net", "DSTCamp/1.0"),
@@ -1043,7 +1048,8 @@ class LocalServicePage(Page):
         status_label.setProperty("muted", True)
         layout.addWidget(status_label, 1)
         help_btn = QPushButton(t("local.luajit_help_btn"))
-        help_btn.clicked.connect(lambda: webbrowser.open("https://github.com/fesily/dontstarveluajit2"))
+        help_btn.clicked.connect(lambda: webbrowser.open(
+            _LUAJIT_README_URLS.get(get_lang(), _LUAJIT_README_URLS["zh"])))
         install_btn = QPushButton(t("local.luajit_install_btn"))
         install_btn.clicked.connect(self._on_luajit_install_clicked)
         uninstall_btn = QPushButton(t("local.luajit_uninstall_btn"))
