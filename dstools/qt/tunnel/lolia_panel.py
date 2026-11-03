@@ -22,7 +22,7 @@ from dstools.features.cluster_config.config_manager import (
     get_cluster_option, get_shard_option, load_cluster_config, load_shard_config, save_shard_config,
     set_shard_option,
 )
-from dstools.features.frp_selfhost.client import FrpcManager, FrpcStatus
+from dstools.features.frp_selfhost.client import FrpcManager, FrpcStatus, probe_login
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE
 from dstools.features.lolia import api as lolia_api
 from dstools.features.lolia import config as lolia_config
@@ -766,6 +766,9 @@ class LoliaPanel(QWidget):
                 if old_mapping is None or old_mapping["remote_port"] != remote_port:
                     changed.append(shard.name)
                 log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
+            if replaced:
+                # 旧隧道一删就回不去了：先确认新节点登得上，登不上就整体撤销，旧映射照常使用
+                self._verify_new_node(cluster, shards, log)
         except Exception:
             self._rollback_enable(cluster, shards, created, originals, log)
             raise
@@ -776,6 +779,19 @@ class LoliaPanel(QWidget):
                 # 新隧道已经生效，旧隧道删不掉只占一个名额，提示用户到控制台手动删
                 log(t("lolia.switch_delete_old_failed", tunnel=name, detail=exc))
         return changed
+
+    def _verify_new_node(self, cluster, shards, log) -> None:
+        """（工作线程）用刚写好的新配置临时拉起 frpc，确认每个世界都能登录新节点、启动代理。
+        实测有节点列表里显示在线、实际一连就被断开（session shutdown）的。"""
+        exe = _frpc_exe_path()
+        if not exe.exists():
+            return  # frpc 还没下载就没法探测，按原流程继续
+        for shard in shards:
+            log(t("lolia.switch_step_verifying", shard=shard.name))
+            lines = probe_login(exe, self._frpc_config_path(cluster, shard))
+            if lines is not None:
+                reason = frpc_diagnosis.failure_reason(lines) or t("lolia.switch_verify_timeout")
+                raise lolia_config.LoliaError(t("lolia.switch_node_unreachable", shard=shard.name, reason=reason))
 
     @staticmethod
     def _prepare_with_oauth(cluster, shards, node_id: int, log, remote_ports: dict | None = None,

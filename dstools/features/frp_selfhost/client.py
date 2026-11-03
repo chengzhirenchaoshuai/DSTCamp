@@ -282,3 +282,35 @@ class FrpcManager:
                 on_done(proc)
 
         threading.Thread(target=_worker, daemon=True).start()
+
+
+def probe_login(frpc_exe: Path, config_path: Path, timeout: float = 15.0) -> list[str] | None:
+    """（阻塞，须在后台线程调用）临时用这份配置拉起 frpc，看能否登录节点并启动代理。
+    成功返回 None，失败返回 frpc 的输出行，供 frpc_diagnosis 取原因；超时也算失败。探测完立即结束进程。"""
+    proc = subprocess.Popen(
+        [str(frpc_exe), "-c", str(config_path)], cwd=str(frpc_exe.parent),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+        creationflags=_SUBPROCESS_FLAGS,
+    )
+    lines: list[str] = []
+    finished = threading.Event()
+
+    def read() -> None:
+        try:
+            for line in proc.stdout:
+                lines.append(line.rstrip("\n"))
+                if "start proxy success" in line:
+                    break
+        except (OSError, ValueError):
+            pass
+        finished.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    finished.wait(timeout)
+    ok = any("start proxy success" in line for line in lines)
+    proc.kill()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    return None if ok else lines
