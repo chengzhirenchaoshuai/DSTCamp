@@ -1,5 +1,8 @@
 """通用自绘控件：圆角开关、半透明圆角卡片、胶囊页签条、缩放热区（颜色在 paintEvent 里现查）。"""
 
+import ctypes
+from ctypes import wintypes
+
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QMenu, QScrollArea, QVBoxLayout, QWidget
@@ -236,17 +239,57 @@ class PillTabBar(QWidget):
                                    theme.color("TEXT_MUTED"))
 
 
-class Grip(QWidget):
-    """窗口边/角的缩放热区：交给系统原生缩放（startSystemResize），不自己算几何。"""
+WM_NCHITTEST, WM_NCLBUTTONDBLCLK = 0x0084, 0x00A3
+HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT = range(10, 18)
+_RESIZE_EDGE, _RESIZE_CORNER = 6, 12  # 边宽、角边长（逻辑像素）
 
-    def __init__(self, parent, edges, cursor):
-        super().__init__(parent)
-        self._edges = edges
-        self.setCursor(cursor)
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.window().windowHandle().startSystemResize(self._edges)
+class _WinRect(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+def resize_border_result(window: QWidget, msg) -> int | None:
+    """无边框窗口的边/角缩放热区，在顶层窗口的 nativeEvent 里调用；返回值不为 None 时原样作为消息结果返回。
+
+    边/角在 WM_NCHITTEST 里报成系统缩放边框（HTLEFT 等），指针形状和拖动缩放都由系统处理。
+    不用子控件 setCursor：Qt 只在光标形状变化且它记录的"鼠标所在窗口"正好是本窗口时才调 SetCursor，
+    从其他窗口移入时这份记录可能过时，移回内容区的那次恢复被跳过，"拖动"指针就一直留着。
+    报成边框后，鼠标从边框回到内容区会触发离开/进入，Qt 按正常路径重新应用指针。"""
+    if msg.message == WM_NCLBUTTONDBLCLK and HTLEFT <= msg.wParam <= HTBOTTOMRIGHT:
+        return 0  # 系统双击上下边框会把窗口竖向拉满，破坏 16:9，吞掉
+    if msg.message != WM_NCHITTEST or not window.isEnabled():
+        return None
+    rect = _WinRect()
+    if not ctypes.windll.user32.GetWindowRect(wintypes.HWND(msg.hWnd), ctypes.byref(rect)):
+        return None
+    # lParam 是屏幕物理像素坐标，低/高 16 位各为有符号数（副屏在左侧/上方时为负）
+    x = ctypes.c_short(msg.lParam & 0xFFFF).value - rect.left
+    y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value - rect.top
+    w, h = rect.right - rect.left, rect.bottom - rect.top
+    dpr = window.devicePixelRatioF()
+    edge, corner = round(_RESIZE_EDGE * dpr), round(_RESIZE_CORNER * dpr)
+    if not (0 <= x < w and 0 <= y < h):
+        return None
+    left, right = x < corner, x >= w - corner
+    top, bottom = y < corner, y >= h - corner
+    if top and left:
+        return HTTOPLEFT
+    if top and right:
+        return HTTOPRIGHT
+    if bottom and left:
+        return HTBOTTOMLEFT
+    if bottom and right:
+        return HTBOTTOMRIGHT
+    if x < edge:
+        return HTLEFT
+    if x >= w - edge:
+        return HTRIGHT
+    if y < edge:
+        return HTTOP
+    if y >= h - edge:
+        return HTBOTTOM
+    return None
 
 
 class Banner(QWidget):

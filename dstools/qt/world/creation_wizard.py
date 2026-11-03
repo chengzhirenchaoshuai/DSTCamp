@@ -6,6 +6,7 @@ Mod 用 ModListPanel 与配置弹窗。
 
 import copy
 import os
+from ctypes import wintypes
 import webbrowser
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -63,7 +64,7 @@ from dstools.qt.theme import theme
 from dstools.shared.resource_paths import bundled_resource_dir
 from dstools.shared.steam_discovery import read_steam_persona_name
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import Grip, PillTabBar, TitleButton
+from dstools.qt.widgets import PillTabBar, TitleButton, resize_border_result
 from dstools.qt.world.world_panel import WorldPanel
 from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
 
@@ -1411,14 +1412,6 @@ class CreationWizardDialog(QDialog):
             button = button or TitleButton(kind, self.isMaximized)
             button.clicked.connect(slot)
             layout.addWidget(button)
-        self._grips = [Grip(self, edges, cursor) for edges, cursor in (
-            (Qt.Edge.LeftEdge, Qt.CursorShape.SizeHorCursor), (Qt.Edge.RightEdge, Qt.CursorShape.SizeHorCursor),
-            (Qt.Edge.TopEdge, Qt.CursorShape.SizeVerCursor), (Qt.Edge.BottomEdge, Qt.CursorShape.SizeVerCursor),
-            (Qt.Edge.LeftEdge | Qt.Edge.TopEdge, Qt.CursorShape.SizeFDiagCursor),
-            (Qt.Edge.RightEdge | Qt.Edge.BottomEdge, Qt.CursorShape.SizeFDiagCursor),
-            (Qt.Edge.RightEdge | Qt.Edge.TopEdge, Qt.CursorShape.SizeBDiagCursor),
-            (Qt.Edge.LeftEdge | Qt.Edge.BottomEdge, Qt.CursorShape.SizeBDiagCursor),
-        )]
         return bar
 
     def _toggle_maximize(self) -> None:
@@ -1430,23 +1423,16 @@ class CreationWizardDialog(QDialog):
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
         # setWindowFlags()/resize() 在标题栏建好前就会触发事件，先判空
-        if event.type() == event.Type.WindowStateChange and hasattr(self, "_grips"):
+        if event.type() == event.Type.WindowStateChange and hasattr(self, "_max_button"):
             self._max_button.update()  # 最大化/还原图标跟着切换
-            for grip in self._grips:
-                grip.setVisible(not self.isMaximized())  # 最大化时不允许拖边缩放
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        if not hasattr(self, "_grips"):
-            return
-        w, h, g, c = self.width(), self.height(), 6, 12
-        rects = [
-            (0, c, g, h - 2 * c), (w - g, c, g, h - 2 * c), (c, 0, w - 2 * c, g), (c, h - g, w - 2 * c, g),
-            (0, 0, c, c), (w - c, h - c, c, c), (w - c, 0, c, c), (0, h - c, c, c),
-        ]
-        for grip, rect in zip(self._grips, rects):
-            grip.setGeometry(*rect)
-            grip.raise_()
+    def nativeEvent(self, event_type, message):
+        # 最大化时不允许拖边缩放
+        if event_type == b"windows_generic_MSG" and not self.isMaximized():
+            border = resize_border_result(self, wintypes.MSG.from_address(int(message)))
+            if border is not None:
+                return True, border
+        return super().nativeEvent(event_type, message)
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)

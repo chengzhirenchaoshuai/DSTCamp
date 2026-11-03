@@ -1,7 +1,7 @@
 """主窗口外壳：无边框窗口 + 自绘标题栏/菜单条 + 存档选择栏 + 胶囊页签 + 状态栏 + 托盘。
 
-缩放和移动交给系统原生处理（startSystemResize/startSystemMove），只在 WM_SIZING/WM_MOVING
-里改写矩形来锁定 16:9 并限制不越出桌面。
+缩放和移动交给系统原生处理（边/角在 WM_NCHITTEST 里报成缩放边框，标题栏用 startSystemMove），
+只在 WM_SIZING/WM_MOVING 里改写矩形来锁定 16:9 并限制不越出桌面。
 """
 
 import ctypes
@@ -38,7 +38,9 @@ from dstools.qt.pages.world_settings import WorldSettingsPage
 from dstools.qt.theme import THEME_NAMES, theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.self_update import SelfUpdater, is_update_available
-from dstools.qt.widgets import CheckMenuItem, FrostedMenu, Grip, PillTabBar, ThemeMenuItem, TitleButton
+from dstools.qt.widgets import (
+    CheckMenuItem, FrostedMenu, PillTabBar, ThemeMenuItem, TitleButton, resize_border_result,
+)
 from dstools.shared.app_settings import (
     get_creation_wizard_size, get_lite_mode_enabled, get_lite_mode_prompted, get_minimize_on_close,
     get_remind_update_enabled, get_window_ornaments_enabled, get_window_position, get_window_size,
@@ -791,16 +793,6 @@ class MainWindow(QWidget):
         ctx.env_changed.connect(self._update_status)
         theme.changed.connect(self._on_theme_changed)
 
-        self._grips = []
-        for edges, cursor in (
-            (Qt.Edge.LeftEdge, Qt.CursorShape.SizeHorCursor), (Qt.Edge.RightEdge, Qt.CursorShape.SizeHorCursor),
-            (Qt.Edge.TopEdge, Qt.CursorShape.SizeVerCursor), (Qt.Edge.BottomEdge, Qt.CursorShape.SizeVerCursor),
-            (Qt.Edge.LeftEdge | Qt.Edge.TopEdge, Qt.CursorShape.SizeFDiagCursor),
-            (Qt.Edge.RightEdge | Qt.Edge.BottomEdge, Qt.CursorShape.SizeFDiagCursor),
-            (Qt.Edge.RightEdge | Qt.Edge.TopEdge, Qt.CursorShape.SizeBDiagCursor),
-            (Qt.Edge.LeftEdge | Qt.Edge.BottomEdge, Qt.CursorShape.SizeBDiagCursor),
-        ):
-            self._grips.append(Grip(self, edges, cursor))
         self._ornaments = WindowOrnaments(self, lambda: self._restore_geometry is not None,
                                           _ornaments_effective())
         self._build_tray()
@@ -1233,6 +1225,9 @@ class MainWindow(QWidget):
                 if msg.wParam <= own_code:
                     self.restore_from_tray()
                 return True, own_code
+            border = resize_border_result(self, msg)
+            if border is not None:
+                return True, border
             if msg.message == WM_SIZING:
                 rect = RECT.from_address(msg.lParam)
                 enforce_aspect(msg.wParam, rect)
@@ -1285,14 +1280,6 @@ class MainWindow(QWidget):
         self._fit_chrome_to_height()
         self._resizing = True
         self._settle.start()
-        w, h, g, c = self.width(), self.height(), 6, 12
-        rects = [
-            (0, c, g, h - 2 * c), (w - g, c, g, h - 2 * c), (c, 0, w - 2 * c, g), (c, h - g, w - 2 * c, g),
-            (0, 0, c, c), (w - c, h - c, c, c), (w - c, 0, c, c), (0, h - c, c, c),
-        ]
-        for grip, rect in zip(self._grips, rects):
-            grip.setGeometry(*rect)
-            grip.raise_()
 
     def paintEvent(self, _event):
         painter = QPainter(self)
