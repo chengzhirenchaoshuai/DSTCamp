@@ -108,15 +108,29 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.8.5 changes
+## 1.8.6 changes
+
+### ✨ Improvements
+
+- After switching mapping nodes, the new direct-connect code pops up right away with one-click copy and a reminder to send it to friends (the old code stops working once the node address changes); if the port changed while a world is running, the same box says a restart is needed. The confirmation before switching is shorter and worded the same for Sakura and Lolia.
+- Before switching Lolia nodes, the new node is tested first (up to 15 seconds); if it can't connect, everything is restored, the old mapping keeps working, and you are asked to pick another node.
+- Errors on Sakura's side now come with a readable hint: a server failure says to retry later, a rejected version number is most likely temporary, and a connection failure suggests checking the network; when creating a tunnel hits an internal Sakura server error, it says this isn't a problem with your settings. Previously it only showed "failed to start (exit code 1)".
+- The "Guide" button on the LuaJIT Speed Patch row opens the author's documentation directly (the Chinese version in the Chinese UI).
 
 ### 🐞 Fixes
 
-- After switching Sakura/Lolia nodes while a world was running and getting a new port, restarting the world as prompted let the game write the old port back, so direct connections timed out: ports are now checked against the mapping records and corrected before every start (including Start All and auto-restart).
-- With an invalid server token (E_INVALID_TOKEN or no token found) the server didn't exit and frpc kept running, which looked like a tunneling problem: the console now reports "invalid server token", explains that switching nodes won't help, and points you to regenerate and replace the token on the Klei website; auto-restart no longer retries this kind of failure.
+- After switching Sakura nodes with an unchanged port, the Local Server tab still showed the old node's direct-connect code.
+- Wrong mouse pointer at the window edges: no resize pointer, or the "move" pointer staying after moving in from another window; double-clicking the top or bottom edge no longer stretches the window to full height.
 
 <details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.8.4)</strong></summary>
+<summary><strong>Earlier versions (1.3.5 ~ 1.8.5)</strong></summary>
+
+### 1.8.5
+
+#### 🐞 Fixes
+
+- After switching Sakura/Lolia nodes while a world was running and getting a new port, restarting the world as prompted let the game write the old port back, so direct connections timed out: ports are now checked against the mapping records and corrected before every start (including Start All and auto-restart).
+- With an invalid server token (E_INVALID_TOKEN or no token found) the server didn't exit and frpc kept running, which looked like a tunneling problem: the console now reports "invalid server token", explains that switching nodes won't help, and points you to regenerate and replace the token on the Klei website; auto-restart no longer retries this kind of failure.
 
 ### 1.8.4
 
