@@ -44,5 +44,16 @@ def test_tunnel_hint_shows_raw_reason_only_after_exit() -> None:
     assert tunnel_hint(_TOKEN_FAIL, exited=False) == t("frpc_hint_tunnel.token_mismatch")
 
 
+def test_sakura_api_failures_explained() -> None:
+    # 真实日志（2026-11-04 樱花服务端故障约半小时，同一个 frpc 前后都正常）：不是 frp 日志格式，原来提示行是空的
+    rejected = ["[400] frpc 版本号无效"]
+    assert tunnel_hint(rejected, exited=True) == t("frpc_hint_tunnel.sakura_version_rejected", reason="frpc 版本号无效")
+    timeout = ['request failed: /tunnel/config Post "https://natfrp-api.globalslb.net/v4/tunnel/config": '
+               'net/http: TLS handshake timeout']
+    assert tunnel_hint(timeout, exited=True) == t("frpc_hint_tunnel.sakura_unreachable",
+                                                  reason="net/http: TLS handshake timeout")
+    assert tunnel_hint(["[502] Bad Gateway"], exited=True) == t("frpc_hint_tunnel.sakura_server_error", reason="Bad Gateway")
+
+
 if __name__ == "__main__":
     run(globals())

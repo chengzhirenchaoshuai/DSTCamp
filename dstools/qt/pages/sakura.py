@@ -54,6 +54,16 @@ def _format_bytes_adaptive(num_bytes: float) -> str:
     return f"{mib / 1024:.2f} GiB"
 
 
+def _api_error_text(exc: Exception) -> str:
+    """樱花 API 报错文案。5xx 时樱花返回的说明可能很误导（实测服务端故障时建隧道报"本地 IP 输入有误"，
+    而 IP 是程序自动填的 127.0.0.1），补一句说明是樱花服务器的问题。"""
+    text = t("sakura.api_error", detail=str(exc))
+    status = getattr(exc, "status", None)
+    if isinstance(status, int) and status >= 500:
+        text += t("sakura.api_server_error_hint")
+    return text
+
+
 def _frpc_pointer_path(cluster_path, shard_name, app_env):
     """本地隧道 ID 指针文件路径（不是完整 frpc 配置，见 dedicated_server 同类说明）。"""
     from dstools.shared.resource_paths import data_dir
@@ -437,7 +447,7 @@ class _SakuraMappingPanel(QWidget):
             return
         self._render_account_info("--", "--", "--", "--")
         self._recent_traffic_label.setText("")
-        self._status_label.setText(t("sakura.api_error", detail=str(exc)))
+        self._status_label.setText(_api_error_text(exc))
 
     def _apply_loaded(self, user_info, nodes, node_loads, by_key, recent_bytes, tunnel_count, occupants,
                       gen, cluster_key, token) -> None:
@@ -867,7 +877,7 @@ class _SakuraMappingPanel(QWidget):
                                    t("sakura.setup_done_msg_restart", shards="、".join(running)))
 
         def error(exc: Exception) -> None:
-            progress.append(t("sakura.api_error", detail=str(exc)), "result_error")
+            progress.append(_api_error_text(exc), "result_error")
             finish()
 
         run_async(work, lambda _r: finish(), error)
@@ -1021,7 +1031,7 @@ class _SakuraMappingPanel(QWidget):
             self._on_enable_done(progress)
 
         def error(exc: Exception) -> None:
-            progress.append(t("sakura.api_error", detail=str(exc)))
+            progress.append(_api_error_text(exc))
             progress.finish()
             self._reload_async()
             self.ctx.cluster_config_saved.emit(self._current_cluster)

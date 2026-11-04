@@ -25,6 +25,9 @@ _RULES = (
     # 本该是"连接被拒绝"却显示成这样
     ("server_closed", re.compile(r"connect to server error: (session shutdown|EOF)\b")),
 )
+# 樱花 frpc 向樱花 API 取配置失败时的两种输出，见 _sakura_service_hint
+_SAKURA_API_STATUS = re.compile(r"^\[(\d{3})\] (.+)$")
+_SAKURA_API_REQUEST_FAILED = re.compile(r"^request failed: .*?: (.+)$")
 
 
 @dataclass(frozen=True)
@@ -53,8 +56,30 @@ def tunnel_hint(lines: Iterable[str], exited: bool) -> str:
     lines = list(lines)
     if problem := diagnose(lines):
         return t(f"frpc_hint_tunnel.{problem.kind}")
+    if exited and (hint := _sakura_service_hint(lines)):
+        return hint
     if exited and (reason := failure_reason(lines)):
         return t("frpc_hint_tunnel.raw", reason=reason)
+    return ""
+
+
+def _sakura_service_hint(lines: list[str]) -> str:
+    """樱花 frpc 启动时先向樱花 API 取隧道配置，失败时输出的不是 frp 日志格式（实测 2026-11-04 樱花服务端故障约半小时）：
+    被拒绝时是「[400] frpc 版本号无效」这样的状态码 + 说明，连不上时是「request failed: /tunnel/config Post "...": 原因」。
+    只看最后一条这类行，不往前翻到旧的失败。"""
+    from dstools.i18n import t
+
+    for raw in reversed(lines):
+        line = _ANSI.sub("", raw).strip()
+        if m := _SAKURA_API_STATUS.match(line):
+            status, reason = int(m.group(1)), m.group(2)
+            if status >= 500:
+                return t("frpc_hint_tunnel.sakura_server_error", reason=reason)
+            if "版本" in reason or "version" in reason.lower():
+                return t("frpc_hint_tunnel.sakura_version_rejected", reason=reason)
+            return t("frpc_hint_tunnel.sakura_rejected", reason=reason)
+        if m := _SAKURA_API_REQUEST_FAILED.match(line):
+            return t("frpc_hint_tunnel.sakura_unreachable", reason=m.group(1))
     return ""
 
 
