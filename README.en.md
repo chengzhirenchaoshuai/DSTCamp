@@ -108,22 +108,29 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.8.6 changes
+## 1.9.0 changes
 
-### ✨ Improvements
+### ✨ New features
+
+- **Run Steam local saves from the Local Server tab** (saves made with "Host Game" in the game): start, stop, restart, view logs and roll back, using the same save the game uses. A token is assigned from the token pool, and Mods, room settings and world settings changed in the game are synced before each start; if the game currently has the save open, you are asked to return to the main menu first. While the save is running from the Local Server tab, its Mods, world settings and room settings can't be changed (they would be overwritten on shutdown), so stop the server first. WeGame local saves can still only be hosted from WeGame.
+- **Sakura, Lolia and self-hosted tunnels support local saves**: enabling mapping turns off "Local only" and switches the save's in-game privacy to "Public"; local saves created in offline mode can't be mapped, and the reason is explained.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.8.6)</strong></summary>
+
+### 1.8.6
+
+#### ✨ Improvements
 
 - After switching mapping nodes, the new direct-connect code pops up right away with one-click copy and a reminder to send it to friends (the old code stops working once the node address changes); if the port changed while a world is running, the same box says a restart is needed. The confirmation before switching is shorter and worded the same for Sakura and Lolia.
 - Before switching Lolia nodes, the new node is tested first (up to 15 seconds); if it can't connect, everything is restored, the old mapping keeps working, and you are asked to pick another node.
 - Errors on Sakura's side now come with a readable hint: a server failure says to retry later, a rejected version number is most likely temporary, and a connection failure suggests checking the network; when creating a tunnel hits an internal Sakura server error, it says this isn't a problem with your settings. Previously it only showed "failed to start (exit code 1)".
 - The "Guide" button on the LuaJIT Speed Patch row opens the author's documentation directly (the Chinese version in the Chinese UI).
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - After switching Sakura nodes with an unchanged port, the Local Server tab still showed the old node's direct-connect code.
 - Wrong mouse pointer at the window edges: no resize pointer, or the "move" pointer staying after moving in from another window; double-clicking the top or bottom edge no longer stretches the window to full height.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.8.5)</strong></summary>
 
 ### 1.8.5
 
