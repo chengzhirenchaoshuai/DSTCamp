@@ -6,6 +6,7 @@ from pathlib import Path
 from _harness import run
 
 from dstools.features.cluster_config.config_manager import get_cluster_option, load_cluster_config
+from dstools.features.cluster_config.local_server_data import make_local_save_public
 from dstools.features.local_service.local_save_launch import local_storage_args, sync_local_save_for_launch
 from dstools.features.mod.manager import load_mod_overrides
 from dstools.models import SaveSource
@@ -86,6 +87,11 @@ def test_sync_writes_what_the_client_would_before_start():
 
         # 已同步过就不再改写文件
         assert sync_local_save_for_launch(_build_cluster(path, SaveSource.LOCAL)) == []
+
+        # 开映射时把"仅限本地"改成"公共"：之后开服前同步不能再把仅限局域网写回去
+        assert make_local_save_public(path) is True
+        assert sync_local_save_for_launch(_build_cluster(path, SaveSource.LOCAL)) == ["cluster.ini"]
+        assert get_cluster_option(load_cluster_config(path), "NETWORK", "lan_only_cluster") is False
 
 
 run(globals())

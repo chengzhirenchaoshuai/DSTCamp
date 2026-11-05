@@ -23,11 +23,16 @@ from dstools.features.cluster_config.config_manager import (
     save_cluster_config,
     set_cluster_option,
 )
-from dstools.features.cluster_config.local_server_data import LOCAL_SERVER_FIELDS, load_local_server_data
+from dstools.features.cluster_config.local_server_data import (
+    LOCAL_SERVER_FIELDS,
+    PRIVACY_LOCAL,
+    load_local_server_data,
+)
 from dstools.features.local_service.dedicated_server import resolve_storage_args
 from dstools.features.mod.manager import ModEntry, ModOverrides, load_mod_overrides, save_mod_overrides
 from dstools.features.mod.shardindex import load_shardindex_mods, shardindex_path
 from dstools.features.world.local_options import load_local_overrides
+from dstools.models import Platform, SaveSource
 from dstools.shared.lua_parser import parse_lua_file, serialize_lua_table
 
 # Steam 32 位账号 ID（本地存档的账号目录名）换算 SteamID64 的基数：
@@ -45,8 +50,12 @@ PROXY_MOD_NAMES = {
     "bbgoat-utils-server": "workshop-3750536829",
 }
 
-# shardindex.server.privacy_type 取值（scripts/constants.lua 的 PRIVACY_TYPE），只有"仅限本地"对应 cluster.ini 字段
-_PRIVACY_LOCAL = 2
+def can_host(cluster) -> bool:
+    """DSTCamp 能拉起专服（也就能做内网穿透映射）的存档：服务器存档，以及 Steam 的本地存档。
+    WeGame 的本地存档只能在 WeGame 里开（Rail 会话令牌只有它能签发）。"""
+    return cluster is not None and (
+        cluster.source == SaveSource.SERVER
+        or (cluster.source == SaveSource.LOCAL and cluster.platform == Platform.STEAM))
 
 
 def owner_steam_id64(account_id: str) -> str | None:
@@ -98,7 +107,8 @@ def _sync_cluster_ini(cluster) -> list[str]:
     server = load_local_server_data(cluster.path)
     wanted = {field: server[key] for field, key in LOCAL_SERVER_FIELDS.items() if key in server}
     if "privacy_type" in server:
-        wanted[("NETWORK", "lan_only_cluster")] = server["privacy_type"] == _PRIVACY_LOCAL
+        # 只有"仅限本地"对应 cluster.ini 字段；"仅限朋友"由游戏客户端开服时传给专服，专服自己开不了
+        wanted[("NETWORK", "lan_only_cluster")] = server["privacy_type"] == PRIVACY_LOCAL
     config = load_cluster_config(cluster.path)
     dirty = False
     for (section, key), value in wanted.items():

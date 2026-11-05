@@ -8,13 +8,27 @@
 
 from __future__ import annotations
 
+from dstools.features.cluster_config.local_server_data import is_local_save_offline, make_local_save_public
+from dstools.features.mod.shardindex import ShardIndexError
 from dstools.i18n import t
+from dstools.models import SaveSource
 from dstools.qt import dialogs
 from dstools.shared.server_ports import disable_lan_restrictions, lan_restriction_names
 
 
 def ensure_lan_free_for_mapping(parent, ctx, cluster) -> bool:
-    """返回 True 表示可以继续开启映射；用户取消或关闭失败返回 False。"""
+    """返回 True 表示可以继续开启映射；用户取消或关闭失败返回 False。
+
+    本地存档以 shardindex 为准（开服前同步、游戏开服都按它重写 cluster.ini）：离线模式建档后不能改，
+    改了玩家身份也对不上，直接拦下；"仅限本地"随 cluster.ini 一起改成"公共"。"""
+    is_local = cluster.source == SaveSource.LOCAL
+    try:
+        if is_local and is_local_save_offline(cluster.path):
+            dialogs.show_warning(parent, t("lan_conflict.title"), t("lan_conflict.local_offline_msg"))
+            return False
+    except ShardIndexError as exc:
+        dialogs.show_error(parent, t("lan_conflict.title"), str(exc))
+        return False
     modes = lan_restriction_names(cluster)
     if not modes:
         return True
@@ -26,8 +40,10 @@ def ensure_lan_free_for_mapping(parent, ctx, cluster) -> bool:
     if choice != "disable":
         return False
     try:
+        if is_local:
+            make_local_save_public(cluster.path)
         disable_lan_restrictions(cluster)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, ShardIndexError) as exc:
         dialogs.show_error(parent, t("local.port_repair_title"),
                            t("local.port_repair_failed", detail=f"{type(exc).__name__}: {exc}"))
         return False

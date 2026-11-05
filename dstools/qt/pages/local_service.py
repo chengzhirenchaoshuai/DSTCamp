@@ -44,7 +44,9 @@ from dstools.features.local_service.server_runtime import (
     resolve_runtime, set_runtime_mode,
 )
 from dstools.features.local_service.launch_name_check import guess_original_name, non_ascii_names, unencodable_entries
-from dstools.features.local_service.local_save_launch import local_storage_args, sync_local_save_for_launch
+from dstools.features.local_service.local_save_launch import (
+    can_host as _can_launch, local_storage_args, sync_local_save_for_launch,
+)
 from dstools.features.mod.shardindex import LOCAL_SAVE_RUNNING, ShardIndexError, local_save_play_state
 from dstools.shared.lua_parser import LuaParseError
 from dstools.features.local_service.log_bundle import create_log_bundle
@@ -151,14 +153,6 @@ def _default_gateways() -> list[tuple[int, str]]:
         if row.dest == 0 and row.mask == 0 and row.next_hop != 0:
             gateways.append((row.metric1, socket.inet_ntoa(row.next_hop.to_bytes(4, "little"))))
     return gateways
-
-
-def _can_launch(cluster) -> bool:
-    """能由本页拉起专服的存档：服务器存档，以及 Steam 的本地存档（用 -ownerdir 直接启动）。
-    WeGame 的本地存档只能在 WeGame 里开，仍按"请切换到服务器存档"处理。"""
-    return cluster is not None and (
-        cluster.source == SaveSource.SERVER
-        or (cluster.source == SaveSource.LOCAL and cluster.platform == Platform.STEAM))
 
 
 def _route_source_ip(destination: str) -> str:

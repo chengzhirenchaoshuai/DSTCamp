@@ -23,7 +23,7 @@ from dstools.features.sakura import api as sakura_frp
 from dstools.features.sakura.frpc import FrpcManager, FrpcStatus
 from dstools.features.sakura.frpc_recovery import SAKURA_FRPC_ARCHIVE, SakuraFrpcHealth, inspect_sakura_frpc
 from dstools.i18n import t
-from dstools.models import SaveSource
+from dstools.features.local_service.local_save_launch import can_host
 from dstools.qt import dialogs
 from dstools.qt.pages.base import Page
 from dstools.qt.tunnel.lolia_panel import LoliaPanel
@@ -397,7 +397,7 @@ class _SakuraMappingPanel(QWidget):
                 node_loads = {}  # 负载只是参考信息，取不到不影响选节点
             tunnels = sakura_frp.list_tunnels(token)
             by_key = {}
-            if cluster and cluster.source == SaveSource.SERVER:
+            if can_host(cluster):
                 for shard in cluster.shards:
                     tunnel = self._find_cluster_tunnel(tunnels, cluster, shard)
                     if tunnel:
@@ -421,7 +421,7 @@ class _SakuraMappingPanel(QWidget):
                         recent_bytes += val
             occupants = []
             for c in self.ctx.env.clusters:
-                if c.source != SaveSource.SERVER:
+                if not can_host(c):
                     continue
                 for shard in c.shards:
                     occupant_tunnel = self._find_cluster_tunnel(tunnels, c, shard)
@@ -538,7 +538,7 @@ class _SakuraMappingPanel(QWidget):
             self._shards_grid.addWidget(QLabel(t("local.select_cluster_first")), 0, 0)
             self._action_btn.setVisible(False)
             return
-        if cluster.source != SaveSource.SERVER:
+        if not can_host(cluster):
             self._shards_grid.addWidget(QLabel(t("sakura.local_save_hint")), 0, 0)
             self._action_btn.setVisible(False)
             return

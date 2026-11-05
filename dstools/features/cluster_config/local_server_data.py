@@ -34,6 +34,9 @@ LOCAL_SERVER_FIELDS = {
 }
 # 游戏内建服人数上限（scripts/tuning.lua 的 TUNING.MAX_SERVER_SIZE），专服才能到 64
 LOCAL_MAX_PLAYERS_LIMITS = (1, 6)
+# server.privacy_type 取值（scripts/constants.lua 的 PRIVACY_TYPE）：PUBLIC=0, FRIENDS=1, LOCAL=2, CLAN=3
+PRIVACY_PUBLIC = 0
+PRIVACY_LOCAL = 2
 
 
 def load_local_server_data(cluster_path: Path) -> dict:
@@ -92,6 +95,21 @@ def merge_local_values(server: dict, values: dict) -> dict:
         else:
             merged[key] = str(raw)
     return merged
+
+
+def is_local_save_offline(cluster_path: Path) -> bool:
+    """建档时选了离线模式（游戏里建档后不能再改）；离线和在线的玩家身份不同，改模式后原角色对不上。"""
+    return load_local_server_data(cluster_path).get("online_mode") is False
+
+
+def make_local_save_public(cluster_path: Path) -> bool:
+    """把"仅限本地"改成"公共"（内网穿透映射要求关闭仅限局域网）；返回是否改动。
+    只改 shardindex：开服前同步与游戏开服都按它重写 cluster.ini，只改 cluster.ini 会被改回去。"""
+    server = load_local_server_data(cluster_path)
+    if server.get("privacy_type") != PRIVACY_LOCAL:
+        return False
+    save_local_server_data(cluster_path, {**server, "privacy_type": PRIVACY_PUBLIC})
+    return True
 
 
 def save_local_server_data(cluster_path: Path, server: dict) -> None:

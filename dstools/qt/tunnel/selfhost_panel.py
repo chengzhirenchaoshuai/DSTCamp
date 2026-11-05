@@ -25,7 +25,7 @@ from dstools.features.frp_selfhost.mihomo import MihomoError, sha256_file
 from dstools.features.frp_selfhost.wireguard import DEFAULT_WIREGUARD_PORT, ensure_client_keypair
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE
 from dstools.i18n import t
-from dstools.models import SaveSource
+from dstools.features.local_service.local_save_launch import can_host
 from dstools.qt import dialogs
 from dstools.qt.tunnel import frpc_tool
 from dstools.qt.theme import theme
@@ -910,9 +910,9 @@ class SelfHostPanel(QWidget):
         clear_layout(self._shards_grid)
         self._status_error_label.setText("")
         cluster = self._current_cluster
-        if not cluster or cluster.source != SaveSource.SERVER or not cluster.shards:
+        if not can_host(cluster) or not cluster.shards:
             key = ("local.select_cluster_first" if not cluster else
-                   "sakura.local_save_hint" if cluster.source != SaveSource.SERVER else "sakura.no_shards")
+                   "sakura.local_save_hint" if not can_host(cluster) else "sakura.no_shards")
             self._shards_grid.addWidget(QLabel(t(key)), 0, 0)
             self._action_btn.setVisible(False)
             self._conn_check_btn.setVisible(False)
