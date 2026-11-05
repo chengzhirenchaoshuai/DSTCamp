@@ -243,7 +243,8 @@ def scan_udp_ports() -> UdpPortScan:
     try:
         completed = subprocess.run(
             ["netstat", "-ano", "-p", "UDP"], capture_output=True,
-            text=True, timeout=10,
+            # netstat 按系统代码页输出（中文系统为 GBK）；不指定时 UTF-8 模式下解码失败、stdout 变成 None
+            text=True, encoding="mbcs", errors="replace", timeout=10,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
