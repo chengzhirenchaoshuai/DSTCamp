@@ -16,7 +16,7 @@ from dstools.features.local_service.steam_backend import SteamBackend, get_backe
 from dstools.features.world import page_data, shard_management, user_presets
 from dstools.features.world.location_profiles import FOREST_LOCATION, get_location_definition
 from dstools.features.mod.shardindex import (
-    LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, ShardIndexError, local_save_play_state,
+    LOCAL_SAVE_HOSTED, LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, ShardIndexError,
 )
 from dstools.i18n import get_lang, t
 from dstools.qt import dialogs
@@ -461,12 +461,13 @@ class WorldSettingsPage(Page):
             return False
         if not data.is_server:
             try:
-                state = local_save_play_state(self.ctx.selected_cluster())
+                state = self.ctx.local_save_play_state(self.ctx.selected_cluster())
             except Exception as exc:
                 dialogs.show_error(self.window(), title, str(exc))
                 return False
-            if state == LOCAL_SAVE_RUNNING:
-                dialogs.show_warning(self.window(), title, t("world.local_save_running"))
+            if state in (LOCAL_SAVE_RUNNING, LOCAL_SAVE_HOSTED):
+                dialogs.show_warning(self.window(), title, t(
+                    "local.local_save_hosted_edit" if state == LOCAL_SAVE_HOSTED else "world.local_save_running"))
                 return False
             if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
                     self.window(), title, t("world.local_save_game_open_confirm", name=data.shard_name)):
@@ -579,17 +580,18 @@ class WorldSettingsPage(Page):
             self._save_button.setEnabled(self._dirty)
             if data is not self._data:
                 return
-            if state == LOCAL_SAVE_RUNNING:
-                dialogs.show_warning(self.window(), title, t("world.local_save_running"))
+            if state in (LOCAL_SAVE_RUNNING, LOCAL_SAVE_HOSTED):
+                dialogs.show_warning(self.window(), title, t(
+                    "local.local_save_hosted_edit" if state == LOCAL_SAVE_HOSTED else "world.local_save_running"))
                 return
-            key = "world.local_save_game_open_confirm" if state == LOCAL_SAVE_OPEN else "dlg.confirm_save_msg"
+            key ="world.local_save_game_open_confirm" if state == LOCAL_SAVE_OPEN else "dlg.confirm_save_msg"
             self._confirm_and_save(data, t(key, name=data.shard_name))
 
         def failed(exc: Exception) -> None:
             self._save_button.setEnabled(self._dirty)
             dialogs.show_error(self.window(), title, str(exc))
 
-        run_async(lambda: local_save_play_state(cluster), done, failed)
+        run_async(lambda: self.ctx.local_save_play_state(cluster), done, failed)
 
     def _confirm_and_save(self, data: page_data.WorldPageData, confirm_text: str) -> None:
         title = t("world.save_rules")

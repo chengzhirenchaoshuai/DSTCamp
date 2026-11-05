@@ -1142,18 +1142,19 @@ class ModPage(Page):
 
     def save_unsaved_changes(self) -> bool:
         """离开前保存：跟"保存"按钮写同样的内容，但同步完成、不弹成功提示。"""
-        from dstools.features.mod.shardindex import LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, local_save_play_state
+        from dstools.features.mod.shardindex import LOCAL_SAVE_HOSTED, LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING
 
         c = self.get_cluster()
         index_path = self._local_shardindex(c)
         if index_path is not None:
             try:
-                state = local_save_play_state(c)
+                state = self.ctx.local_save_play_state(c)
             except Exception as exc:
                 dialogs.show_error(self.window(), t("mod.save_btn"), str(exc))
                 return False
-            if state == LOCAL_SAVE_RUNNING:
-                dialogs.show_warning(self.window(), t("mod.save_btn"), t("mod.local_save_running"))
+            if state in (LOCAL_SAVE_RUNNING, LOCAL_SAVE_HOSTED):
+                dialogs.show_warning(self.window(), t("mod.save_btn"), t(
+                    "local.local_save_hosted_edit" if state == LOCAL_SAVE_HOSTED else "mod.local_save_running"))
                 return False
             if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
                     self.window(), t("mod.save_btn"), t("mod.local_save_game_open_confirm")):
@@ -1365,9 +1366,7 @@ class ModPage(Page):
     def _save_local_mods(self, cluster, index_path: Path) -> None:
         """本地存档：游戏前端缓存 shardindex，回到"登陆中..."页面才重读，存档运行时开服进程还会覆盖。
         后台检测后：运行中拦下；游戏开着时先确认；没开直接存。"""
-        from dstools.features.mod.shardindex import (
-            LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, local_save_play_state,
-        )
+        from dstools.features.mod.shardindex import LOCAL_SAVE_HOSTED, LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING
 
         self._save_btn.setEnabled(False)
 
@@ -1377,8 +1376,9 @@ class ModPage(Page):
             # 检测期间存档列表可能刷新成新对象，按路径判断是否还是同一个存档
             if current is None or str(current.path) != str(cluster.path):
                 return
-            if state == LOCAL_SAVE_RUNNING:
-                dialogs.show_warning(self.window(), t("mod.save_btn"), t("mod.local_save_running"))
+            if state in (LOCAL_SAVE_RUNNING, LOCAL_SAVE_HOSTED):
+                dialogs.show_warning(self.window(), t("mod.save_btn"), t(
+                    "local.local_save_hosted_edit" if state == LOCAL_SAVE_HOSTED else "mod.local_save_running"))
                 return
             if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
                     self.window(), t("mod.save_btn"), t("mod.local_save_game_open_confirm")):
@@ -1389,7 +1389,7 @@ class ModPage(Page):
             self._save_btn.setEnabled(self._dirty)
             dialogs.show_error(self.window(), t("mod.save_btn"), str(exc))
 
-        run_async(lambda: local_save_play_state(cluster), done, failed)
+        run_async(lambda: self.ctx.local_save_play_state(cluster), done, failed)
 
     def _write_local_mods(self, cluster, index_path: Path, silent: bool) -> bool:
         """写 Master shardindex（游戏前端以它为准），再把同一份写进各世界 modoverrides.lua；返回是否成功。"""

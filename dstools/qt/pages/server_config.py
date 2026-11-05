@@ -20,7 +20,7 @@ from dstools.features.cluster_config.local_server_data import (
     load_local_server_data, merge_local_values, save_local_server_data, validate_local_values,
 )
 from dstools.features.mod.shardindex import (
-    LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, ShardIndexError, local_save_play_state,
+    LOCAL_SAVE_HOSTED, LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, ShardIndexError,
 )
 from dstools.features.save_browser.reader import list_known_player_ids, refresh_player_registry
 from dstools.i18n import t
@@ -606,8 +606,9 @@ class ServerConfigPage(Page):
             current = self.ctx.selected_cluster()
             if current is None or str(current.path) != str(cluster.path):  # 检测期间已切到别的存档
                 return
-            if state == LOCAL_SAVE_RUNNING:
-                dialogs.show_warning(self._window(), title, t("cluster.local_save_running"))
+            if state in (LOCAL_SAVE_RUNNING, LOCAL_SAVE_HOSTED):
+                dialogs.show_warning(self._window(), title, t(
+                    "local.local_save_hosted_edit" if state == LOCAL_SAVE_HOSTED else "cluster.local_save_running"))
                 return
             if state == LOCAL_SAVE_OPEN and not dialogs.ask_yes_no(
                     self._window(), title, t("cluster.local_save_game_open_confirm", name=cluster.name)):
@@ -625,7 +626,7 @@ class ServerConfigPage(Page):
             self._cluster_save.setEnabled(True)
             dialogs.show_error(self._window(), title, str(exc))
 
-        run_async(lambda: local_save_play_state(cluster), done, failed)
+        run_async(lambda: self.ctx.local_save_play_state(cluster), done, failed)
 
     def _resolve_lan_lock(self, cluster, config, issues) -> bool:
         """存档运行中或有映射、无法改端口时，说明原因并给出出路。返回 True 表示用户选择关闭 LAN 限制。"""

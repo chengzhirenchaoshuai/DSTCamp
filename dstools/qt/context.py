@@ -168,6 +168,14 @@ class AppContext(QObject):
     def cluster_running(self, cluster: Cluster) -> bool:
         return any(str(proc.cluster_path) == str(cluster.path) for proc in self.manager.running())
 
+    def local_save_play_state(self, cluster: Cluster) -> str:
+        """改本地存档设置前的检测：本地服务器页正开着它返回 LOCAL_SAVE_HOSTED（专服关服时按自己读到的设置回写
+        shardindex，运行中改的会被冲掉），否则按游戏客户端检测。会跑 tasklist/netstat，须在后台线程调用。"""
+        from dstools.features.mod.shardindex import LOCAL_SAVE_HOSTED, local_save_play_state
+        if self.cluster_running(cluster):
+            return LOCAL_SAVE_HOSTED
+        return local_save_play_state(cluster)
+
     def running_shard_names(self, cluster: Cluster) -> list[str]:
         """这个存档下仍在启动/运行/停止中的世界（世界文件被进程占着时不能覆盖或删除）。"""
         active = (ServerStatus.STARTING, ServerStatus.RUNNING, ServerStatus.STOPPING)

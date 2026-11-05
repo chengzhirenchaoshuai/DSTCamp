@@ -38,6 +38,7 @@ def shardindex_path(cluster_path: Path) -> Path:
 LOCAL_SAVE_CLOSED = "closed"    # 游戏客户端没开，直接改
 LOCAL_SAVE_OPEN = "open"        # 游戏开着但存档没运行：可改，需提醒回开始页面后再开存档
 LOCAL_SAVE_RUNNING = "running"  # 存档可能正在运行：开服进程会覆盖，不能改
+LOCAL_SAVE_HOSTED = "hosted"    # 本地服务器页正开着这个存档（界面层判断）：关服时会回写，不能改
 
 
 def local_save_play_state(cluster) -> str:
