@@ -10,6 +10,7 @@ from dstools.features.mod import presets
 from dstools.features.mod.list_model import localize_mod_name
 from dstools.i18n import t
 from dstools.qt import dialogs
+from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.widgets import Card
 
@@ -216,6 +217,8 @@ class ApplyPresetDialog(dialogs.Dialog):
         # 配置集直接写盘（不经过"保存修改"按钮）；世界设置页"来自 Mod"的显示依据
         # 的是这份磁盘内容，必须通知它下次打开时重新读取。
         self.page.ctx.cluster_config_saved.emit(cluster)
-        dialogs.show_info(self, t("preset.apply_dialog_title"), t("preset.applied_done", count=count))
         self.page._refresh_mods(full=False)
         self.accept()
+        # 先关掉配置集窗口再提示，选「立即重启」时不会压着它弹后续窗口
+        restart_prompt.show_saved(self.page.window(), self.page.ctx, cluster, t("preset.apply_dialog_title"),
+                                  t("preset.applied_done", count=count))

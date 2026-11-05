@@ -59,6 +59,7 @@ from dstools.qt.mod.mod_defaults_dialog import GlobalDefaultsDialog
 from dstools.qt.mod.mod_presets_dialogs import ApplyPresetDialog, SavePresetDialog
 from dstools.qt.mod.mod_recommend_dialog import RecommendModsDialog
 from dstools.qt.pages.base import Page
+from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar
@@ -1425,10 +1426,11 @@ class ModPage(Page):
             return
         overrides, other_shards = self._write_server_mods(c, shard)
         enabled_count = sum(1 for m in overrides.mods.values() if m.enabled)
-        dialogs.show_info(self.window(), t("dlg.save_ok"), t("dlg.saved_mods", count=enabled_count, shard=shard.name))
-        if other_shards:
-            dialogs.show_info(self.window(), t("mod.save_btn"), t("dlg.sync_done", count=len(other_shards)))
         self._set_dirty(False)
+        message = t("dlg.saved_mods", count=enabled_count, shard=shard.name)
+        if other_shards:
+            message += "\n" + t("dlg.sync_done", count=len(other_shards))
+        restart_prompt.show_saved(self.window(), self.ctx, c, t("dlg.save_ok"), message)
         self._refresh_mods()
 
     def config_applied(self) -> None:
@@ -1461,7 +1463,8 @@ class ModPage(Page):
         self._write_mod_states(overrides)
         save_mod_overrides(overrides)
         self.ctx.cluster_config_saved.emit(c)
-        dialogs.show_info(self.window(), t("mod.apply_current"), t("dlg.current_saved", shard=shard.name))
+        restart_prompt.show_saved(self.window(), self.ctx, c, t("mod.apply_current"),
+                                  t("dlg.current_saved", shard=shard.name))
         self._refresh_mods()
 
     def _save_as_preset(self) -> None:

@@ -28,6 +28,7 @@ from dstools.models import SaveSource
 from dstools.qt import dialogs
 from dstools.qt.forms import FormGrid
 from dstools.qt.pages.base import Page
+from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar, clear_layout
@@ -152,7 +153,7 @@ class IdListPanel(QWidget):
         path = getattr(cluster, self._path_attr) or (cluster.path / self._default_filename)
         if add_admin(path, kid):
             setattr(cluster, self._path_attr, path)
-            self._status.setText(t("admin.added", id=kid))
+            self._status.setText(self._with_running_note(cluster, t("admin.added", id=kid)))
         else:
             self._status.setText(t("admin.already_exists"))
             dialogs.show_info(self.window(), t("admin.duplicate_title"), t("admin.already_exists_msg", id=kid))
@@ -166,8 +167,12 @@ class IdListPanel(QWidget):
             return
         kid = self._row_ids[row]
         if remove_admin(path, kid):
-            self._status.setText(t("admin.removed", id=kid))
+            self._status.setText(self._with_running_note(cluster, t("admin.removed", id=kid)))
         self.load(cluster)
+
+    def _with_running_note(self, cluster, text: str) -> str:
+        """名单只在开服时读取：世界运行中改了，在状态行补一句重启后生效。"""
+        return text + t("local.saved_running_short") if self._ctx.running_shard_names(cluster) else text
 
 
 class TokenPanel(QWidget):
@@ -257,20 +262,33 @@ class TokenPanel(QWidget):
             return
         # cluster_token.txt 可能还不存在（离线/本地存档通常没有），write_token 会自己创建
         path = cluster.token_path or (cluster.path / "cluster_token.txt")
+        changed = dialog.result_text.strip() != self._raw.strip()
         write_token(path, dialog.result_text)
         cluster.token_path = path
         self.load(cluster)
+        if changed:
+            self._prompt_restart(cluster)
 
     def _on_pool(self) -> None:
         dialog = dialogs.GlobalTokensDialog(self.window(), token_uses=self._ctx.token_uses())
         dialog.exec()
         cluster = self._ctx.selected_cluster()
+        changed = False
         if dialog.result_token is not None and cluster:
             path = cluster.token_path or (cluster.path / "cluster_token.txt")
+            changed = dialog.result_token.strip() != self._raw.strip()
             write_token(path, dialog.result_token)
             cluster.token_path = path
         if cluster:  # 关掉弹窗后当前存档若还缺令牌，load 会顺手从刚设置好的令牌池自动补上
             self.load(cluster)
+        if changed:
+            self._prompt_restart(cluster)
+
+    def _prompt_restart(self, cluster) -> None:
+        """令牌只在开服时读取：世界运行中换了令牌，提示重启后才会用新令牌注册。没在运行就不打扰。"""
+        if restart_prompt.running_hint(self._ctx, cluster):
+            restart_prompt.show_saved(self.window(), self._ctx, cluster, t("token.change"),
+                                      t("token.changed", name=cluster.name))
 
 
 class ServerConfigPage(Page):
@@ -582,7 +600,6 @@ class ServerConfigPage(Page):
         self._after_cluster_saved(cluster)
 
     def _after_cluster_saved(self, cluster) -> None:
-        dialogs.show_info(self._window(), t("dlg.save_ok"), t("dlg.config_saved", name=cluster.name))
         # cluster_password 会拼进"本地服务器"页的直连代码，改了要通知它刷新
         self.ctx.cluster_config_saved.emit(cluster)
         previous_shard = self._shard_name
@@ -590,6 +607,9 @@ class ServerConfigPage(Page):
         if previous_shard in [s.name for s in cluster.shards]:  # 不能因为保存房间设置就把正在看的世界切回 Master
             self._shard_combo.setCurrentText(previous_shard)
             self._on_shard_picked(0)
+        # 页面先按新内容重载再提示，选「立即重启」时读到的已是保存后的配置
+        restart_prompt.show_saved(self._window(), self.ctx, cluster, t("dlg.save_ok"),
+                                  t("dlg.config_saved", name=cluster.name))
 
     def _save_local_cluster(self, cluster, values) -> None:
         """本地存档：先写游戏真正读取的 Master shardindex 的 server 表，再同步写 cluster.ini 保持一致。
@@ -686,6 +706,10 @@ class ServerConfigPage(Page):
         if cluster is None or form is None or self._shard_grid is None:
             return
         target = form.shard
+        # 专服关服时按内存配置重写 server.ini（已实测），运行中保存的修改会被冲掉，只能先停服
+        if target.name in self.ctx.running_shard_names(cluster):
+            dialogs.show_warning(self._window(), t("dlg.save_fail"), t("cluster.shard_running_save", shard=target.name))
+            return
         values = self._shard_grid.values()
         error = save_checks.validate_ranges(values, shard=True)
         if error:

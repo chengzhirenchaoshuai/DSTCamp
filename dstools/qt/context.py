@@ -36,6 +36,7 @@ class AppContext(QObject):
         self.mapping_owner = lambda cluster, shard: None   # 端口是否被映射接管："sakura"/"lolia"/"selfhost"/None
         self.mapped_server_port = lambda cluster, shard: None  # 映射要求的 server_port（远程端口），本地不知道时为 None
         self.token_uses = lambda: ()                        # 各存档正在使用的令牌（本地服务器页提供）
+        self.restart_running_shards = lambda cluster: None  # 重启这个存档正在运行的世界（本地服务器页提供）
         # 大厅加速：内网穿透页迁移后接管这两个钩子。关闭时视为"已就绪"直接放行；
         # 开启但穿透页尚未迁移时明确失败，不能悄悄跳过用户已经打开的功能。
         self.ensure_lobby_accel = lambda cluster, on_done: on_done(

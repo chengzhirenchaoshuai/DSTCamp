@@ -930,6 +930,7 @@ class LocalServicePage(Page):
         self._lan_only_cache_value = False
 
         ctx.token_uses = self.token_usage_snapshot
+        ctx.restart_running_shards = self._restart_after_config_saved
         ctx.cluster_config_saved.connect(self._on_cluster_config_saved)
         # 切到其他页签时仍需监督运行中的专服与直连代码，所以直接订阅存档切换，不走懒加载
         ctx.cluster_changed.connect(self.on_cluster_changed)
@@ -2210,6 +2211,13 @@ class LocalServicePage(Page):
                                   t("local.token_unavailable_msg", details=self._token_unavailable_details()))
             return
         dialogs.show_toast(self.window(), t("local.token_auto_selected", cluster=cluster.name))
+        self._restart_running_shards(cluster)
+
+    def _restart_after_config_saved(self, cluster) -> None:
+        """其它页保存配置后用户选了「立即重启」：与「全部重启」一样先处理未保存改动、取消待执行的崩溃重启。"""
+        if not self.ctx.confirm_unsaved(cluster):
+            return
+        self._auto_restart.cancel(cluster)
         self._restart_running_shards(cluster)
 
     def _restart_running_shards(self, cluster) -> None:

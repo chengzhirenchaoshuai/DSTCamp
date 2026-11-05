@@ -21,6 +21,7 @@ from dstools.features.mod.shardindex import (
 from dstools.i18n import get_lang, t
 from dstools.qt import dialogs
 from dstools.qt.pages.base import Page
+from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar
@@ -604,8 +605,10 @@ class WorldSettingsPage(Page):
             return
         need_reset = self._generation_changed and page_data.generation_requires_reset(data)
         self._set_dirty(False)
-        if not need_reset:
-            message = t("world.saved")
-        else:
-            message = t("world.saved_need_reset" if data.is_server else "world.saved_need_reset_local")
-        dialogs.show_info(self.window(), t("dlg.save_ok"), message)
+        if need_reset:
+            # 已说明要「重置世界」，重置本身会重启世界，不再叠加重启提示
+            dialogs.show_info(self.window(), t("dlg.save_ok"),
+                              t("world.saved_need_reset" if data.is_server else "world.saved_need_reset_local"))
+            return
+        restart_prompt.show_saved(self.window(), self.ctx, self.ctx.selected_cluster(), t("dlg.save_ok"),
+                                  t("world.saved"))
