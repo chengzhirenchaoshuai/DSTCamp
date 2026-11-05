@@ -393,6 +393,7 @@ def test_auto_restart_controller_flow() -> None:
             _current_token_hold=lambda _c: opts["hold"],
             _install_dir=root, _detect_install_dir=lambda: None, _launching_keys=set(),
             _steamcmd_update_running=lambda: False,
+            _storage_args_for=lambda _c: [],
             _release_token_reservation_if_stopped=lambda _path: None,
             _continue_start_shard=lambda _c, shard, _arg: (events.append(("start", shard.name)),
                                                            make_proc(shard.name, ready=False)),
@@ -409,8 +410,7 @@ def test_auto_restart_controller_flow() -> None:
                              side_effect=lambda: opts["minutes"]), \
                 patch.object(controller_module, "load_cluster_config",
                              return_value=SimpleNamespace(network={})), \
-                patch.object(controller_module.luajit_injector, "needs_regeneration", return_value=False), \
-                patch.object(controller_module, "resolve_storage_args", return_value=[]):
+                patch.object(controller_module.luajit_injector, "needs_regeneration", return_value=False):
             controller = controller_module.AutoRestartController.__new__(controller_module.AutoRestartController)
             controller_module.QObject.__init__(controller)
             controller._page, controller._states = page, {}

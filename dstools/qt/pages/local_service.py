@@ -44,6 +44,9 @@ from dstools.features.local_service.server_runtime import (
     resolve_runtime, set_runtime_mode,
 )
 from dstools.features.local_service.launch_name_check import guess_original_name, non_ascii_names, unencodable_entries
+from dstools.features.local_service.local_save_launch import local_storage_args, sync_local_save_for_launch
+from dstools.features.mod.shardindex import LOCAL_SAVE_RUNNING, ShardIndexError, local_save_play_state
+from dstools.shared.lua_parser import LuaParseError
 from dstools.features.local_service.log_bundle import create_log_bundle
 from dstools.features.local_service.steam_backend import (
     SteamBackend, get_backend, set_backend, update_blocker,
@@ -148,6 +151,14 @@ def _default_gateways() -> list[tuple[int, str]]:
         if row.dest == 0 and row.mask == 0 and row.next_hop != 0:
             gateways.append((row.metric1, socket.inet_ntoa(row.next_hop.to_bytes(4, "little"))))
     return gateways
+
+
+def _can_launch(cluster) -> bool:
+    """能由本页拉起专服的存档：服务器存档，以及 Steam 的本地存档（用 -ownerdir 直接启动）。
+    WeGame 的本地存档只能在 WeGame 里开，仍按"请切换到服务器存档"处理。"""
+    return cluster is not None and (
+        cluster.source == SaveSource.SERVER
+        or (cluster.source == SaveSource.LOCAL and cluster.platform == Platform.STEAM))
 
 
 def _route_source_ip(destination: str) -> str:
@@ -1181,7 +1192,7 @@ class LocalServicePage(Page):
     def on_cluster_changed(self, cluster=None) -> None:
         self.stale = False
         c = cluster if cluster is not None else self.get_cluster()
-        is_server = bool(c and c.source == SaveSource.SERVER)
+        is_server = bool(c and _can_launch(c))
         is_wegame = bool(c and c.platform == Platform.WEGAME)
         self._start_all_btn.setEnabled(is_server and not is_wegame)
         self._update_runtime_btns_state(c)
@@ -1189,7 +1200,7 @@ class LocalServicePage(Page):
         self._update_restart_all_btn_state(c)
         self._update_logs_btn_state(c)
         if is_server:
-            self._local_banner.set_text("")
+            self._local_banner.set_text(t("local.local_save_launch_hint") if c.source == SaveSource.LOCAL else "")
             self._connect_row.setVisible(True)
             self._refresh_connect_labels()
             if is_wegame:
@@ -1787,7 +1798,7 @@ class LocalServicePage(Page):
             busy = t("local.luajit_busy_hint")
             self._set_luajit_btns(busy, busy)
             return
-        is_steam_server = bool(cluster and cluster.source == SaveSource.SERVER and cluster.platform == Platform.STEAM)
+        is_steam_server = bool(cluster and _can_launch(cluster) and cluster.platform == Platform.STEAM)
         if not is_steam_server:
             self._luajit_bin64_dir = None
             self._luajit_status_label.setText(t("local.luajit_steam_only_hint"))
@@ -2191,7 +2202,7 @@ class LocalServicePage(Page):
     def _token_conflict_actions(self, proc) -> list:
         """令牌冲突诊断弹窗的处理按钮：池里有空闲令牌就一键换用并重启，没有就引导添加备用令牌。"""
         cluster = self._cluster_for_running_process(proc, self.get_cluster())
-        if cluster is None or cluster.source != SaveSource.SERVER or cluster.platform == Platform.WEGAME:
+        if cluster is None or not _can_launch(cluster) or cluster.platform == Platform.WEGAME:
             return []
         if self._alternative_start_token(cluster):
             return [(t("local.token_conflict_switch_btn"), lambda: self._switch_token_and_restart(cluster))]
@@ -2331,6 +2342,8 @@ class LocalServicePage(Page):
             return False
         if not self._check_launch_names(cluster, shards):
             return False
+        if cluster.source == SaveSource.LOCAL and not self._prepare_local_save(cluster):
+            return False
         if cluster.platform == Platform.STEAM:
             server_snapshot = self._runtime_snapshot()
             if steam_client_updater.action_for_snapshot(
@@ -2385,9 +2398,9 @@ class LocalServicePage(Page):
         bin64_dir = find_bin64_dir(self._install_dir)
         if bin64_dir is None or luajit_injector.detect_state(bin64_dir) is not luajit_injector.InjectorState.ACTIVE:
             return True
-        if self.ctx.env.klei_root is None:
+        root = self._storage_root(cluster)  # 与开服的存储参数用同一个根目录
+        if root is None:
             return True
-        root = Path(self.ctx.env.klei_root)  # 与开服的 resolve_storage_args 用同一个根目录
         entries = unencodable_entries(root)
         if not entries:
             return True
@@ -2509,6 +2522,34 @@ class LocalServicePage(Page):
             summary.append(f"{shard_name}: server={ports['server_port']}, steam={ports['master_server_port']}, auth={ports['authentication_port']}")
         dialogs.show_info(self.window(), t("local.port_repair_title"), t("local.port_repair_done", details="\n".join(summary)))
         return self._preflight_start(cluster, shards, allow_repair=False, restarting=restarting)
+
+    def _prepare_local_save(self, cluster) -> bool:
+        """本地存档开服前：游戏里正开着这个存档就拦下（两边同时跑会互相覆盖存档）；
+        再把 shardindex 里的设置同步到专服读取的文件，相当于游戏里点"开始"时做的。"""
+        ours = any(str(proc.cluster_path) == str(cluster.path) for proc in self.manager.running())
+        if not ours and local_save_play_state(cluster) == LOCAL_SAVE_RUNNING:
+            dialogs.show_warning(self.window(), t("local.local_save_title"), t("local.local_save_in_game", cluster=cluster.name))
+            return False
+        try:
+            changed = sync_local_save_for_launch(cluster)
+        except (OSError, ValueError, ShardIndexError, LuaParseError) as exc:
+            dialogs.show_error(self.window(), t("local.local_save_title"),
+                               t("local.local_save_sync_failed", detail=f"{type(exc).__name__}: {exc}"))
+            return False
+        if changed:
+            self.ctx.cluster_config_saved.emit(cluster)
+        return True
+
+    def _storage_root(self, cluster) -> Path | None:
+        """专服的存档根目录：本地存档是它所在账号目录的上一级（游戏默认位置，不受"服务器存档目录"设置影响）。"""
+        if cluster.source == SaveSource.LOCAL:
+            return cluster.path.parent.parent
+        return Path(self.ctx.env.klei_root) if self.ctx.env.klei_root is not None else None
+
+    def _storage_args_for(self, cluster) -> list[str]:
+        if cluster.source == SaveSource.LOCAL:
+            return local_storage_args(cluster)
+        return resolve_storage_args(self.ctx.env.klei_root)
 
     def _cluster_for_running_process(self, proc, current_cluster):
         if current_cluster and str(current_cluster.path) == str(proc.cluster_path):
@@ -2781,7 +2822,7 @@ class LocalServicePage(Page):
                 _show_not_found_warning(self.window(), self._wanted_runtime_kind())
                 self._release_token_reservation_if_stopped(cluster.path)
                 return
-        storage_args = resolve_storage_args(self.ctx.env.klei_root)
+        storage_args = self._storage_args_for(cluster)
         # 已开启 LuaJIT 模式时副本过期就直接更新，不再询问：取消只会中止启动，没有别的选择。
         if luajit_injector.needs_regeneration(self._install_dir):
             self._launching_keys.add((str(cluster.path), shard.name))
@@ -2857,7 +2898,7 @@ class LocalServicePage(Page):
                 extra_args=get_dedicated_server_extra_args())
         except (OSError, ValueError) as exc:
             self._release_token_reservation_if_stopped(cluster.path)
-            dialogs.show_error(self.window(), t("local.install_title"),
+            dialogs.show_error(self.window(), t("local.local_save_title"),
                                 t("local.start_failed", shard=shard.name, detail=f"{type(exc).__name__}: {exc}"))
             return
         self.ctx.maybe_start_frpc(cluster, shard)
@@ -2918,7 +2959,7 @@ class LocalServicePage(Page):
         self._stop_and_then(cluster, shard, lambda: self._on_stop_done(cluster))
 
     def restart_shard(self, cluster, shard) -> None:
-        if not cluster or cluster.source != SaveSource.SERVER or cluster.platform == Platform.WEGAME:
+        if not cluster or not _can_launch(cluster) or cluster.platform == Platform.WEGAME:
             return
         proc = self.manager.get(cluster.path, shard.name)
         if proc is None or proc.status != ServerStatus.RUNNING:
@@ -2956,7 +2997,7 @@ class LocalServicePage(Page):
             if self._install_dir is None:
                 _show_not_found_warning(self.window(), self._wanted_runtime_kind())
                 return
-        storage_args = resolve_storage_args(self.ctx.env.klei_root)
+        storage_args = self._storage_args_for(cluster)
 
         def clear_pending():
             self._restarting_keys.difference_update(keys)
@@ -3018,7 +3059,7 @@ class LocalServicePage(Page):
 
     def _start_all(self) -> None:
         c = self.get_cluster()
-        if not c or c.source != SaveSource.SERVER:
+        if not c or not _can_launch(c):
             dialogs.show_warning(self.window(), t("local.install_title"), t("local.select_cluster_first"))
             return
         if not c.shards:
@@ -3058,7 +3099,7 @@ class LocalServicePage(Page):
                 _show_not_found_warning(self.window(), self._wanted_runtime_kind())
                 self._release_token_reservation_if_stopped(c.path)
                 return
-        storage_args = resolve_storage_args(self.ctx.env.klei_root)
+        storage_args = self._storage_args_for(c)
         if luajit_injector.needs_regeneration(self._install_dir):
             self._launching_keys.update((str(c.path), s.name) for s in targets)
             self._regenerate_luajit_then_start(c, targets, storage_args)
@@ -3079,7 +3120,7 @@ class LocalServicePage(Page):
 
     def _stop_all(self) -> None:
         c = self.get_cluster()
-        if not c or c.source != SaveSource.SERVER:
+        if not c or not _can_launch(c):
             return
         if any((str(c.path), shard.name) in self._restarting_keys for shard in c.shards):
             return
@@ -3088,7 +3129,7 @@ class LocalServicePage(Page):
 
     def _restart_all(self) -> None:
         c = self.get_cluster()
-        if not c or c.source != SaveSource.SERVER or c.platform == Platform.WEGAME:
+        if not c or not _can_launch(c) or c.platform == Platform.WEGAME:
             return
         targets = []
         for shard in ordered_shards(c):
@@ -3104,7 +3145,7 @@ class LocalServicePage(Page):
 
     def _open_rollback_dialog(self) -> None:
         c = self.get_cluster()
-        if not c or c.source != SaveSource.SERVER:
+        if not c or not _can_launch(c):
             return
         _RollbackDialog(self, c, max_rollback_days(c)).exec()
 
@@ -3525,7 +3566,7 @@ class LocalServicePage(Page):
         return any(p.cluster_path != cluster.path for p in self.manager.running())
 
     def _update_start_lock_state(self, cluster) -> None:
-        if not cluster or cluster.source != SaveSource.SERVER:
+        if not cluster or not _can_launch(cluster):
             self._other_running_banner.set_text("")
             return
         if cluster.platform == Platform.WEGAME:
@@ -3560,7 +3601,7 @@ class LocalServicePage(Page):
         return ""
 
     def _update_stop_all_btn_state(self, cluster) -> None:
-        if not cluster or cluster.source != SaveSource.SERVER:
+        if not cluster or not _can_launch(cluster):
             self._stop_all_btn.setEnabled(False)
             return
         if any((str(cluster.path), shard.name) in self._restarting_keys for shard in cluster.shards):
@@ -3569,7 +3610,7 @@ class LocalServicePage(Page):
         self._stop_all_btn.setEnabled(any(p.cluster_path == cluster.path for p in self.manager.running()))
 
     def _update_restart_all_btn_state(self, cluster) -> None:
-        if not cluster or cluster.source != SaveSource.SERVER or cluster.platform == Platform.WEGAME:
+        if not cluster or not _can_launch(cluster) or cluster.platform == Platform.WEGAME:
             self._restart_all_btn.setEnabled(False)
             return
         procs = [self.manager.get(cluster.path, shard.name) for shard in cluster.shards]
@@ -3579,7 +3620,7 @@ class LocalServicePage(Page):
         self._restart_all_btn.setEnabled(has_running and not has_transition and not has_pending)
 
     def _update_logs_btn_state(self, cluster) -> None:
-        if not cluster or cluster.source != SaveSource.SERVER:
+        if not cluster or not _can_launch(cluster):
             self._logs_btn.setEnabled(False)
             return
         has_logs = any((Path(shard.path) / "server_log.txt").is_file() for shard in cluster.shards)
@@ -3588,7 +3629,7 @@ class LocalServicePage(Page):
 
     def _get_logs(self) -> None:
         cluster = self.get_cluster()
-        if not cluster or cluster.source != SaveSource.SERVER:
+        if not cluster or not _can_launch(cluster):
             return
         self._logs_btn.setEnabled(False)
         shard_names = [s.name for s in cluster.shards]

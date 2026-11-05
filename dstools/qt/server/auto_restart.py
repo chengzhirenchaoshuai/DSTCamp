@@ -24,7 +24,6 @@ from dstools.features.local_service.auto_restart import (
     CRASH_RESTART_DELAY, MAX_CRASH_RESTARTS, TOKEN_BUSY_RECHECK, TOKEN_WAIT_LIMIT, CrashBudget, append_log,
     is_restartable,
 )
-from dstools.features.local_service.dedicated_server import resolve_storage_args
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE, ordered_shards
 from dstools.i18n import t
 from dstools.shared.app_settings import (
@@ -191,7 +190,7 @@ class AutoRestartController(QObject):
         if page._steamcmd_update_running():
             self._give_up(cluster, state, t("local.auto_restart_reason_steamcmd_update"))
             return
-        storage_args = resolve_storage_args(page.ctx.env.klei_root)
+        storage_args = page._storage_args_for(cluster)
         if luajit_injector.needs_regeneration(page._install_dir):
             self._give_up(cluster, state, t("local.auto_restart_reason_luajit"))
             return
