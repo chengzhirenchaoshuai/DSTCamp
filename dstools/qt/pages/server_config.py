@@ -153,10 +153,12 @@ class IdListPanel(QWidget):
         path = getattr(cluster, self._path_attr) or (cluster.path / self._default_filename)
         if add_admin(path, kid):
             setattr(cluster, self._path_attr, path)
-            self._status.setText(self._with_running_note(cluster, t("admin.added", id=kid)))
-        else:
-            self._status.setText(t("admin.already_exists"))
-            dialogs.show_info(self.window(), t("admin.duplicate_title"), t("admin.already_exists_msg", id=kid))
+            self._status.setText(t("admin.added", id=kid))
+            self.load(cluster)
+            self._prompt_restart(cluster, t("admin.added", id=kid))
+            return
+        self._status.setText(t("admin.already_exists"))
+        dialogs.show_info(self.window(), t("admin.duplicate_title"), t("admin.already_exists_msg", id=kid))
         self.load(cluster)
 
     def _on_remove(self) -> None:
@@ -166,13 +168,17 @@ class IdListPanel(QWidget):
         if not path or not 0 <= row < len(self._row_ids) or not self._row_ids[row]:
             return
         kid = self._row_ids[row]
-        if remove_admin(path, kid):
-            self._status.setText(self._with_running_note(cluster, t("admin.removed", id=kid)))
+        removed = remove_admin(path, kid)
+        if removed:
+            self._status.setText(t("admin.removed", id=kid))
         self.load(cluster)
+        if removed:
+            self._prompt_restart(cluster, t("admin.removed", id=kid))
 
-    def _with_running_note(self, cluster, text: str) -> str:
-        """名单只在开服时读取：世界运行中改了，在状态行补一句重启后生效。"""
-        return text + t("local.saved_running_short") if self._ctx.running_shard_names(cluster) else text
+    def _prompt_restart(self, cluster, text: str) -> None:
+        """名单只在开服时读取：世界运行中改了，弹框说明重启后生效。没在运行就只更新状态行，不打扰。"""
+        if restart_prompt.running_hint(self._ctx, cluster):
+            restart_prompt.show_saved(self.window(), self._ctx, cluster, t(self._title_key), text)
 
 
 class TokenPanel(QWidget):
@@ -709,6 +715,7 @@ class ServerConfigPage(Page):
         # 专服关服时按内存配置重写 server.ini（已实测），运行中保存的修改会被冲掉，只能先停服
         if target.name in self.ctx.running_shard_names(cluster):
             dialogs.show_warning(self._window(), t("dlg.save_fail"), t("cluster.shard_running_save", shard=target.name))
+            self._rebuild_shard_form()  # 没保存，表单退回磁盘上的值，免得误以为已经改好
             return
         values = self._shard_grid.values()
         error = save_checks.validate_ranges(values, shard=True)
