@@ -1211,10 +1211,7 @@ STRINGS = {
         "mod.no_choices": "未声明可选值，请在游戏内修改",
         "mod.table_value": "表（{count} 项）",
         "mod.bridge_title": "转为服务器模组的客户端模组",
-        "mod.bridge_desc": "勾选的客户端模组会加入服务器模组列表，玩家进服时自动下载启用，专服本身不加载。"
-                           "勾选时按本机保存的设置生成服务器提供给玩家的设置，可点「设置」单独修改"
-                           "（玩家自己改过的设置优先）；版本号在每次由 DSTCamp 开服前按本机当前版本自动刷新。"
-                           "只列出本机已安装的纯客户端模组。",
+        "mod.bridge_desc": "勾选的客户端模组会在玩家进服时自动下载启用，可点「设置」修改提供给玩家的默认设置。",
         "mod.bridge_not_installed": "{mod_id}（本机未安装，保留原记录）",
         "mod.bridge_none": "本机没有已安装的纯客户端模组。",
         "mod.bridge_search": "搜索名称或 ID",
@@ -3090,12 +3087,8 @@ STRINGS = {
         "mod.no_choices": "No selectable values declared -- change it in-game",
         "mod.table_value": "Table ({count} entries)",
         "mod.bridge_title": "Client mods converted to server mods",
-        "mod.bridge_desc": "Checked client mods are added to the server mod list: players download and enable them "
-                           "automatically on joining, while the dedicated server itself doesn't load them. When checked, "
-                           "the settings the server provides start from this PC's saved settings and can be changed "
-                           "with Settings (a player's own settings take priority); the version is refreshed from the "
-                           "installed mod every time DSTCamp starts the server. Only client-only mods installed on this "
-                           "PC are listed.",
+        "mod.bridge_desc": "Players automatically download and enable the checked client mods when joining. Use "
+                           "Settings to change the default settings provided to players.",
         "mod.bridge_not_installed": "{mod_id} (not installed on this PC, entry kept)",
         "mod.bridge_none": "No client-only mods are installed on this PC.",
         "mod.bridge_search": "Search name or ID",
