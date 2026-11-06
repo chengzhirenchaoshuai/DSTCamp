@@ -1005,6 +1005,25 @@ def _parse_options_table(
     return options
 
 
+def _mark_header_or_table_slot(opt: ModConfigOption) -> bool:
+    """识别标题与"表值存储位"，命中时就地标记并返回 True（静态解析与沙箱解析共用）。
+
+    标题/分隔条目的两种信号：name 为空（无法存回 modoverrides.lua），或只有一个空描述选项
+    （如自定义 AddTitle 返回 name="null" 的写法）。
+    例外：有 name、唯一的空描述选项 data 是表时，是模组用来存数据的配置项（如 3486375086 的
+    client_mods_list，由它在游戏建服界面里写入），不是标题；清空 choices 按"未声明可选值"只读
+    显示，否则配置集、配置记忆等跳过标题的流程会把它丢掉。
+    """
+    single_blank = len(opt.choices) == 1 and opt.choices[0].get("description") == ""
+    if opt.name and single_blank and isinstance(opt.choices[0].get("data"), (dict, list)):
+        opt.choices = []
+        return True
+    if opt.name == "" or single_blank:
+        opt.is_header = True
+        return True
+    return False
+
+
 def _parse_single_option(
     block: str, local_tables: dict | None = None
 ) -> ModConfigOption | None:
@@ -1046,14 +1065,8 @@ def _parse_single_option(
 
     opt.choices = _extract_choices(block, local_tables)
 
-    # 标题/分隔条目的两种信号：name 为空（无法存回 modoverrides.lua），
-    # 或只有一个空描述选项（如自定义 AddTitle 返回 name="null" 的写法）
-    if opt.name == "" or (
-        len(opt.choices) == 1 and opt.choices[0].get("description") == ""
-    ):
-        opt.is_header = True
-    elif not opt.choices and re.search(r"\boptions\s*=", block):
     # 声明了 options 却解析为空：是函数调用或循环拼出的变量，需执行 Lua 才能得到（见沙箱解析）
+    if not _mark_header_or_table_slot(opt) and not opt.choices and re.search(r"\boptions\s*=", block):
         opt.is_dynamic = True
         opt.raw_options_expr = _extract_field_raw(block, "options") or ""
 
@@ -1300,12 +1313,7 @@ def _options_from_lua_result(result: Any) -> list[ModConfigOption] | None:
         opt.is_dictionary_config = bool(d.get("is_dictionary_config"))
         opt.choices = _choices_from_lua_value(d.get("options"))
 
-        # 与 _parse_single_option 相同的两个标题信号
-        if opt.name == "" or (
-            len(opt.choices) == 1 and opt.choices[0].get("description") == ""
-        ):
-            opt.is_header = True
-        elif not opt.choices and "options" in d:
+        if not _mark_header_or_table_slot(opt) and not opt.choices and "options" in d:
             opt.is_dynamic = True
 
         options.append(opt)

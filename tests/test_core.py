@@ -1317,13 +1317,12 @@ def test_mod_resolve_cache():
             other.write_text("name = 'y'", encoding="utf-8")
             assert load_cached_result(workshop_id, other) is None
 
-            # 上一版按修改时间判断的缓存：不比 modinfo 旧时接管一次并补记哈希，免得升级后全部重跑沙箱
-            legacy = {"name": "旧版Mod", "config_options": [], "_cache_format_version": 2}
+            # 旧格式版本的缓存（选项判定规则不同）即使比 modinfo 新也必须失效
+            legacy = {"name": "旧版Mod", "config_options": [], "_cache_format_version": 3}
             _cache_path(workshop_id).write_text(json.dumps(legacy), encoding="utf-8")
             newer = time.time() + 100
             os.utime(_cache_path(workshop_id), (newer, newer))
-            assert load_cached_result(workshop_id, modinfo_path)["name"] == "旧版Mod"
-            assert json.loads(_cache_path(workshop_id).read_text(encoding="utf-8"))["_cache_format_version"] == 3
+            assert load_cached_result(workshop_id, modinfo_path) is None
 
             # 缺 _cache_format_version 的旧缓存必须失效
             _cache_path(workshop_id).write_text(

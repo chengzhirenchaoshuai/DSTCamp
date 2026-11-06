@@ -15,10 +15,9 @@ from dstools.shared.resource_paths import cache_dir
 
 _CACHE_DIR = cache_dir("mod_full_resolve")
 
-# 修改 ModConfigOption 字段或缓存结构时递增。
-_CACHE_FORMAT_VERSION = 3
-# 按修改时间判断的上一版：内容与本版相同，只缺哈希，按原规则接管一次，免得升级后全部重跑沙箱
-_LEGACY_MTIME_FORMAT_VERSION = 2
+# 修改 ModConfigOption 字段、选项判定规则（如标题识别）或缓存结构时递增：缓存只按 modinfo
+# 内容判断，不会随解析器代码自动失效。
+_CACHE_FORMAT_VERSION = 4
 
 
 def _cache_path(workshop_id: str) -> Path:
@@ -42,18 +41,9 @@ def load_cached_result(workshop_id: str, modinfo_path: Path) -> dict[str, Any] |
     cache_path = _cache_path(workshop_id)
     try:
         raw = json.loads(cache_path.read_text(encoding="utf-8"))
-        legacy = (raw.get("_cache_format_version") == _LEGACY_MTIME_FORMAT_VERSION
-                  and cache_path.stat().st_mtime >= modinfo_path.stat().st_mtime)
     except (OSError, ValueError):
         return None
-    if legacy:
-        raw["_cache_format_version"] = _CACHE_FORMAT_VERSION
-        raw["_sha256"], raw["_source_path"] = key
-        try:
-            cache_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
-        except OSError:
-            pass
-    elif (raw.get("_cache_format_version") != _CACHE_FORMAT_VERSION
+    if (raw.get("_cache_format_version") != _CACHE_FORMAT_VERSION
             or [raw.get("_sha256"), raw.get("_source_path")] != list(key)):
         return None
     for name in ("_cache_format_version", "_sha256", "_source_path"):

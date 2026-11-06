@@ -295,6 +295,9 @@ class ModConfigDialog(QDialog):
             hovers.insert(0, t("mod.keep_custom_value_hover"))
 
         if not items:
+            # 表值（如 3486375086 的 client_mods_list）原样转文本会撑得很长，只显示项数
+            if isinstance(current_value, (dict, list)):
+                current_display = t("mod.table_value", count=len(current_value))
             reason = t("mod.dynamic_option") if opt.is_dynamic else t("mod.no_choices")
             hint = QLabel(f"{current_display}  ({reason})")
             hint.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')}; font-style: italic;")
