@@ -108,15 +108,32 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.0 changes
+## 1.9.1 changes
 
 ### ✨ New features
 
-- **Run Steam local saves from the Local Server tab** (saves made with "Host Game" in the game): start, stop, restart, view logs and roll back, using the same save the game uses. A token is assigned from the token pool, and Mods, room settings and world settings changed in the game are synced before each start; if the game currently has the save open, you are asked to return to the main menu first. While the save is running from the Local Server tab, its Mods, world settings and room settings can't be changed (they would be overwritten on shutdown), so stop the server first. WeGame local saves can still only be hosted from WeGame.
-- **Sakura, Lolia and self-hosted tunnels support local saves**: enabling mapping turns off "Local only" and switches the save's in-game privacy to "Public"; local saves created in offline mode can't be mapped, and the reason is explained.
+- **Support for "Client Mods to Server Mods" (3486375086)**: pick the client mods to convert right in DSTCamp's Mod settings (previously only possible in the game's host screen), and edit each one's server settings separately; before DSTCamp starts a server (including auto-restart), each mod's version is refreshed and option changes from mod updates are handled.
+
+### ✨ Improvements
+
+- Saving Mods, world settings, room settings, the token, admins or the blocklist while a world is running now says the change takes effect after a restart, with "Restart Now" or "Later" (Later is the default, so online players aren't kicked by accident); saving Mods no longer shows two dialogs in a row.
+
+### 🐞 Fixes
+
+- Changes to world configuration (server.ini) made while the world was running were overwritten on shutdown: saving is now blocked while it runs, with a prompt to stop that world first, and the form reverts to the values on disk.
+- Mods that declare an empty options table and fill it in later (such as 景熹家居, 田园物语 and 星璃) showed as having no settings.
+- Mods whose options table is assigned from a variable or expression (such as Moving Box and Louise) showed as having no settings.
+- The list of mods selected in "Client Mods to Server Mods" was cleared after saving or applying a configuration set.
 
 <details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.8.6)</strong></summary>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.0)</strong></summary>
+
+### 1.9.0
+
+#### ✨ New features
+
+- **Run Steam local saves from the Local Server tab** (saves made with "Host Game" in the game): start, stop, restart, view logs and roll back, using the same save the game uses. A token is assigned from the token pool, and Mods, room settings and world settings changed in the game are synced before each start; if the game currently has the save open, you are asked to return to the main menu first. While the save is running from the Local Server tab, its Mods, world settings and room settings can't be changed (they would be overwritten on shutdown), so stop the server first. WeGame local saves can still only be hosted from WeGame.
+- **Sakura, Lolia and self-hosted tunnels support local saves**: enabling mapping turns off "Local only" and switches the save's in-game privacy to "Public"; local saves created in offline mode can't be mapped, and the reason is explained.
 
 ### 1.8.6
 
