@@ -769,7 +769,11 @@ def _extract_configuration_options(text: str) -> list[ModConfigOption] | None:
 
 
 def _has_nontrivial_table(text: str, idx: int) -> bool:
-    """``configuration_options`` 的表里是否有实际内容，用于区分"零个选项"和"形状不认识"。"""
+    """``configuration_options`` 的表里是否有实际内容，用于区分"零个选项"和"形状不认识"。
+
+    先赋空表、后面再逐项填充的写法（如 ``configuration_options[i] = ...``、
+    ``table.insert(configuration_options, ...)``）也算有内容，交给沙箱求值。
+    """
     brace_start = text.find("{", idx)
     if brace_start == -1:
         return False
@@ -780,7 +784,9 @@ def _has_nontrivial_table(text: str, idx: int) -> bool:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                return len(text[brace_start + 1 : i].strip()) > 10
+                if len(text[brace_start + 1 : i].strip()) > 10:
+                    return True
+                return re.search(r"\bconfiguration_options\b", text[i + 1 :]) is not None
     return False
 
 
