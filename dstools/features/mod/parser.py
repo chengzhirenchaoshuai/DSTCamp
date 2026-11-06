@@ -773,7 +773,12 @@ def _has_nontrivial_table(text: str, idx: int) -> bool:
 
     先赋空表、后面再逐项填充的写法（如 ``configuration_options[i] = ...``、
     ``table.insert(configuration_options, ...)``）也算有内容，交给沙箱求值。
+    右边不是表字面量（如 ``configuration_options = OPTION_LIST``、
+    ``ZH and zh_config or en_config``）时同样交给沙箱。
     """
+    m = re.compile(r"configuration_options\s*=\s*(\S)").match(text, idx)
+    if m and m.group(1) != "{":
+        return True
     brace_start = text.find("{", idx)
     if brace_start == -1:
         return False
