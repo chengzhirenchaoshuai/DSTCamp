@@ -1,11 +1,12 @@
 """「客户端Mod转为服务器Mod」（3486375086）的客户端 Mod 勾选列表，样式与"更新 Mod"窗口一致：
-搜索框与已选计数、全选表头，每个 Mod 一张交替底色的行卡片（勾选框、图标、名称、ID 与版本、工坊链接）。
+搜索框与已选计数、全选表头，每个 Mod 一张交替底色的行卡片（勾选框、图标、名称、ID 与版本、设置、工坊链接）。
 
-只管勾选状态；version/config 由 ModConfigDialog 在"应用"时经 client_mod_bridge 后台生成。
+只管勾选状态，"设置"只发出 configure_requested；编辑窗口与 version/config 的生成由 ModConfigDialog 负责
+（"应用"时经 client_mod_bridge 后台生成）。
 """
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from dstools.features.mod import client_mod_bridge
 from dstools.features.mod.list_model import localize_mod_name, version_display
@@ -20,6 +21,7 @@ _ICON = 44
 
 class ClientModPicker(QWidget):
     changed = Signal()
+    configure_requested = Signal(str)  # 点了某个 Mod 的"设置"，参数为 Mod ID
 
     def __init__(self, page, current: dict, read_only: bool = False, parent=None):
         super().__init__(parent)
@@ -31,8 +33,11 @@ class ClientModPicker(QWidget):
         # 已在列表里、本机却没装（或已不是纯客户端 Mod）的排在最后，保留原记录，取消勾选才删除
         missing = [key for key in current if key not in self._infos]
         self._names = {**names, **{key: key for key in missing}}
-        self._order = sorted(names, key=lambda k: names[k].casefold()) + missing
+        base = sorted(names, key=lambda k: names[k].casefold()) + missing
+        # 已勾选的排前面；只在打开时排一次，勾选过程中不挪动行，免得点了就跳走
+        self._order = [key for key in base if key in current] + [key for key in base if key not in current]
         self._checks: dict[str, QCheckBox] = {}
+        self._config_btns: dict[str, QPushButton] = {}
         self._rows: dict[str, Card] = {}
 
         outer = QVBoxLayout(self)
@@ -62,6 +67,12 @@ class ClientModPicker(QWidget):
         self._select_all.clicked.connect(self._on_select_all)
         header.addWidget(self._select_all)
         header.addStretch()
+        config_head = QLabel(t("mod.bridge_config_column"))
+        config_head.setFont(theme.font("FONT_SIZE_SM", bold=True))
+        config_head.setProperty("muted", True)
+        config_head.setFixedWidth(80)
+        config_head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addWidget(config_head)
         if self._can_link():
             link_head = QLabel(t("mod.update_workshop_column"))
             link_head.setFont(theme.font("FONT_SIZE_SM", bold=True))
@@ -140,6 +151,20 @@ class ClientModPicker(QWidget):
         text_col.addWidget(detail_label)
         layout.addLayout(text_col, 1)
 
+        # 编辑服务器提供给玩家的设置（client_mods_list 里该 Mod 的 config）；勾选且本机已安装才能改
+        config_box = QWidget()
+        config_box.setFixedWidth(80)
+        config_layout = QHBoxLayout(config_box)
+        config_layout.setContentsMargins(0, 0, 0, 0)
+        if installed:
+            button = QPushButton(t("mod.bridge_config_btn"))
+            button.setFont(theme.font("FONT_SIZE_SM"))
+            button.setToolTip(t("mod.bridge_config_tip"))
+            button.clicked.connect(lambda _c=False, k=key: self.configure_requested.emit(k))
+            config_layout.addWidget(button)
+            self._config_btns[key] = button
+        layout.addWidget(config_box)
+
         if self._can_link():
             link = QLabel(f'<a href="#" style="color:{theme.hex("ACCENT")};">{t("mod.workshop_link_btn")}</a>')
             link.setFixedWidth(90)
@@ -184,7 +209,12 @@ class ClientModPicker(QWidget):
         self._update_counts()
         self.changed.emit()
 
+    def _update_buttons(self) -> None:
+        for key, button in self._config_btns.items():
+            button.setEnabled(not self._read_only and self._checks[key].isChecked())
+
     def _update_counts(self) -> None:
+        self._update_buttons()
         self._count_label.setText(t("mod.update_selected_count", selected=len(self.selected()),
                                     total=len(self._order)))
         visible = self._visible_keys()

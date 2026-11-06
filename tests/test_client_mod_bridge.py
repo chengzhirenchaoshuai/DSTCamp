@@ -20,6 +20,7 @@ configuration_options = {
     { name = "", label = "分组", options = { { description = "", data = 0 } }, default = 0 },
     { name = "a", label = "A", options = { { description = "开", data = true }, { description = "关", data = false } }, default = true },
     { name = "b", label = "B", options = { { description = "5", data = 5 }, { description = "7", data = 7 } }, default = 5 },
+    { name = "c", label = "C", options = { { description = "1", data = 1 }, { description = "2", data = 2 } }, default = 1 },
 }
 '''
 
@@ -27,7 +28,7 @@ _OVERRIDES = '''return {
   ["workshop-3486375086"] = { enabled = true, configuration_options = {
     language = "auto",
     client_mods_list = {
-      ["workshop-111"] = { version = "old", config = {} },
+      ["workshop-111"] = { version = "old", config = { a = "无效值", b = 7, gone = 1 } },
       ["workshop-999"] = { version = "9", config = { x = 1 } },
     },
   } },
@@ -55,14 +56,16 @@ def test_refresh_cluster_rebuilds_entries_like_game_create():
         def lookup(key):
             return mod_dir if key == "workshop-111" else None
 
-        # 本机保存过的值优先，没保存的取默认值（游戏里是 saved or default）
-        with patch.object(bridge.config_memory, "recall", lambda key: {"b": 7} if key == "workshop-111" else None):
+        # 已记录的有效值（用户改过的服务器设置）保留；无效值、已删除的项丢掉，
+        # 缺的项按本机保存的值、没有则默认值补上（游戏里是 saved or default）
+        with patch.object(bridge.config_memory, "recall",
+                          lambda key: {"b": 5, "c": 2} if key == "workshop-111" else None):
             assert bridge.refresh_cluster(cluster, lookup) == ["Master"]
             data = parse_lua_file(master)
             converter = data["workshop-3486375086"]["configuration_options"]
             listed = converter["client_mods_list"]
             # 版本按游戏规则去空白转小写；分组标题不进 config
-            assert listed["workshop-111"] == {"version": "1.2.a", "config": {"a": True, "b": 7}}
+            assert listed["workshop-111"] == {"version": "1.2.a", "config": {"a": True, "b": 7, "c": 2}}
             # 本机没装的 Mod 原样保留，其他配置与其他 Mod 不受影响
             assert listed["workshop-999"] == {"version": "9", "config": {"x": 1}}
             assert converter["language"] == "auto"

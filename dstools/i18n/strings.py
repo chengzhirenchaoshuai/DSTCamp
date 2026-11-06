@@ -1212,11 +1212,19 @@ STRINGS = {
         "mod.table_value": "表（{count} 项）",
         "mod.bridge_title": "转为服务器模组的客户端模组",
         "mod.bridge_desc": "勾选的客户端模组会加入服务器模组列表，玩家进服时自动下载启用，专服本身不加载。"
-                           "每个模组记录本机的版本号和默认配置（玩家自己改过的设置优先），"
-                           "每次由 DSTCamp 开服前按本机当前版本自动刷新。只列出本机已安装的纯客户端模组。",
+                           "勾选时按本机保存的设置生成服务器提供给玩家的设置，可点「设置」单独修改"
+                           "（玩家自己改过的设置优先）；版本号在每次由 DSTCamp 开服前按本机当前版本自动刷新。"
+                           "只列出本机已安装的纯客户端模组。",
         "mod.bridge_not_installed": "{mod_id}（本机未安装，保留原记录）",
         "mod.bridge_none": "本机没有已安装的纯客户端模组。",
         "mod.bridge_search": "搜索名称或 ID",
+        "mod.bridge_config_column": "设置",
+        "mod.bridge_config_btn": "设置",
+        "mod.bridge_config_tip": "修改服务器提供给玩家的设置（勾选后可用）",
+        "mod.bridge_config_title": "服务器设置 - {name}",
+        "mod.bridge_config_banner": "这里是服务器提供给玩家的「{name}」设置。玩家自己改过这个模组的任何设置时，"
+                                    "整个模组都以玩家自己的设置为准；没改过才用这里的设置。"
+                                    "点「应用」后回到上一个窗口，还要在那里点「应用」才会保存。",
         "mod.bridge_apply_failed": "生成客户端模组记录失败：{detail}",
         "mod.add_value_btn": "+ 新增",
         "mod.unsupported_schema": "⚠ 该模组的配置定义格式比较特殊（例如依赖翻译表或游戏内部函数），本工具暂不支持解析，请在游戏内的 Mod 配置菜单中修改设置。开启/关闭该模组不受影响。",
@@ -3083,13 +3091,22 @@ STRINGS = {
         "mod.table_value": "Table ({count} entries)",
         "mod.bridge_title": "Client mods converted to server mods",
         "mod.bridge_desc": "Checked client mods are added to the server mod list: players download and enable them "
-                           "automatically on joining, while the dedicated server itself doesn't load them. Each entry "
-                           "records this PC's version and default settings (a player's own settings take priority), "
-                           "refreshed from the installed version every time DSTCamp starts the server. Only client-only "
-                           "mods installed on this PC are listed.",
+                           "automatically on joining, while the dedicated server itself doesn't load them. When checked, "
+                           "the settings the server provides start from this PC's saved settings and can be changed "
+                           "with Settings (a player's own settings take priority); the version is refreshed from the "
+                           "installed mod every time DSTCamp starts the server. Only client-only mods installed on this "
+                           "PC are listed.",
         "mod.bridge_not_installed": "{mod_id} (not installed on this PC, entry kept)",
         "mod.bridge_none": "No client-only mods are installed on this PC.",
         "mod.bridge_search": "Search name or ID",
+        "mod.bridge_config_column": "Settings",
+        "mod.bridge_config_btn": "Settings",
+        "mod.bridge_config_tip": "Edit the settings the server provides to players (available once checked)",
+        "mod.bridge_config_title": "Server settings - {name}",
+        "mod.bridge_config_banner": "These are the settings for \"{name}\" that the server provides to players. If a "
+                                    "player has changed any setting of this mod, their own settings are used for the "
+                                    "whole mod; otherwise these apply. Clicking Apply returns to the previous window, "
+                                    "where you still need to click Apply to save.",
         "mod.bridge_apply_failed": "Couldn't build the client mod entries: {detail}",
         "mod.add_value_btn": "+ Add",
         "mod.unsupported_schema": "⚠ This mod defines its configuration in an unusual format (e.g. relying on translation tables or in-game engine functions) that this tool can't parse yet -- please change its settings from the in-game Mod Configuration menu instead. Enabling/disabling this mod is not affected.",

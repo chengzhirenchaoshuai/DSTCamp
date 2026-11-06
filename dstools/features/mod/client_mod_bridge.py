@@ -9,13 +9,18 @@
 专服把这些 Mod 加进服务器 Mod 列表，玩家进服时自动下载启用；专服自己没下载某个 Mod 时，
 用这里记的 version 对外报告版本、用 config 作为服务器给的配置。
 
-生成规则照抄该 Mod 的 modservercreationmain.lua（游戏里点"创建"时执行）：
+生成规则参照该 Mod 的 modservercreationmain.lua（游戏里点"创建"时执行）：
 - version：modinfo 的 version 去首尾空白后转小写；
-- config：逐个配置项取"本机保存的值，没有则取默认值"。本机保存的值来自 DSTCamp 的默认配置记忆
-  （与游戏 client_save/mod_config_data 双向同步，见 config_memory）。
+- config：新勾选时逐个配置项取"本机保存的值，没有则取默认值"，与游戏一致。本机保存的值来自 DSTCamp
+  的默认配置记忆（与游戏 client_save/mod_config_data 双向同步，见 config_memory）。
+  与游戏不同：之后保留已记录的值（用户可在 DSTCamp 里单独修改服务器提供的设置），不再每次用本机
+  保存的值覆盖；只丢掉 Mod 更新后已删除或取值无效的项，并补上新增的项。
 - 只列 client_only 的 Mod：声明了 all_clients_require_mod 的由该 Mod 自己隐藏、不允许转换。
 
-DSTCamp 每次开服前按本机当前版本重写一遍（refresh_cluster），相当于替用户在游戏里点一次"创建"，
+玩家端的设置优先级（作者说明）：玩家自己改过这个 Mod 任何一项设置时整份用自己的设置，否则用服务器
+提供的 config，再没有才用默认值。
+
+DSTCamp 每次开服前重写一遍（refresh_cluster），相当于替用户在游戏里点一次"创建"，
 避免被转换的 Mod 更新后记录的版本过时。
 """
 
@@ -90,11 +95,16 @@ def build_entry(mod_key: str, folder: Path, previous: dict | None = None) -> dic
         saved = config_memory.recall(mod_key) or {}
     except OSError:
         saved = {}
+    # 上次记录的值（可能是用户在 DSTCamp 里改过的服务器设置）优先保留；Mod 更新后已删除或取值已无效的项
+    # 按当前 modinfo 丢掉（sanitize_values），新增的项再按"本机保存的值，没有则默认值"补上
+    previous_config = (previous or {}).get("config")
+    kept = config_memory.sanitize_values(previous_config, info, for_save=False) \
+        if isinstance(previous_config, dict) else {}
     config: dict[str, Any] = {}
     for opt in info.config_options:
         if opt.is_header or not opt.name:
             continue
-        value = saved.get(opt.name, opt.default)
+        value = kept[opt.name] if opt.name in kept else saved.get(opt.name, opt.default)
         if value is not None:  # Lua 里 nil 值等于没有这个键
             config[opt.name] = value
     return {"version": version, "config": config}

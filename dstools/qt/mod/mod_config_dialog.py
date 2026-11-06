@@ -22,6 +22,7 @@ from dstools.features.mod.parser import (
 )
 from dstools.features.mod.sandbox_apply import apply_full_sandbox_result
 from dstools.i18n import t
+from dstools.models import ModEntry
 from dstools.qt import dialogs
 from dstools.qt.mod.client_mod_picker import ClientModPicker
 from dstools.qt.theme import theme
@@ -134,9 +135,15 @@ def _clear_active_dialog(_result: int = 0) -> None:
 
 class ModConfigDialog(QDialog):
     def __init__(self, page, workshop_id: str, mod, mod_info, read_only: bool = False,
-                 read_only_reason: str = "client_only", *, default_mode: bool = False):
-        super().__init__(page.window())
+                 read_only_reason: str = "client_only", *, default_mode: bool = False,
+                 parent: QWidget | None = None, on_applied=None, show_all_options: bool = False,
+                 banner_text: str = ""):
+        """on_applied 不为空时是嵌入模式（如在「客户端Mod转为服务器Mod」里编辑某个客户端 Mod 的服务器设置）：
+        "应用"只把完整配置交给 on_applied(values)，不通知页面、不写存档。show_all_options 显示 client=true 的选项
+        （纯客户端 Mod 的设置都在玩家端生效）。"""
+        super().__init__(parent or page.window())
         self.page = page
+        self._on_applied = on_applied
         self.workshop_id = workshop_id
         self.mod = mod
         self.mod_info = mod_info
@@ -166,6 +173,8 @@ class ModConfigDialog(QDialog):
             root.addWidget(self._banner(t(banner_key), "#607d8b"))
         elif default_mode:
             root.addWidget(self._banner(t("mod.default_config_banner"), "#607d8b"))
+        if banner_text:
+            root.addWidget(self._banner(banner_text, "#607d8b"))
         if mod_info.unsupported_schema:
             root.addWidget(self._banner(t("mod.unsupported_schema"), theme.hex("ERROR")))
         elif remaining_dynamic:
@@ -200,7 +209,11 @@ class ModConfigDialog(QDialog):
         root.addWidget(area, 1)
 
         real_options = 0
-        shown = mod_info.config_options if default_mode else visible_config_options(mod_info.config_options)
+        shown = mod_info.config_options if default_mode or show_all_options \
+            else visible_config_options(mod_info.config_options)
+        if not default_mode and workshop_id == client_mod_bridge.CONVERTER_ID:
+            # 客户端 Mod 列表很长，放最后，语言等普通选项排在前面
+            shown = sorted(shown, key=lambda o: client_mod_bridge.is_list_option(workshop_id, o.name))
         for opt in shown:
             if opt.is_header:
                 label_text = opt.label.strip()
@@ -407,9 +420,60 @@ class ModConfigDialog(QDialog):
 
         current = dict(current_value) if isinstance(current_value, dict) else {}
         picker = ClientModPicker(self.page, current, read_only=self.read_only)
+        picker.configure_requested.connect(self._configure_client_mod)
         layout.addWidget(picker)
-        self.raw_widgets[opt.name] = ("client_mods", {"picker": picker, "current": current})
+        # edited：本窗口里通过"设置"改过的服务器设置（Mod ID -> config），"应用"前不写入
+        self.raw_widgets[opt.name] = ("client_mods", {"picker": picker, "current": current, "edited": {}})
         return row
+
+    def _configure_client_mod(self, key: str) -> None:
+        """编辑某个被转换的客户端 Mod 的服务器设置：复用本配置窗口（嵌入模式），结果先记在 edited 里。"""
+        _kind, data = self.raw_widgets[client_mod_bridge.LIST_OPTION]
+        info = (getattr(self.page, "_mod_infos", {}) or {}).get(key)
+        if info is None:
+            return
+        previous = data["current"].get(key) if isinstance(data["current"].get(key), dict) else {}
+        base = data["edited"].get(key)
+        if base is None and isinstance(previous.get("config"), dict):
+            base = previous["config"]
+        paths = dict(getattr(self.page, "_mod_paths", {}) or {})
+        platform, wegame_dir = self.page._resolve_mod_folder_args(self.page.get_cluster())
+        folder = paths.get(key) or find_mod_folder(key, platform, wegame_dir)
+
+        def work():
+            # 整份解析与汉化同普通配置窗口；新勾选、还没有记录的按游戏规则生成初始值
+            _resolve_mod_config(self.page, key, info)
+            if base is not None or folder is None:
+                return dict(base or {})
+            entry = client_mod_bridge.build_entry(key, folder, previous)
+            return dict((entry or {}).get("config") or {})
+
+        def done(config: dict) -> None:
+            QApplication.restoreOverrideCursor()
+            self.setEnabled(True)
+            if not self.isVisible():
+                return
+            name = data["picker"]._names.get(key, key)
+
+            def applied(values: dict) -> None:
+                data["edited"][key] = values
+
+            entry = ModEntry(workshop_id=key, enabled=True, configuration_options=config)
+            dialog = ModConfigDialog(self.page, key, entry, info, parent=self, on_applied=applied,
+                                     show_all_options=True, banner_text=t("mod.bridge_config_banner", name=name))
+            dialog.setWindowTitle(t("mod.bridge_config_title", name=name))
+            dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            dialog.show()
+
+        def error(exc: Exception) -> None:
+            QApplication.restoreOverrideCursor()
+            self.setEnabled(True)
+            dialogs.show_error(self, t("mod.bridge_title"),
+                               t("mod.bridge_apply_failed", detail=f"{type(exc).__name__}: {exc}"))
+
+        self.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        run_async(work, done, error)
 
     # ── Configs Extended 风格的集合/数组/字典/文本编辑器 ────────────────
     def _render_raw_value_editor(self, opt, current_value) -> QWidget:
@@ -544,8 +608,14 @@ class ModConfigDialog(QDialog):
 
     def _read_raw_widget_value(self, kind: str, data: dict) -> Any:
         if kind == "client_mods":
-            # 已有的记录先原样带上，新勾选的先占位；"应用"时统一重新生成
-            return {key: data["current"].get(key) or {} for key in data["picker"].selected()}
+            # 已有的记录先原样带上，新勾选的先占位，改过的设置覆盖进去；"应用"时统一重新生成（保留有效值）
+            result = {}
+            for key in data["picker"].selected():
+                entry = dict(data["current"].get(key) or {})
+                if key in data["edited"]:
+                    entry["config"] = dict(data["edited"][key])
+                result[key] = entry
+            return result
         if kind == "text":
             return data["edit"].text()
         if kind == "dict":
@@ -689,6 +759,10 @@ class ModConfigDialog(QDialog):
 
     def _finish_apply(self, values: dict) -> None:
         self.mod.configuration_options.update(values)
+        if self._on_applied is not None:
+            self._on_applied(dict(self.mod.configuration_options))
+            self.close()
+            return
         if self.default_mode:
             # 默认配置不进存档，只保存到 DSTCamp 并与游戏全局配置同步
             self.page._save_default_config(self.workshop_id, self.mod.configuration_options)
