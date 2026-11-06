@@ -7,6 +7,7 @@
 import ctypes
 import html
 import ipaddress
+import logging
 import os
 import re
 import shutil
@@ -2364,6 +2365,7 @@ class LocalServicePage(Page):
             self._remind_worldgate_disabled(cluster)
         if not self._confirm_outdated_mods(cluster):
             return False
+        self._refresh_client_mod_bridge(cluster)
         if not restarting and not self._prepare_legacy_mods_for_start(cluster):
             return False
         candidate_claims, issues = collect_cluster_port_claims(cluster, target_names)
@@ -2572,6 +2574,25 @@ class LocalServicePage(Page):
         """开服程序实际读取的 mods 目录：独立专服或游戏客户端安装目录下的 mods。"""
         # 只用页面已探测到的结果：预检不应触发设置迁移等写操作。
         return self._runtime.mods_dir if self._runtime else None
+
+    def _refresh_client_mod_bridge(self, cluster) -> None:
+        """「客户端Mod转为服务器Mod」：按本机当前版本和配置重写 client_mods_list，相当于替用户在游戏建服界面
+        点一次"创建"；否则被转换的 Mod 更新后记录的版本过时，专服没下载该 Mod 时对外报旧版本。
+        崩溃自动重启也会走这里，出错只写日志、不弹窗、不挡启动。本地存档要放在 _prepare_local_save 之后：
+        它会先把 shardindex 同步到 modoverrides.lua，专服启动后再按 modoverrides.lua 回写 shardindex。"""
+        from dstools.features.mod import client_mod_bridge
+        from dstools.features.mod.parser import find_mod_folder, resolve_wegame_client_mods_dir
+        platform = cluster.platform
+        wegame_dir = resolve_wegame_client_mods_dir(platform)
+        try:
+            changed = client_mod_bridge.refresh_cluster(
+                cluster, lambda key: find_mod_folder(key, platform, wegame_dir))
+        except Exception:
+            logging.getLogger(__name__).exception("开服前刷新客户端 Mod 转换列表失败：%s", cluster.path)
+            return
+        if changed:
+            logging.getLogger(__name__).info("开服前已刷新客户端 Mod 转换列表：%s %s", cluster.name, changed)
+            self.ctx.cluster_config_saved.emit(cluster)
 
     def _remind_worldgate_disabled(self, cluster) -> None:
         """新增的世界只能靠万界之门进入：存档里有这种世界、万界之门却被关掉时轻提示一下，不挡启动

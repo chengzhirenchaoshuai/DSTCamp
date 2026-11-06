@@ -1210,6 +1210,13 @@ STRINGS = {
         "mod.dynamic_option": "由模组内部逻辑动态生成，无法在此编辑，请在游戏内修改",
         "mod.no_choices": "未声明可选值，请在游戏内修改",
         "mod.table_value": "表（{count} 项）",
+        "mod.bridge_title": "转为服务器模组的客户端模组",
+        "mod.bridge_desc": "勾选的客户端模组会加入服务器模组列表，玩家进服时自动下载启用，专服本身不加载。"
+                           "每个模组记录本机的版本号和默认配置（玩家自己改过的设置优先），"
+                           "每次由 DSTCamp 开服前按本机当前版本自动刷新。只列出本机已安装的纯客户端模组。",
+        "mod.bridge_not_installed": "{mod_id}（本机未安装，保留原记录）",
+        "mod.bridge_none": "本机没有已安装的纯客户端模组。",
+        "mod.bridge_apply_failed": "生成客户端模组记录失败：{detail}",
         "mod.add_value_btn": "+ 新增",
         "mod.unsupported_schema": "⚠ 该模组的配置定义格式比较特殊（例如依赖翻译表或游戏内部函数），本工具暂不支持解析，请在游戏内的 Mod 配置菜单中修改设置。开启/关闭该模组不受影响。",
         "mod.dynamic_banner": "⚠ 有 {count} 项设置由模组内部逻辑动态生成，已尝试自动解析但未成功，无法在此编辑，请在游戏内修改。",
@@ -3073,6 +3080,15 @@ STRINGS = {
         "mod.dynamic_option": "Computed by the mod's own logic, can't edit here -- change it in-game",
         "mod.no_choices": "No selectable values declared -- change it in-game",
         "mod.table_value": "Table ({count} entries)",
+        "mod.bridge_title": "Client mods converted to server mods",
+        "mod.bridge_desc": "Checked client mods are added to the server mod list: players download and enable them "
+                           "automatically on joining, while the dedicated server itself doesn't load them. Each entry "
+                           "records this PC's version and default settings (a player's own settings take priority), "
+                           "refreshed from the installed version every time DSTCamp starts the server. Only client-only "
+                           "mods installed on this PC are listed.",
+        "mod.bridge_not_installed": "{mod_id} (not installed on this PC, entry kept)",
+        "mod.bridge_none": "No client-only mods are installed on this PC.",
+        "mod.bridge_apply_failed": "Couldn't build the client mod entries: {detail}",
         "mod.add_value_btn": "+ Add",
         "mod.unsupported_schema": "⚠ This mod defines its configuration in an unusual format (e.g. relying on translation tables or in-game engine functions) that this tool can't parse yet -- please change its settings from the in-game Mod Configuration menu instead. Enabling/disabling this mod is not affected.",
         "mod.dynamic_banner": "⚠ {count} setting(s) are computed by the mod's own logic; automatic resolution was attempted but didn't succeed, so they can't be edited here -- please change them in-game.",

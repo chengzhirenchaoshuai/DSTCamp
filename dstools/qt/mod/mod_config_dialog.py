@@ -9,11 +9,12 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 from dstools.features.mod import chs_translation
+from dstools.features.mod import client_mod_bridge
 from dstools.features.mod.cache import load_cached_result, save_result
 from dstools.features.mod.config_memory import recall_for, same_value
 from dstools.features.mod.parser import (
@@ -224,7 +225,10 @@ class ModConfigDialog(QDialog):
                 self._search_items.append((header_box, "", True))
                 continue
             real_options += 1
-            if opt.is_set_config or opt.is_array_config or opt.is_text_config or opt.is_dictionary_config:
+            if not default_mode and client_mod_bridge.is_list_option(workshop_id, opt.name):
+                current_value = mod.configuration_options.get(opt.name, opt.default)
+                widget = self._render_client_mods_editor(opt, current_value)
+            elif opt.is_set_config or opt.is_array_config or opt.is_text_config or opt.is_dictionary_config:
                 current_value = mod.configuration_options.get(opt.name, opt.default)
                 widget = self._render_raw_value_editor(opt, current_value)
             else:
@@ -387,6 +391,34 @@ class ModConfigDialog(QDialog):
                     break
             widget.setVisible(not needle or any_match)
 
+    # ── 「客户端Mod转为服务器Mod」的客户端 Mod 勾选列表 ────────────────
+    def _render_client_mods_editor(self, opt, current_value) -> QWidget:
+        """列出本机已安装的纯客户端 Mod 供勾选（代替游戏建服界面里的勾选框）。勾选结果先只记 Mod ID，
+        version/config 在"应用"时后台生成（见 _apply）。"""
+        row, layout = self._option_card()
+        header = QLabel(t("mod.bridge_title"))
+        header.setFont(theme.font("FONT_SIZE_MD", bold=True))
+        layout.addWidget(header)
+        layout.addWidget(self._desc_label(t("mod.bridge_desc")))
+
+        current = dict(current_value) if isinstance(current_value, dict) else {}
+        infos = getattr(self.page, "_mod_infos", {}) or {}
+        names = {key: (info.name or key) for key, info in infos.items() if client_mod_bridge.is_eligible(info)}
+        # 已在列表里、本机却没装（或已不是纯客户端 Mod）的也列出来，保留原记录，取消勾选才删除
+        missing = [key for key in current if key not in names]
+        checks: dict[str, QCheckBox] = {}
+        for key in sorted(names, key=lambda k: str(names[k]).casefold()) + missing:
+            text = f"{names[key]}  ({key})" if key in names else t("mod.bridge_not_installed", mod_id=key)
+            box = QCheckBox(text)
+            box.setChecked(key in current)
+            box.setEnabled(not self.read_only)
+            layout.addWidget(box)
+            checks[key] = box
+        if not checks:
+            layout.addWidget(self._desc_label(t("mod.bridge_none")))
+        self.raw_widgets[opt.name] = ("client_mods", {"checks": checks, "current": current})
+        return row
+
     # ── Configs Extended 风格的集合/数组/字典/文本编辑器 ────────────────
     def _render_raw_value_editor(self, opt, current_value) -> QWidget:
         row, layout = self._option_card()
@@ -519,6 +551,9 @@ class ModConfigDialog(QDialog):
         return []
 
     def _read_raw_widget_value(self, kind: str, data: dict) -> Any:
+        if kind == "client_mods":
+            # 已有的记录先原样带上，新勾选的先占位；"应用"时统一重新生成
+            return {key: data["current"].get(key) or {} for key, box in data["checks"].items() if box.isChecked()}
         if kind == "text":
             return data["edit"].text()
         if kind == "dict":
@@ -537,6 +572,11 @@ class ModConfigDialog(QDialog):
         self._fill_raw_widget(kind, data, opt.default)
 
     def _fill_raw_widget(self, kind: str, data: dict, value: Any) -> None:
+        if kind == "client_mods":
+            selected = value if isinstance(value, dict) else {}
+            for key, box in data["checks"].items():
+                box.setChecked(key in selected)
+            return
         if kind == "text":
             data["edit"].setText("" if value is None else str(value))
             return
@@ -625,7 +665,40 @@ class ModConfigDialog(QDialog):
         return str(value)
 
     def _apply(self) -> None:
-        self.mod.configuration_options.update(self._collect_values())
+        values = self._collect_values()
+        option = client_mod_bridge.LIST_OPTION
+        if self.default_mode or self.raw_widgets.get(option, ("",))[0] != "client_mods":
+            self._finish_apply(values)
+            return
+        # 客户端 Mod 转换列表：按游戏里点"创建"时的规则重新生成 version/config。可能要跑沙箱，放后台
+        paths = dict(getattr(self.page, "_mod_paths", {}) or {})
+        platform, wegame_dir = self.page._resolve_mod_folder_args(self.page.get_cluster())
+
+        def lookup(key: str):
+            return paths.get(key) or find_mod_folder(key, platform, wegame_dir)
+
+        selected = values[option]
+        self.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+
+        def done(fresh: dict) -> None:
+            QApplication.restoreOverrideCursor()
+            self.setEnabled(True)
+            if not self.isVisible():  # 生成期间窗口被关掉：当作放弃这次修改
+                return
+            values[option] = fresh
+            self._finish_apply(values)
+
+        def error(exc: Exception) -> None:
+            QApplication.restoreOverrideCursor()
+            self.setEnabled(True)
+            dialogs.show_error(self, t("mod.bridge_title"),
+                               t("mod.bridge_apply_failed", detail=f"{type(exc).__name__}: {exc}"))
+
+        run_async(lambda: client_mod_bridge.refresh_list(selected, lookup), done, error)
+
+    def _finish_apply(self, values: dict) -> None:
+        self.mod.configuration_options.update(values)
         if self.default_mode:
             # 默认配置不进存档，只保存到 DSTCamp 并与游戏全局配置同步
             self.page._save_default_config(self.workshop_id, self.mod.configuration_options)
