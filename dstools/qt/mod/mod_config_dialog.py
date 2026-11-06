@@ -9,8 +9,8 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
+    QVBoxLayout, QWidget,
 )
 
 from dstools.features.mod import chs_translation
@@ -23,6 +23,7 @@ from dstools.features.mod.parser import (
 from dstools.features.mod.sandbox_apply import apply_full_sandbox_result
 from dstools.i18n import t
 from dstools.qt import dialogs
+from dstools.qt.mod.client_mod_picker import ClientModPicker
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import Card
@@ -402,21 +403,9 @@ class ModConfigDialog(QDialog):
         layout.addWidget(self._desc_label(t("mod.bridge_desc")))
 
         current = dict(current_value) if isinstance(current_value, dict) else {}
-        infos = getattr(self.page, "_mod_infos", {}) or {}
-        names = {key: (info.name or key) for key, info in infos.items() if client_mod_bridge.is_eligible(info)}
-        # 已在列表里、本机却没装（或已不是纯客户端 Mod）的也列出来，保留原记录，取消勾选才删除
-        missing = [key for key in current if key not in names]
-        checks: dict[str, QCheckBox] = {}
-        for key in sorted(names, key=lambda k: str(names[k]).casefold()) + missing:
-            text = f"{names[key]}  ({key})" if key in names else t("mod.bridge_not_installed", mod_id=key)
-            box = QCheckBox(text)
-            box.setChecked(key in current)
-            box.setEnabled(not self.read_only)
-            layout.addWidget(box)
-            checks[key] = box
-        if not checks:
-            layout.addWidget(self._desc_label(t("mod.bridge_none")))
-        self.raw_widgets[opt.name] = ("client_mods", {"checks": checks, "current": current})
+        picker = ClientModPicker(self.page, current, read_only=self.read_only)
+        layout.addWidget(picker)
+        self.raw_widgets[opt.name] = ("client_mods", {"picker": picker, "current": current})
         return row
 
     # ── Configs Extended 风格的集合/数组/字典/文本编辑器 ────────────────
@@ -553,7 +542,7 @@ class ModConfigDialog(QDialog):
     def _read_raw_widget_value(self, kind: str, data: dict) -> Any:
         if kind == "client_mods":
             # 已有的记录先原样带上，新勾选的先占位；"应用"时统一重新生成
-            return {key: data["current"].get(key) or {} for key, box in data["checks"].items() if box.isChecked()}
+            return {key: data["current"].get(key) or {} for key in data["picker"].selected()}
         if kind == "text":
             return data["edit"].text()
         if kind == "dict":
@@ -573,9 +562,7 @@ class ModConfigDialog(QDialog):
 
     def _fill_raw_widget(self, kind: str, data: dict, value: Any) -> None:
         if kind == "client_mods":
-            selected = value if isinstance(value, dict) else {}
-            for key, box in data["checks"].items():
-                box.setChecked(key in selected)
+            data["picker"].set_selected(value if isinstance(value, dict) else {})
             return
         if kind == "text":
             data["edit"].setText("" if value is None else str(value))
