@@ -178,6 +178,9 @@ class ModConfigDialog(QDialog):
         search.setClearButtonEnabled(True)
         search.textChanged.connect(self._apply_search)
         root.addWidget(search)
+        # 「客户端Mod转为服务器Mod」只有两三项，勾选列表自带搜索框，两个搜索框并排容易混淆
+        if not default_mode and workshop_id == client_mod_bridge.CONVERTER_ID:
+            search.setVisible(False)
 
         area = QScrollArea()
         area.setObjectName("modConfigArea")
