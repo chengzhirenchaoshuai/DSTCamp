@@ -108,25 +108,45 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.1 changes
+## 1.9.2 changes
 
 ### ✨ New features
 
+- **Mod world generation options are now adjustable**: the world generation options of Sakura Forest, Island Adventures Shipwrecked and Above the Clouds (including the three-in-one Mod) used to be view-only; their values are now registered from each Mod's source, matching the game.
+
+### 🐞 Fixes
+
+All of these now match the game:
+
+- Global, event, adventurer and other vanilla settings only follow the master world: they used to be decided by world type, so a Caves master world had no global settings while a Forest or Shipwrecked secondary world showed them.
+- With Above the Clouds enabled, seasons, events, spawn mode and other vanilla settings only show when the Forest is the master world.
+- Above the Clouds' temperate, humid and lush seasons follow the master world: they used to show only for Porkland, so with the three-in-one Mod they appeared in no world at all.
+- Loading a world preset skips vanilla settings hidden by enabled Mods and lists them in the notice.
+- Shipwrecked worlds gain missing settings (junkyard, nightmare werepig and more); volcano island items such as coffee bushes and obsidian also show in Shipwrecked worlds and follow the volcano island toggle.
+- New Shipwrecked worlds have the volcano island disabled by default.
+- New Porkland worlds with Island Adventures enabled have DST boats enabled and IA boats and drowning disabled; existing worlds missing these show the values actually in effect instead of the opposite.
+- Krampus, butterflies, berry bushes, treeguards, fish shoals and others use Island Adventures' icons in Shipwrecked and Volcano worlds.
+- Settings of a Mod installed only in the dedicated server's mods folder had no icons in World Settings.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.1)</strong></summary>
+
+### 1.9.1
+
+#### ✨ New features
+
 - **Support for "Client Mods to Server Mods" (3486375086)**: pick the client mods to convert right in DSTCamp's Mod settings (previously only possible in the game's host screen), and edit each one's server settings separately; before DSTCamp starts a server (including auto-restart), each mod's version is refreshed and option changes from mod updates are handled.
 
-### ✨ Improvements
+#### ✨ Improvements
 
 - Saving Mods, world settings, room settings, the token, admins or the blocklist while a world is running now says the change takes effect after a restart, with "Restart Now" or "Later" (Later is the default, so online players aren't kicked by accident); saving Mods no longer shows two dialogs in a row.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - Changes to world configuration (server.ini) made while the world was running were overwritten on shutdown: saving is now blocked while it runs, with a prompt to stop that world first, and the form reverts to the values on disk.
 - Mods that declare an empty options table and fill it in later (such as 景熹家居, 田园物语 and 星璃) showed as having no settings.
 - Mods whose options table is assigned from a variable or expression (such as Moving Box and Louise) showed as having no settings.
 - The list of mods selected in "Client Mods to Server Mods" was cleared after saving or applying a configuration set.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.0)</strong></summary>
 
 ### 1.9.0
 
