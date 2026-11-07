@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from dstools.features.world.catalog_resolver import (  # noqa: E402
     IA_SHIPWRECKED_VANILLA_KEYS,
     IA_VOLCANO_VANILLA_KEYS,
+    MASTER_ONLY_VANILLA_KEYS,
     resolve_vanilla_settings,
 )
 from dstools.features.world.creation import (  # noqa: E402
@@ -311,16 +312,20 @@ def test_island_vanilla_catalogs() -> None:
         **resolve_vanilla_settings(SHIPWRECKED_LOCATION, False),
     }
     volcano = {
+        **resolve_vanilla_settings(VOLCANO_LOCATION, True, is_master_world=False),
+        **resolve_vanilla_settings(VOLCANO_LOCATION, False, is_master_world=False),
+    }
+    volcano_master = {
         **resolve_vanilla_settings(VOLCANO_LOCATION, True),
         **resolve_vanilla_settings(VOLCANO_LOCATION, False),
     }
-    # shipwrecked 是 Master，show_global=True：白名单 + world=nil 的
-    # global/events/survivor 全局项都要显示。
+    # 主世界：白名单 + world=nil 的仅主世界项（global/events/survivor 等）
     assert IA_SHIPWRECKED_VANILLA_KEYS <= set(shipwrecked)
     assert {"day", "ghostenabled", "krampus", "specialevent", "autumn"} <= set(shipwrecked)
     assert "crow_carnival" in shipwrecked and "extrastartingitems" in shipwrecked
-    # volcano 是 Caves，show_global=False：只显示白名单。
+    # 从世界只显示白名单；同一个火山放到主世界也显示全局项（游戏只看是不是第一个世界）
     assert set(volcano) == IA_VOLCANO_VANILLA_KEYS
+    assert set(volcano_master) == IA_VOLCANO_VANILLA_KEYS | MASTER_ONLY_VANILLA_KEYS
 
 
 def test_every_registered_mod_has_verified_version() -> None:

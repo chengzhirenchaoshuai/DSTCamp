@@ -403,18 +403,19 @@ def localized_name(names: dict) -> str:
 _localized = localized_name
 
 
-def _get_settings(location: str, is_rule: bool):
-    """按地点/类型取对应的设置字典。"""
+def _get_settings(location: str, is_rule: bool, is_master_world: bool = True):
+    """按地点/类型/是否主世界取对应的设置字典。"""
     from dstools.features.world.catalog_resolver import resolve_vanilla_settings
-    return resolve_vanilla_settings(location, is_rule)
+    return resolve_vanilla_settings(location, is_rule, is_master_world)
 
 
-def get_setting_info(key: str, location: str = "forest", mod_settings: dict | None = None):
+def get_setting_info(key: str, location: str = "forest", mod_settings: dict | None = None,
+                     is_master_world: bool = True):
     """取设置的 (category, is_rule, name)：依次查原版规则表、生成表、已启用 Mod 的登记；
-    都没有返回 ("other", False, key)（未登记 key 不显示）。
+    都没有返回 ("other", False, key)（未登记 key 不显示）。仅主世界的原版项在从世界算作未登记。
     """
     from dstools.features.world.catalog_resolver import resolve_setting_info
-    return resolve_setting_info(key, location, mod_settings)
+    return resolve_setting_info(key, location, mod_settings, is_master_world)
 
 
 # 官方 customize.lua 中各设置的 order（分类内排序的权威来源）；没有 order 的按显示名排序（见 get_order_key）
@@ -469,14 +470,15 @@ def get_order_key(key: str, name: str, location: str = "forest",
 
 
 
-def get_categories(location: str, setting_type: str, mod_categories=None) -> list[tuple[str, str]]:
+def get_categories(location: str, setting_type: str, mod_categories=None,
+                   is_master_world: bool = True) -> list[tuple[str, str]]:
     """取指定地点和设置类型的分类列表。
 
     Mod 分类（get_mod_categories() 的结果）排在最前面并保持给定顺序，便于用户找到 Mod 新增的
     设置；分类是否显示由调用方按实际条目过滤。
     """
     from dstools.features.world.catalog_resolver import resolve_vanilla_categories
-    raw = resolve_vanilla_categories(location, setting_type)
+    raw = resolve_vanilla_categories(location, setting_type, is_master_world)
     cats = [(key, _localized(names)) for key, names in mod_categories] if mod_categories else []
     cats.extend((key, _localized(names)) for key, names in raw)
     return cats

@@ -1231,8 +1231,13 @@ def test_world_catalog_layers_are_isolated():
     from dstools.features.world.categories import FOREST_RULES_DICT, get_setting_info
 
     assert "specialevent" in FOREST_RULES_DICT
+    # 仅主世界的原版项跟着主世界走，与世界类型无关：洞穴做主世界时显示、做从世界时不显示
     for key in ("day", "basicresource_regrowth", "roads"):
-        assert get_setting_info(key, "cave")[0] == "other"
+        assert get_setting_info(key, "cave", is_master_world=False)[0] == "other"
+    assert get_setting_info("day", "cave")[0] == "global"
+    assert get_setting_info("roads", "cave")[0] == "other"
+    assert get_setting_info("day", "forest", is_master_world=False)[0] == "other"
+    assert get_setting_info("day", "porkland", is_master_world=False)[0] == "other"
     assert "specialevent" not in resolve_vanilla_settings("porkland", True)
     assert "day" in resolve_vanilla_settings("porkland", True)
     assert "butterfly" in resolve_vanilla_settings("porkland", True)

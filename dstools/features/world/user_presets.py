@@ -170,13 +170,15 @@ def split_overrides(overrides: dict, location: str, mod_settings: dict | None = 
     return settings, worldgen, sorted(unknown)
 
 
-def applicable_overrides(overrides: dict, location: str, mod_settings: dict | None = None) -> tuple[dict, list[str]]:
-    """套用预设时能改的取值与跳过的 key：当前世界类型未登记的 key 与只读的 Mod 项不套用。"""
+def applicable_overrides(overrides: dict, location: str, mod_settings: dict | None = None,
+                         is_master_world: bool = True) -> tuple[dict, list[str]]:
+    """套用预设时能改的取值与跳过的 key：当前世界未登记的 key（含从世界里仅主世界的原版项）与只读的
+    Mod 项不套用。"""
     from dstools.features.world.value_sets import is_mod_readonly
 
     values, skipped = {}, []
     for key, value in overrides.items():
-        category, _, _ = get_setting_info(key, location, mod_settings)
+        category, _, _ = get_setting_info(key, location, mod_settings, is_master_world)
         if category == "other" or is_mod_readonly(key, mod_settings):
             skipped.append(key)
         else:

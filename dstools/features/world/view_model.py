@@ -77,7 +77,7 @@ def build_world_view_model(
             seen_keys.add(override.key)
             continue
         category, is_rule, name = get_setting_info(
-            override.key, location, visible_mod_settings,
+            override.key, location, visible_mod_settings, is_master_world,
         )
         override.name = name or override.key
         seen_keys.add(override.key)
@@ -87,7 +87,7 @@ def build_world_view_model(
 
     def add_builtin_defaults(is_rule: bool, target: dict) -> None:
         # 存档里没有的原版设置补"默认"占位，世界生成也显示完整的资源/刷新点列表（Mod 世界同样原版 + Mod 混排）
-        for key, (category, name) in _get_settings(location, is_rule).items():
+        for key, (category, name) in _get_settings(location, is_rule, is_master_world).items():
             if key in seen_keys or key in hidden_vanilla:
                 continue
             target.setdefault(category, []).append(
@@ -121,6 +121,6 @@ def build_world_view_model(
         location=location,
         rules_by_category=rules_by_category,
         generation_by_category=generation_by_category,
-        rule_categories=get_categories(location, "rules", mod_categories or []),
-        generation_categories=get_categories(location, "generation", mod_categories or []),
+        rule_categories=get_categories(location, "rules", mod_categories or [], is_master_world),
+        generation_categories=get_categories(location, "generation", mod_categories or [], is_master_world),
     )
