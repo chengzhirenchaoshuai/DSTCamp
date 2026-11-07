@@ -355,6 +355,24 @@ def test_bwb_hides_and_reorders_patched_vanilla_settings() -> None:
     assert creature_keys[0] == "rocky_setting"
 
 
+def test_shipwrecked_volcano_island_options_follow_toggle() -> None:
+    settings = get_mod_world_settings({IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID}, SHIPWRECKED_LOCATION, True)
+
+    def visible(overrides):
+        view = build_world_view_model(WorldPreset(location=SHIPWRECKED_LOCATION, overrides=overrides), settings)
+        return {row.key for grouped in (view.rules_by_category, view.generation_by_category)
+                for rows in grouped.values() for row in rows}
+
+    island_keys = {"coffeebush", "dragoon", "daywalker", "magmarock_regrowth"}
+    # 缺 volcanoisland 时 IA 照样生成火山岛，火山岛的项要显示；源码扩展进海难的原版项也要有
+    assert island_keys | {"junkyard", "daywalker2"} <= visible([])
+    assert island_keys <= visible([WorldOverride("volcanoisland", "always")])
+    # 显式禁用时同游戏一样隐藏，存档里已有的值原样保留
+    kept = WorldOverride("coffeebush", "often")
+    assert not island_keys & visible([WorldOverride("volcanoisland", "none"), kept])
+    assert kept.value == "often"
+
+
 def test_island_creation_defaults_are_complete() -> None:
     """回归真实报错：火山没有 task_set 时 Level:ChooseTasks 会直接断言。"""
     for location, required in ISLAND_REQUIRED_OVERRIDES.items():

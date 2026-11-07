@@ -9,8 +9,8 @@ from dstools.features.world.categories import get_setting_info, localized_name
 from dstools.features.world.location_profiles import get_location_definition
 from dstools.features.world.mod_icons import resolve_mod_setting_icons
 from dstools.features.world.mod_settings import (
-    MOD_DISPLAY_NAMES, MOD_VERIFIED_VERSIONS, filter_mod_world_settings, get_mod_categories,
-    get_mod_world_settings, is_verified_version,
+    MOD_DISPLAY_NAMES, MOD_VERIFIED_VERSIONS, VOLCANO_ISLAND_KEY, filter_mod_world_settings,
+    get_mod_categories, get_mod_world_settings, is_verified_version,
 )
 from dstools.features.mod.shardindex import ShardIndexError
 from dstools.features.world.local_options import load_local_overrides, save_local_overrides
@@ -140,11 +140,20 @@ def find_unverified_mods(mod_settings: dict, platform,
     return result
 
 
-def step_rule_value(data: WorldPageData, key: str, delta: int, is_rule: bool = True) -> None:
+def step_rule_value(data: WorldPageData, key: str, delta: int, is_rule: bool = True) -> bool:
     """把设置取值前/后移一格（两端钳制不绕回，与游戏一致）；``is_rule=False`` 为世界生成项。
 
     存档已有该 key 直接改；没有（刚启用的 Mod、游戏未写过的设置）则从其初始值起移动，转为会被保存的 WorldOverride。
+    返回 True 表示显示的项有变化（如切换了火山岛），已重新生成分类列表，调用方需要重新填充面板。
     """
+    _step_value(data, key, delta, is_rule)
+    if key == VOLCANO_ISLAND_KEY:
+        rebuild_view(data)
+        return True
+    return False
+
+
+def _step_value(data: WorldPageData, key: str, delta: int, is_rule: bool) -> None:
     preset = data.preset
     values = get_value_set(key, data.mod_settings, location=data.location, is_rule=is_rule)
     override = next((o for o in preset.overrides if o.key == key), None)
@@ -223,12 +232,17 @@ def apply_preset_values(data: WorldPageData, overrides: dict) -> tuple[list[str]
             preset.overrides.append(override)
             current[key] = override
             changed.append(key)
+    rebuild_view(data)
+    return changed, sorted(skipped)
+
+
+def rebuild_view(data: WorldPageData) -> None:
+    """按当前取值重新生成分类列表（显示哪些项取决于取值时调用，如海难的火山岛开关）。"""
     view_model = build_world_view_model(
-        preset, data.mod_settings, data.mod_categories, is_master_world=data.shard_name == "Master")
+        data.preset, data.mod_settings, data.mod_categories, is_master_world=data.shard_name == "Master")
     data.rules_by_category, data.rule_categories = view_model.rules_by_category, view_model.rule_categories
     data.generation_by_category = view_model.generation_by_category
     data.generation_categories = view_model.generation_categories
-    return changed, sorted(skipped)
 
 
 def save_world_page(data: WorldPageData) -> None:

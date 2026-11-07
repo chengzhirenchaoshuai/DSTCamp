@@ -10,7 +10,11 @@ from dstools.features.world.categories import (
     localized_name,
 )
 from dstools.features.world.reader import WorldOverride, WorldPreset
-from dstools.features.world.mod_settings import get_mod_vanilla_world_patches
+from dstools.features.world.mod_settings import (
+    VOLCANO_ISLAND_KEY,
+    get_mod_vanilla_world_patches,
+    volcano_island_hidden_keys,
+)
 
 
 @dataclass
@@ -48,6 +52,14 @@ def build_world_view_model(
     hidden_vanilla, rule_order, generation_order = get_mod_vanilla_world_patches(
         visible_mod_settings, location,
     )
+    # 海难关闭火山岛时同游戏一样隐藏火山岛的项；存档里已有的取值不显示但原样保留
+    island_value = next((o.value for o in preset.overrides if o.key == VOLCANO_ISLAND_KEY), None)
+    island_hidden = volcano_island_hidden_keys(location, visible_mod_settings, island_value)
+    if island_hidden:
+        hidden_vanilla = hidden_vanilla | island_hidden
+        visible_mod_settings = {
+            key: info for key, info in visible_mod_settings.items() if key not in island_hidden
+        }
     rules_by_category: dict[str, list[WorldOverride | WorldDisplayOverride]] = {}
     generation_by_category: dict[str, list[WorldOverride | WorldDisplayOverride]] = {}
     seen_keys: set[str] = set()

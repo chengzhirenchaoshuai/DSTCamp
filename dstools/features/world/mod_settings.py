@@ -685,10 +685,11 @@ _set_verified_scope(
     },
     {SHIPWRECKED_LOCATION},
 )
+# 源码 world = allshipwreckedworlds：火山世界与海难的火山岛都有，海难里关闭火山岛时隐藏（见 VOLCANO_ISLAND_OPTIONS）
 _set_verified_scope(
     IA_SHIPWRECKED_SETTINGS,
     {"rock_obsidian_regrowth", "rock_charcoal_regrowth", "volcano_shrub_regrowth", "magmarock_regrowth"},
-    {VOLCANO_LOCATION},
+    {SHIPWRECKED_LOCATION, VOLCANO_LOCATION},
 )
 _set_verified_scope(
     IA_SHIPWRECKED_SETTINGS,
@@ -718,14 +719,27 @@ _set_verified_scope(
 )
 _set_verified_scope(
     IA_SHIPWRECKED_SETTINGS,
-    {"coffeebush", "elephantcactus", "rock_obsidian", "rock_charcoal", "volcano_shrub", "dragoon"},
-    {VOLCANO_LOCATION},
-)
-_set_verified_scope(
-    IA_SHIPWRECKED_SETTINGS,
-    {"magma_rocks"},
+    {"coffeebush", "elephantcactus", "rock_obsidian", "rock_charcoal", "volcano_shrub", "dragoon", "magma_rocks"},
     {SHIPWRECKED_LOCATION, VOLCANO_LOCATION},
 )
+
+# 海难世界关闭火山岛（volcanoisland = "none"）时游戏界面隐藏的项，逐项来自 1467214795
+# modservercreationmain.lua 的 VOLCANO_ISLAND_OPTIONS（WorldSettingsMenu:GetOptions 过滤）。
+# daywalker 是原版项（vanilla_options_in_islands 注明 for volcanic island）。
+VOLCANO_ISLAND_KEY = "volcanoisland"
+VOLCANO_ISLAND_OPTIONS = frozenset({
+    "coffeebush", "elephantcactus", "rock_obsidian", "rock_charcoal", "volcano_shrub", "dragoon",
+    "daywalker", "rock_obsidian_regrowth", "rock_charcoal_regrowth", "volcano_shrub_regrowth",
+    "magmarock_regrowth",
+})
+
+
+def volcano_island_hidden_keys(location: str, mod_settings: dict, current_value) -> frozenset[str]:
+    """海难世界里火山岛设为禁用时要隐藏的设置；``current_value`` 为存档/计划里的取值，缺省为 None。
+    缺这个 key 时 IA 仍会生成火山岛（只判断 ``~= "none"``），所以只有显式 "none" 才隐藏。"""
+    if location != SHIPWRECKED_LOCATION or VOLCANO_ISLAND_KEY not in mod_settings:
+        return frozenset()
+    return VOLCANO_ISLAND_OPTIONS if current_value == "none" else frozenset()
 
 # Above the Clouds 新增条目在注册前统一补 ``world={"porkland"}``。
 _set_verified_scope(PORKLAND_SETTINGS, PORKLAND_SETTINGS, {PORKLAND_LOCATION})

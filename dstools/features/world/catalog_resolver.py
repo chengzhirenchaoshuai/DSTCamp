@@ -25,17 +25,18 @@ PORKLAND_VANILLA_KEYS = frozenset({
 # 两个集合逐项来自该 Mod 的 vanilla_options_in_islands / in_volcano。
 IA_SHIPWRECKED_VANILLA_KEYS = frozenset({
     "task_set", "start_location", "world_size", "grass", "sapling", "flowers",
-    "touchstone", "boons", "balatro", "terrariumchest", "marshbush", "reeds",
+    "touchstone", "boons", "balatro", "terrariumchest", "junkyard", "marshbush", "reeds",
     "flint", "rock", "berrybush", "mushroom", "bees", "spiders", "merm",
     "angrybees", "tallbirds", "liefs", "beequeen", "fruitfly", "klaus",
-    "spiderqueen", "eyeofterror", "lureplants", "wasps", "merms",
+    "spiderqueen", "daywalker2", "eyeofterror", "lureplants", "wasps", "merms",
+    "daywalker",
     "spiders_setting", "spider_warriors", "butterfly", "birds", "bees_setting",
     "pigs_setting", "bunnymen_setting", "grassgekkos", "regrowth",
     "flowers_regrowth", "reeds_regrowth", "lightning", "weather",
     "moles_setting", "prefabswaps_start", "twiggytrees_regrowth", "fishschools",
 })
 IA_VOLCANO_VANILLA_KEYS = frozenset({
-    "task_set", "start_location", "fruitfly", "spiderqueen", "liefs", "merms",
+    "task_set", "start_location", "fruitfly", "spiderqueen", "daywalker", "liefs", "merms",
     "spiders_setting", "spider_warriors", "bees_setting", "pigs_setting",
     "bunnymen_setting", "lightning", "weather", "regrowth", "moles_setting",
 })

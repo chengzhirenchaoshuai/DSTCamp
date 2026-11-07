@@ -497,7 +497,13 @@ class WorldSettingsPage(Page):
         # 只读兜底：不可保存时面板不显示箭头，正常点不到这里，这里再挡一道防止别的路径漏调
         if data is None or not data.can_save:
             return
-        page_data.step_rule_value(data, key, delta, is_rule=is_rule)
+        if page_data.step_rule_value(data, key, delta, is_rule=is_rule):
+            # 显示的项变了（海难切换火山岛会显示/隐藏火山岛的项），两个面板都要重填
+            self._rules.set_data(data.rule_categories, data.rules_by_category, data.location,
+                                 data.mod_settings, data.mod_icons)
+            self._generation_panel.set_data(data.generation_categories, data.generation_by_category,
+                                            data.location, data.mod_settings, data.mod_icons)
+            self._update_tab_labels()
         self._set_dirty(True)
         if not is_rule:
             self._generation_changed = True
