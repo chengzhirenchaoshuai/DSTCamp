@@ -21,6 +21,7 @@ from dstools.features.world.creation import (  # noqa: E402
     WorldShardPlan,
     WorldCreationPlan,
     create_world,
+    shard_level_data,
     validate_creation_plan,
 )
 from dstools.features.world.defaults import (  # noqa: E402
@@ -372,6 +373,27 @@ def test_shipwrecked_volcano_island_options_follow_toggle() -> None:
     kept = WorldOverride("coffeebush", "often")
     assert not island_keys & visible([WorldOverride("volcanoisland", "none"), kept])
     assert kept.value == "often"
+
+
+def test_ia_core_boats_in_porkland_match_game() -> None:
+    mods = {IA_CORE_MOD_ID, PORKLAND_MOD_ID}
+    settings = get_mod_world_settings(mods, PORKLAND_LOCATION, True)
+    keys = ("dst_boats", "ia_boats", "ia_drowning")
+
+    def shown(overrides, new_world):
+        view = build_world_view_model(WorldPreset(location=PORKLAND_LOCATION, overrides=overrides),
+                                      settings, new_world=new_world)
+        rows = {row.key: row.value for rows in view.rules_by_category.values() for row in rows}
+        return tuple(rows[key] for key in keys)
+
+    # 新建时同游戏写入界面默认值；缺项时 IA 按 IA_WORLD 处理，猪镇里正好相反
+    written = shard_level_data(default_plan_for_location(PORKLAND_LOCATION), mods)["overrides"]
+    assert tuple(written[key] for key in keys) == ("always", "none", "none")
+    assert shown([], True) == ("always", "none", "none")
+    assert shown([], False) == ("none", "always", "always")
+    # 地点默认值优先：海难仍按 sw_locations.lua 写禁用 DST 船
+    island = shard_level_data(default_plan_for_location(SHIPWRECKED_LOCATION), mods)["overrides"]
+    assert island["dst_boats"] == "none"
 
 
 def test_island_creation_defaults_are_complete() -> None:

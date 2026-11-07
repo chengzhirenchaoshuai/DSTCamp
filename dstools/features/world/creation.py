@@ -15,6 +15,7 @@ from dstools.features.world.location_profiles import (
     resolve_world_location_profile,
     with_required_dependencies,
 )
+from dstools.features.world.mod_settings import creation_defaults
 from dstools.shared.ini_parser import write_cluster_ini, write_server_ini
 from dstools.models import ClusterConfig, ShardConfig
 from dstools.shared.lua_parser import serialize_lua_table
@@ -205,14 +206,18 @@ def _write_default_server_ini(root: Path) -> None:
     )
 
 
-def shard_level_data(shard: WorldShardPlan) -> dict[str, object]:
-    """返回该世界最终写入 leveldataoverride.lua 的完整关卡数据。"""
+def shard_level_data(shard: WorldShardPlan, mod_ids=()) -> dict[str, object]:
+    """返回该世界最终写入 leveldataoverride.lua 的完整关卡数据。
+
+    ``mod_ids`` 为启用的 Mod：补上缺项时实际行为与游戏默认值不同的 Mod 设置（如猪镇的 DST 船），
+    优先级最低，地点默认值和计划里的取值都会覆盖它。"""
     # 最后一层仍合并已核对的 location 默认值，避免旧草稿、调用方手工构造
     # WorldShardPlan 或未来 UI 回归再次写出 overrides={} 的海难/火山。
     raw = get_verified_creation_level_data(shard.location)
     location_overrides = raw.pop("overrides", {})
     raw.update(copy.deepcopy(shard.level_data))
-    overrides = copy.deepcopy(location_overrides)
+    overrides = creation_defaults(mod_ids, shard.location) if mod_ids else {}
+    overrides.update(copy.deepcopy(location_overrides))
     overrides.update(copy.deepcopy(shard.overrides))
     raw.update({
         "id": shard.preset_id,
@@ -236,7 +241,7 @@ def _write_shard(
         _write_default_server_ini(root)
     else:
         write_server_ini(shard_config, root / "server.ini")
-    _write_lua(root / "leveldataoverride.lua", shard_level_data(shard))
+    _write_lua(root / "leveldataoverride.lua", shard_level_data(shard, mod_ids))
     def _mod_key(value) -> str:
         text = str(value)
         if text.startswith("workshop-") or not text.isdigit():

@@ -61,9 +61,13 @@ class ModWorldSetting:
     values: list | None  # 合法取值（按 tuning_vars 表顺序）；None 表示只读展示（目前所有已登记条目都有取值）
     mod_id: str  # 贡献这条设置的 workshop id（不带前缀）
     icon_element: str | None = None  # Mod 图集里的 Element name（含 ".tex" 后缀），None 表示没有
-    # 存档里没有该 key 时的占位值。坑：不是所有 Mod 都有 "default" 档，
-    # 如 Island Adventures 的 poison/dst_boats 等只有 "none"/"always"
+    # 游戏界面的默认值（AddCustomizeItem 的 value），游戏建服时连同其他选项一起写进存档。
+    # 坑：不是所有 Mod 都有 "default" 档，如 Island Adventures 的 poison/dst_boats 等只有 "none"/"always"
     initial_value: str = "default"
+    # location -> 存档缺这个 key 时实际生效的取值，只登记与 initial_value 不同的。游戏加载时缺项按
+    # "default" 调用 WSO（gamelogic.lua），Mod 对 "default" 的处理可能随世界类型而异；
+    # 新建世界时会把 initial_value 写进存档（见 creation_defaults），与游戏一致
+    missing_values: dict[str, str] | None = None
     # 对应 AddCustomizeItem() 的 ``world`` 字段；None 表示源码没有限制。
     locations: frozenset[str] | None = None
     # 对应官方 ``master_controlled``，只在 Master 分片显示和编辑。
@@ -204,21 +208,26 @@ IA_CORE_SETTINGS: dict[str, ModWorldSetting] = {
         name={"zh": "中毒", "en": "Poison"},
         values=["none", "always"], initial_value="always", order=25,
         icon_element="poison.tex"),
+    # 缺项时 main/worldsettings_overrides_ia.lua 的 "default" 分支按 IA_WORLD（海难/火山/猪镇）
+    # 决定：这三个世界里是禁用 DST 船、启用 IA 船和溺死，与界面默认值相反
     "dst_boats": ModWorldSetting(
         key="dst_boats", is_rule=True, mod_id=_IA_CORE_ID, group="misc",
         name={"zh": "DST船", "en": "DST Boats"},
         values=["none", "always"], initial_value="always", order=4,
-        icon_element="cookieboats.tex"),
+        icon_element="cookieboats.tex",
+        missing_values={SHIPWRECKED_LOCATION: "none", VOLCANO_LOCATION: "none", PORKLAND_LOCATION: "none"}),
     "ia_boats": ModWorldSetting(
         key="ia_boats", is_rule=True, mod_id=_IA_CORE_ID, group="misc",
         name={"zh": "IA船", "en": "IA Boats"},
         values=["none", "always"], initial_value="none", order=5,
-        icon_element="smallboats.tex"),
+        icon_element="smallboats.tex",
+        missing_values={SHIPWRECKED_LOCATION: "always", VOLCANO_LOCATION: "always", PORKLAND_LOCATION: "always"}),
     "ia_drowning": ModWorldSetting(
         key="ia_drowning", is_rule=True, mod_id=_IA_CORE_ID, group="misc",
         name={"zh": "溺死", "en": "Deadly Drowning"},
         values=["none", "always"], initial_value="none", order=6,
-        icon_element="deadlydrowning.tex"),
+        icon_element="deadlydrowning.tex",
+        missing_values={SHIPWRECKED_LOCATION: "always", PORKLAND_LOCATION: "always"}),
     "primeape_setting": ModWorldSetting(
         key="primeape_setting", is_rule=True, mod_id=_IA_CORE_ID, group="animals",
         name={"zh": "猿猴", "en": "Prime Apes"},
@@ -384,10 +393,10 @@ IA_SHIPWRECKED_SETTINGS: dict[str, ModWorldSetting] = {
     "bermudatriangle": ModWorldSetting(key="bermudatriangle", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="misc",
         name={"zh": "电光三角", "en": "Electric Isosceles"}, values=_WORLDGEN_FREQUENCY, icon_element="bermudatriangle.tex"),
     # 游戏界面默认 "none"，但 postinit/map/levels/shipwrecked.lua 只在 ``~= "none"`` 时加火山岛：
-    # 存档缺这个 key 时实际会生成火山岛，所以缺省显示为"启用"
+    # 存档缺这个 key 时实际会生成火山岛
     "volcanoisland": ModWorldSetting(key="volcanoisland", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="misc",
-        name={"zh": "火山岛", "en": "Volcanic Island"}, values=["none", "always"], initial_value="always",
-        icon_element="volcano_island.tex"),
+        name={"zh": "火山岛", "en": "Volcanic Island"}, values=["none", "always"], initial_value="none",
+        icon_element="volcano_island.tex", missing_values={SHIPWRECKED_LOCATION: "always"}),
     "sweet_potato": ModWorldSetting(key="sweet_potato", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
         name={"zh": "甘薯", "en": "Sweet Potatoes"}, values=_WORLDGEN_FREQUENCY, icon_element="sweetpotatos.tex"),
     "limpets": ModWorldSetting(key="limpets", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
@@ -734,12 +743,30 @@ VOLCANO_ISLAND_OPTIONS = frozenset({
 })
 
 
-def volcano_island_hidden_keys(location: str, mod_settings: dict, current_value) -> frozenset[str]:
-    """海难世界里火山岛设为禁用时要隐藏的设置；``current_value`` 为存档/计划里的取值，缺省为 None。
-    缺这个 key 时 IA 仍会生成火山岛（只判断 ``~= "none"``），所以只有显式 "none" 才隐藏。"""
+def volcano_island_hidden_keys(location: str, mod_settings: dict, effective_value) -> frozenset[str]:
+    """海难世界里火山岛设为禁用时要隐藏的设置；``effective_value`` 为实际生效的取值
+    （存档缺这个 key 时 IA 仍会生成火山岛，见 volcanoisland 的 missing_values）。"""
     if location != SHIPWRECKED_LOCATION or VOLCANO_ISLAND_KEY not in mod_settings:
         return frozenset()
-    return VOLCANO_ISLAND_OPTIONS if current_value == "none" else frozenset()
+    return VOLCANO_ISLAND_OPTIONS if effective_value == "none" else frozenset()
+
+
+def effective_initial_value(info: ModWorldSetting, location: str, new_world: bool) -> str:
+    """存档/计划里没有这个 key 时显示和起步的取值：新建世界会写入游戏默认值（creation_defaults），
+    已有世界则按缺项时的实际行为。"""
+    if new_world or not info.missing_values:
+        return info.initial_value
+    return info.missing_values.get(location, info.initial_value)
+
+
+def creation_defaults(mod_ids, location: str) -> dict[str, str]:
+    """新建世界时要显式写入的 Mod 默认值：缺项时实际行为与游戏默认值不同的项（游戏建服会把所有
+    选项的默认值写进存档，这里只补会造成差异的，免得改动其余写法）。优先级低于地点默认值和用户设置。"""
+    return {
+        key: info.initial_value
+        for key, info in get_mod_world_settings(mod_ids, location, True).items()
+        if info.missing_values and info.missing_values.get(location, info.initial_value) != info.initial_value
+    }
 
 # Above the Clouds 新增条目在注册前统一补 ``world={"porkland"}``。
 _set_verified_scope(PORKLAND_SETTINGS, PORKLAND_SETTINGS, {PORKLAND_LOCATION})

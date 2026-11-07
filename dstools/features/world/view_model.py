@@ -12,6 +12,7 @@ from dstools.features.world.categories import (
 from dstools.features.world.reader import WorldOverride, WorldPreset
 from dstools.features.world.mod_settings import (
     VOLCANO_ISLAND_KEY,
+    effective_initial_value,
     get_mod_vanilla_world_patches,
     volcano_island_hidden_keys,
 )
@@ -42,8 +43,12 @@ def build_world_view_model(
     preset: WorldPreset, mod_settings: dict,
     mod_categories: list[tuple[str, str]] | None = None,
     is_master_world: bool = True,
+    new_world: bool = False,
 ) -> WorldViewModel:
-    """按位置和已启用 Mod 补齐可展示项，并保持未保存项显式可辨。"""
+    """按位置和已启用 Mod 补齐可展示项，并保持未保存项显式可辨。
+
+    ``new_world`` 为创建向导里尚未写盘的世界：缺项的 Mod 设置显示游戏默认值（创建时会写入），
+    已有世界则显示缺项时的实际取值（见 ModWorldSetting.missing_values）。"""
     location = preset.location or "forest"
     visible_mod_settings = {
         key: info for key, info in mod_settings.items()
@@ -54,6 +59,9 @@ def build_world_view_model(
     )
     # 海难关闭火山岛时同游戏一样隐藏火山岛的项；存档里已有的取值不显示但原样保留
     island_value = next((o.value for o in preset.overrides if o.key == VOLCANO_ISLAND_KEY), None)
+    island_info = visible_mod_settings.get(VOLCANO_ISLAND_KEY)
+    if island_value is None and island_info is not None:
+        island_value = effective_initial_value(island_info, location, new_world)
     island_hidden = volcano_island_hidden_keys(location, visible_mod_settings, island_value)
     if island_hidden:
         hidden_vanilla = hidden_vanilla | island_hidden
@@ -94,7 +102,8 @@ def build_world_view_model(
             continue
         target = rules_by_category if info.is_rule else generation_by_category
         target.setdefault(info.category, []).append(
-            WorldDisplayOverride(key=key, name=localized_name(info.name), value=info.initial_value)
+            WorldDisplayOverride(key=key, name=localized_name(info.name),
+                                 value=effective_initial_value(info, location, new_world))
         )
 
     for items in rules_by_category.values():

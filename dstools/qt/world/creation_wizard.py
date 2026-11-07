@@ -749,7 +749,8 @@ class CreationWizardDialog(QDialog):
         is_master = self._shard_combo.currentText() == MASTER_SHARD
         self._active_mod_settings = filter_mod_world_settings(self._mod_settings, preset.location, is_master)
         mod_categories = get_mod_categories(self._active_mod_settings)
-        view = build_world_view_model(preset, self._active_mod_settings, mod_categories, is_master_world=is_master)
+        view = build_world_view_model(preset, self._active_mod_settings, mod_categories, is_master_world=is_master,
+                                      new_world=True)
         self._world_title_label.setText(f"{plan.name} ({plan.preset_id})")
         self._world_desc_label.setText(plan.description or "")
         if self._world_sub_tab == "rules":

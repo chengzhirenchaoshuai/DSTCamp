@@ -9,8 +9,8 @@ from dstools.features.world.categories import get_setting_info, localized_name
 from dstools.features.world.location_profiles import get_location_definition
 from dstools.features.world.mod_icons import resolve_mod_setting_icons
 from dstools.features.world.mod_settings import (
-    MOD_DISPLAY_NAMES, MOD_VERIFIED_VERSIONS, VOLCANO_ISLAND_KEY, filter_mod_world_settings,
-    get_mod_categories, get_mod_world_settings, is_verified_version,
+    MOD_DISPLAY_NAMES, MOD_VERIFIED_VERSIONS, VOLCANO_ISLAND_KEY, effective_initial_value,
+    filter_mod_world_settings, get_mod_categories, get_mod_world_settings, is_verified_version,
 )
 from dstools.features.mod.shardindex import ShardIndexError
 from dstools.features.world.local_options import load_local_overrides, save_local_overrides
@@ -165,7 +165,7 @@ def _step_value(data: WorldPageData, key: str, delta: int, is_rule: bool) -> Non
         override.value = values[max(0, min(len(values) - 1, index + delta))]
         return
     mod_info = data.mod_settings.get(key)
-    initial = mod_info.initial_value if mod_info else "default"
+    initial = effective_initial_value(mod_info, data.location, new_world=False) if mod_info else "default"
     try:
         base_index = values.index(initial)
     except ValueError:

@@ -359,6 +359,7 @@ def add_shard(cluster: Cluster, shard_name: str, plan: WorldShardPlan, used_port
     ``world_name`` 为新世界在万界之门面板上的名称，不传时按类型自动取名。
     """
     validate_new_shard(cluster, shard_name, plan)
+    effective_mods = with_required_dependencies(get_enabled_mod_ids(cluster))
     config = plan_shard_config(cluster, shard_name, used_ports)
     master = _master_shard(cluster)
 
@@ -404,7 +405,7 @@ def add_shard(cluster: Cluster, shard_name: str, plan: WorldShardPlan, used_port
     try:
         with _restore_on_error(touched):
             (temp_dir / "leveldataoverride.lua").write_text(
-                serialize_lua_table(shard_level_data(plan)) + "\n", encoding="utf-8")
+                serialize_lua_table(shard_level_data(plan, effective_mods)) + "\n", encoding="utf-8")
             _write_lua(temp_dir / "modoverrides.lua", mods_by_shard[master.name])
             write_server_ini(config, temp_dir / "server.ini")
             if new_cluster_config != cluster_config:
