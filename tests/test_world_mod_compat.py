@@ -206,11 +206,14 @@ def test_setting_location_isolation() -> None:
     assert [key for key, _ in get_mod_categories(tropical)] == [
         "mod_group_ta_worldgen", "mod_group_ta_climate",
     ]
-    # 创建向导可编辑世界生成：数字取值写回 Lua 数字，没登记取值的 Mod 生成项保持只读
+    # 创建向导可编辑世界生成：数字取值写回 Lua 数字；Mod 生成项按源码 desc 登记取值，
+    # 未写 desc 的继承组 desc（resources 组 8 档）
     multi = get_value_set("world_size_multi", tropical, location=FOREST_LOCATION, is_rule=False)
     assert typed_override_value("2", multi) == 2 and typed_override_value("never", ["never", "5"]) == "never"
     island = get_mod_world_settings({IA_SHIPWRECKED_MOD_ID}, SHIPWRECKED_LOCATION, True)
-    assert is_mod_readonly("volcano", island) and not is_mod_readonly("world_size", island)
+    assert not any(is_mod_readonly(key, island) for key in island)
+    assert len(get_value_set("sandhill", island, location=SHIPWRECKED_LOCATION, is_rule=False)) == 8
+    assert get_value_set("doydoy", island, location=SHIPWRECKED_LOCATION, is_rule=False) == ["never", "default"]
 
     # 三合一整合版与三个独立版同时启用时看到的条目一致
     standalone = {IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID}

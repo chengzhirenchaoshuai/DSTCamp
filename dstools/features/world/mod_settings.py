@@ -41,6 +41,13 @@ GROUP_TO_CATEGORY_GEN = {
     "monsters": "hostile_spawners",   # 敌对生物以及刷新点
 }
 
+# 世界生成项的取值（本体 customize.lua）：条目没写 desc 时用组的 desc（options 取 item.desc or
+# group.desc）。WORLDGEN 的 resources/animals/monsters 组为 worldgen_frequency_descriptions 8 档，
+# global/misc 组没有 desc，其中的条目都自带 desc。
+_WORLDGEN_FREQUENCY = ["never", "rare", "uncommon", "default", "often", "mostly", "always", "insane"]
+# 本体 yesno_descriptions
+_YES_NO = ["never", "default"]
+
 # Mod 用 AddCustomizeGroup 自建的组名 -> 分类标题（取自该组的 text）。组名在游戏里全局唯一。
 MOD_CUSTOM_GROUP_NAMES: dict[str, dict] = {}
 
@@ -49,9 +56,9 @@ MOD_CUSTOM_GROUP_NAMES: dict[str, dict] = {}
 class ModWorldSetting:
     """一条 mod 贡献的世界设置/生成条目。"""
     key: str
-    is_rule: bool  # True 为世界设置（可编辑），False 为世界生成（只读，与原版生成项一致）
+    is_rule: bool  # True 为世界设置（可编辑），False 为世界生成（只在重新生成世界时生效）
     name: dict  # {"zh": "...", "en": "..."}
-    values: list | None  # 合法取值（按 tuning_vars 表顺序）；None 表示只读展示
+    values: list | None  # 合法取值（按 tuning_vars 表顺序）；None 表示只读展示（目前所有已登记条目都有取值）
     mod_id: str  # 贡献这条设置的 workshop id（不带前缀）
     icon_element: str | None = None  # Mod 图集里的 Element name（含 ".tex" 后缀），None 表示没有
     # 存档里没有该 key 时的占位值。坑：不是所有 Mod 都有 "default" 档，
@@ -132,46 +139,46 @@ CHERRY_FOREST_SETTINGS: dict[str, ModWorldSetting] = {
         values=["never", "rare", "default", "often", "always"],
         icon_element="worldsettings_cherry_watchers.tex"),
 
-    # ── 世界生成（只读，跟原版生成类设置一致）──
+    # ── 世界生成（desc 为 worldgen_frequency_descriptions）──
     "cherry_trees": ModWorldSetting(
         key="cherry_trees", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "樱花树", "en": "Cherry Trees"}, values=None,
+        name={"zh": "樱花树", "en": "Cherry Trees"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_cherry_trees.tex"),
     "sapling_cherry": ModWorldSetting(
         key="sapling_cherry", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "樱花树枝", "en": "Blooming Saplings"}, values=None,
+        name={"zh": "樱花树枝", "en": "Blooming Saplings"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_sapling_cherry.tex"),
     "grass_cherry": ModWorldSetting(
         key="grass_cherry", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "樱花草丛", "en": "Blooming Grass"}, values=None,
+        name={"zh": "樱花草丛", "en": "Blooming Grass"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_grass_cherry.tex"),
     "foreststatue_rock": ModWorldSetting(
         key="foreststatue_rock", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "石化树根", "en": "Stone Roots"}, values=None,
+        name={"zh": "石化树根", "en": "Stone Roots"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_foreststatue_rock.tex"),
     "cherrytomato": ModWorldSetting(
         key="cherrytomato", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "番茄植株", "en": "Cherry Tomatoes"}, values=None,
+        name={"zh": "番茄植株", "en": "Cherry Tomatoes"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_cherrytomato.tex"),
     "bloomshrooms": ModWorldSetting(
         key="bloomshrooms", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "繁花菇", "en": "Bloomshrooms"}, values=None,
+        name={"zh": "繁花菇", "en": "Bloomshrooms"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_bloomshrooms.tex"),
     "goosebushes": ModWorldSetting(
         key="goosebushes", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "鹅莓果丛", "en": "Gooseberry Bushes"}, values=None,
+        name={"zh": "鹅莓果丛", "en": "Gooseberry Bushes"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_goosebushes.tex"),
     "honeyvines": ModWorldSetting(
         key="honeyvines", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "翠蜂巢", "en": "Ivyscus Hives"}, values=None,
+        name={"zh": "翠蜂巢", "en": "Ivyscus Hives"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_honeyvines.tex"),
     "rosebushes": ModWorldSetting(
         key="rosebushes", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="resources",
-        name={"zh": "野玫瑰丛", "en": "Wild Rose Bushes"}, values=None,
+        name={"zh": "野玫瑰丛", "en": "Wild Rose Bushes"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_rosebushes.tex"),
     "watchernests": ModWorldSetting(
         key="watchernests", is_rule=False, mod_id=_CHERRY_FOREST_ID, group="monsters",
-        name={"zh": "守护者巢穴", "en": "Watcher Nests"}, values=None,
+        name={"zh": "守护者巢穴", "en": "Watcher Nests"}, values=_WORLDGEN_FREQUENCY,
         icon_element="worldgen_watchernests.tex"),
 }
 
@@ -179,7 +186,7 @@ CHERRY_FOREST_SETTINGS: dict[str, ModWorldSetting] = {
 # workshop-1467214795 == Island Adventures - Shipwrecked（岛屿冒险 - 海难，硬依赖 Core）
 # 来源（content/322330/<id>/）：
 #   - key/category：各自 modservercreationmain.lua 的 ia_settings_customize_table（可编辑）
-#     与 ia_worldgen_customize_table（只读）。注册入口文件名因 Mod 而异，不能假设；
+#     与 ia_worldgen_customize_table（世界生成）。注册入口文件名因 Mod 而异，不能假设；
 #   - 取值：以 AddCustomizeItem 的 desc 为准（未写则继承组默认 desc，animals/monsters/
 #     giants 为 frequency_descriptions 5 档），tuning_vars 的 few/many 或 9 档 MULTIPLY
 #     只是实现细节；
@@ -367,100 +374,104 @@ IA_SHIPWRECKED_SETTINGS: dict[str, ModWorldSetting] = {
         name={"zh": "海妖", "en": "Quacken"}, values=_IA_NRDOA,
         icon_element="kraken.tex"),
 
-    # ── 世界生成（只读）──
+    # ── 世界生成 ──
     "shipwrecked_season_start": ModWorldSetting(key="shipwrecked_season_start", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="global",
-        name={"zh": "海难开局季节", "en": "Shipwrecked Starting Season"}, values=None, order=2,
+        name={"zh": "海难开局季节", "en": "Shipwrecked Starting Season"},
+        values=["default", "wet", "green", "dry", "mild|green", "wet|dry", "mild|wet|green|dry"], order=2,
         icon_element="season_start.tex"),
     "volcano": ModWorldSetting(key="volcano", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="misc",
-        name={"zh": "火山", "en": "Volcano"}, values=None, icon_element="volcano.tex"),
+        name={"zh": "火山", "en": "Volcano"}, values=_YES_NO, icon_element="volcano.tex"),
     "bermudatriangle": ModWorldSetting(key="bermudatriangle", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="misc",
-        name={"zh": "电光三角", "en": "Electric Isosceles"}, values=None, icon_element="bermudatriangle.tex"),
+        name={"zh": "电光三角", "en": "Electric Isosceles"}, values=_WORLDGEN_FREQUENCY, icon_element="bermudatriangle.tex"),
+    # 游戏界面默认 "none"，但 postinit/map/levels/shipwrecked.lua 只在 ``~= "none"`` 时加火山岛：
+    # 存档缺这个 key 时实际会生成火山岛，所以缺省显示为"启用"
     "volcanoisland": ModWorldSetting(key="volcanoisland", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="misc",
-        name={"zh": "火山岛", "en": "Volcanic Island"}, values=None, icon_element="volcano_island.tex"),
+        name={"zh": "火山岛", "en": "Volcanic Island"}, values=["none", "always"], initial_value="always",
+        icon_element="volcano_island.tex"),
     "sweet_potato": ModWorldSetting(key="sweet_potato", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "甘薯", "en": "Sweet Potatoes"}, values=None, icon_element="sweetpotatos.tex"),
+        name={"zh": "甘薯", "en": "Sweet Potatoes"}, values=_WORLDGEN_FREQUENCY, icon_element="sweetpotatos.tex"),
     "limpets": ModWorldSetting(key="limpets", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "帽贝岩", "en": "Limpets"}, values=None, icon_element="limpets.tex"),
+        name={"zh": "帽贝岩", "en": "Limpets"}, values=_WORLDGEN_FREQUENCY, icon_element="limpets.tex"),
     "mussel_farm": ModWorldSetting(key="mussel_farm", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "贻贝", "en": "Mussels"}, values=None, icon_element="mussels.tex"),
+        name={"zh": "贻贝", "en": "Mussels"}, values=_WORLDGEN_FREQUENCY, icon_element="mussels.tex"),
     "seaweed": ModWorldSetting(key="seaweed", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "海带", "en": "Seaweeds"}, values=None, icon_element="seaweed.tex"),
+        name={"zh": "海带", "en": "Seaweeds"}, values=_WORLDGEN_FREQUENCY, icon_element="seaweed.tex"),
     "seashell": ModWorldSetting(key="seashell", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "贝壳", "en": "Seashells"}, values=None, icon_element="seashell.tex"),
+        name={"zh": "贝壳", "en": "Seashells"}, values=_WORLDGEN_FREQUENCY, icon_element="seashell.tex"),
     "bamboo": ModWorldSetting(key="bamboo", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "竹子", "en": "Bamboo"}, values=None, icon_element="bamboo.tex"),
+        name={"zh": "竹子", "en": "Bamboo"}, values=_WORLDGEN_FREQUENCY, icon_element="bamboo.tex"),
     "bush_vine": ModWorldSetting(key="bush_vine", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "藤蔓根", "en": "Viney Bushes"}, values=None, icon_element="vines.tex"),
+        name={"zh": "藤蔓根", "en": "Viney Bushes"}, values=_WORLDGEN_FREQUENCY, icon_element="vines.tex"),
     "coral": ModWorldSetting(key="coral", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "珊瑚", "en": "Corals"}, values=None, icon_element="coral.tex"),
+        name={"zh": "珊瑚", "en": "Corals"}, values=_WORLDGEN_FREQUENCY, icon_element="coral.tex"),
     "coral_brain_rock": ModWorldSetting(key="coral_brain_rock", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "智慧树", "en": "Brainy Sprouts"}, values=None, icon_element="braincoral.tex"),
+        name={"zh": "智慧树", "en": "Brainy Sprouts"}, values=_WORLDGEN_FREQUENCY, icon_element="braincoral.tex"),
     "crate": ModWorldSetting(key="crate", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "板条箱", "en": "Crates"}, values=None, icon_element="crates.tex"),
+        name={"zh": "板条箱", "en": "Crates"}, values=_WORLDGEN_FREQUENCY, icon_element="crates.tex"),
     "tidalpool": ModWorldSetting(key="tidalpool", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "潮汐池", "en": "Tidal Pools"}, values=None, icon_element="tidalpools.tex"),
+        name={"zh": "潮汐池", "en": "Tidal Pools"}, values=_WORLDGEN_FREQUENCY, icon_element="tidalpools.tex"),
     "sandhill": ModWorldSetting(key="sandhill", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "沙堆", "en": "Sandy Piles"}, values=None, icon_element="sand.tex"),
+        name={"zh": "沙堆", "en": "Sandy Piles"}, values=_WORLDGEN_FREQUENCY, icon_element="sand.tex"),
     "poisonhole": ModWorldSetting(key="poisonhole", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "毒穴", "en": "Poisonous Holes"}, values=None, icon_element="poisonhole.tex"),
+        name={"zh": "毒穴", "en": "Poisonous Holes"}, values=_WORLDGEN_FREQUENCY, icon_element="poisonhole.tex"),
     "bioluminescence": ModWorldSetting(key="bioluminescence", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "荧光生物", "en": "Bioluminescence"}, values=None, icon_element="bioluminescence.tex"),
+        name={"zh": "荧光生物", "en": "Bioluminescence"}, values=_WORLDGEN_FREQUENCY, icon_element="bioluminescence.tex"),
     "magma_rocks": ModWorldSetting(key="magma_rocks", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "熔岩矿堆", "en": "Magma Piles"}, values=None, icon_element="magmarocks.tex"),
+        name={"zh": "熔岩矿堆", "en": "Magma Piles"}, values=_WORLDGEN_FREQUENCY, icon_element="magmarocks.tex"),
     "tar_pool": ModWorldSetting(key="tar_pool", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "焦油", "en": "Tar Pools"}, values=None, icon_element="tarpools.tex"),
+        name={"zh": "焦油", "en": "Tar Pools"}, values=_WORLDGEN_FREQUENCY, icon_element="tarpools.tex"),
     "shipwrecked_trees": ModWorldSetting(key="shipwrecked_trees", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "岛屿树木（所有）", "en": "Island Trees (All)"}, values=None, icon_element="trees.tex"),
+        name={"zh": "岛屿树木（所有）", "en": "Island Trees (All)"}, values=_WORLDGEN_FREQUENCY, icon_element="trees.tex"),
     "shipwreck": ModWorldSetting(key="shipwreck", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "沉船", "en": "Wrecks"}, values=None, icon_element="wrecks.tex"),
+        name={"zh": "沉船", "en": "Wrecks"}, values=_WORLDGEN_FREQUENCY, icon_element="wrecks.tex"),
     "waterygrave": ModWorldSetting(key="waterygrave", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "水墓", "en": "Watery Graves"}, values=None, icon_element="waterygraves.tex"),
+        name={"zh": "水墓", "en": "Watery Graves"}, values=_WORLDGEN_FREQUENCY, icon_element="waterygraves.tex"),
     "coffeebush": ModWorldSetting(key="coffeebush", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "咖啡丛", "en": "Coffee Bushes"}, values=None, icon_element="coffeebush.tex"),
+        name={"zh": "咖啡丛", "en": "Coffee Bushes"}, values=_WORLDGEN_FREQUENCY, icon_element="coffeebush.tex"),
     "elephantcactus": ModWorldSetting(key="elephantcactus", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "象仙人掌", "en": "Elephant Cacti"}, values=None, icon_element="elephantcactus_active.tex"),
+        name={"zh": "象仙人掌", "en": "Elephant Cacti"}, values=_WORLDGEN_FREQUENCY, icon_element="elephantcactus_active.tex"),
     "rock_obsidian": ModWorldSetting(key="rock_obsidian", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "黑曜石矿", "en": "Obsidian Boulders"}, values=None, icon_element="rock_obsidian.tex"),
+        name={"zh": "黑曜石矿", "en": "Obsidian Boulders"}, values=_WORLDGEN_FREQUENCY, icon_element="rock_obsidian.tex"),
     "rock_charcoal": ModWorldSetting(key="rock_charcoal", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "木炭矿", "en": "Charcoal Boulders"}, values=None, icon_element="rock_charcoal.tex"),
+        name={"zh": "木炭矿", "en": "Charcoal Boulders"}, values=_WORLDGEN_FREQUENCY, icon_element="rock_charcoal.tex"),
     "volcano_shrub": ModWorldSetting(key="volcano_shrub", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="resources",
-        name={"zh": "灰烬树", "en": "Ash Trees"}, values=None, icon_element="volcano_shrub.tex"),
+        name={"zh": "灰烬树", "en": "Ash Trees"}, values=_WORLDGEN_FREQUENCY, icon_element="volcano_shrub.tex"),
     "crabhole": ModWorldSetting(key="crabhole", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "兔蟹洞", "en": "Crabbit Dens"}, values=None, icon_element="crabbithole.tex"),
+        name={"zh": "兔蟹洞", "en": "Crabbit Dens"}, values=_WORLDGEN_FREQUENCY, icon_element="crabbithole.tex"),
     "ox": ModWorldSetting(key="ox", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "水牛", "en": "Water Beefalos"}, values=None, icon_element="ox.tex"),
+        name={"zh": "水牛", "en": "Water Beefalos"}, values=_WORLDGEN_FREQUENCY, icon_element="ox.tex"),
     "doydoy": ModWorldSetting(key="doydoy", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "渡渡鸟", "en": "Doydoys"}, values=None, icon_element="doydoy.tex"),
+        name={"zh": "渡渡鸟", "en": "Doydoys"}, values=_YES_NO, icon_element="doydoy.tex"),
     "wildbores": ModWorldSetting(key="wildbores", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "野猪舍", "en": "Wildbore Houses"}, values=None, icon_element="wildborehouse.tex"),
+        name={"zh": "野猪舍", "en": "Wildbore Houses"}, values=_WORLDGEN_FREQUENCY, icon_element="wildborehouse.tex"),
     "ballphin": ModWorldSetting(key="ballphin", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "海豚宫殿", "en": "Ballphin Palaces"}, values=None, icon_element="ballphinhouse.tex"),
+        name={"zh": "海豚宫殿", "en": "Ballphin Palaces"}, values=_WORLDGEN_FREQUENCY, icon_element="ballphinhouse.tex"),
     "primeape": ModWorldSetting(key="primeape", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "猿猴小窝", "en": "Prime Ape Huts"}, values=None, icon_element="primeapehut.tex"),
+        name={"zh": "猿猴小窝", "en": "Prime Ape Huts"}, values=_WORLDGEN_FREQUENCY, icon_element="primeapehut.tex"),
     "fishermerm": ModWorldSetting(key="fishermerm", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "渔人小屋", "en": "Fisher Merm Huts"}, values=None, icon_element="fishermermhouse.tex"),
+        name={"zh": "渔人小屋", "en": "Fisher Merm Huts"}, values=_WORLDGEN_FREQUENCY, icon_element="fishermermhouse.tex"),
     "lobster": ModWorldSetting(key="lobster", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "龙虾", "en": "Wobster Dens"}, values=None, icon_element="lobsterhole.tex"),
+        name={"zh": "龙虾", "en": "Wobster Dens"}, values=_WORLDGEN_FREQUENCY, icon_element="lobsterhole.tex"),
     "solofish": ModWorldSetting(key="solofish", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "狗鱼", "en": "Dogfish"}, values=None, icon_element="dogfish.tex"),
+        name={"zh": "狗鱼", "en": "Dogfish"}, values=_WORLDGEN_FREQUENCY, icon_element="dogfish.tex"),
     "jellyfish": ModWorldSetting(key="jellyfish", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "水母", "en": "Jellyfish"}, values=None, icon_element="jellyfish.tex"),
+        name={"zh": "水母", "en": "Jellyfish"}, values=_WORLDGEN_FREQUENCY, icon_element="jellyfish.tex"),
     "rainbowjellyfish": ModWorldSetting(key="rainbowjellyfish", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "彩虹水母", "en": "Rainbow Jellyfish"}, values=None, icon_element="rainbowjellyfish.tex"),
+        name={"zh": "彩虹水母", "en": "Rainbow Jellyfish"}, values=_WORLDGEN_FREQUENCY, icon_element="rainbowjellyfish.tex"),
     "fishinhole": ModWorldSetting(key="fishinhole", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "鱼群", "en": "Shoals"}, values=None, icon_element="shoals.tex"),
+        name={"zh": "鱼群", "en": "Shoals"}, values=_WORLDGEN_FREQUENCY, icon_element="shoals.tex"),
     "seagull": ModWorldSetting(key="seagull", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="animals",
-        name={"zh": "海鸥", "en": "Seagulls"}, values=None, icon_element="seagulls.tex"),
+        name={"zh": "海鸥", "en": "Seagulls"}, values=_WORLDGEN_FREQUENCY, icon_element="seagulls.tex"),
     "flup": ModWorldSetting(key="flup", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="monsters",
-        name={"zh": "独眼弹涂鱼", "en": "Flups"}, values=None, icon_element="flups.tex"),
+        name={"zh": "独眼弹涂鱼", "en": "Flups"}, values=_WORLDGEN_FREQUENCY, icon_element="flups.tex"),
     "swordfish": ModWorldSetting(key="swordfish", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="monsters",
-        name={"zh": "剑鱼", "en": "Swordfish"}, values=None, icon_element="swordfish.tex"),
+        name={"zh": "剑鱼", "en": "Swordfish"}, values=_WORLDGEN_FREQUENCY, icon_element="swordfish.tex"),
     "stungray": ModWorldSetting(key="stungray", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="monsters",
-        name={"zh": "恶臭蝠鲼", "en": "Stink Rays"}, values=None, icon_element="stinkrays.tex"),
+        name={"zh": "恶臭蝠鲼", "en": "Stink Rays"}, values=_WORLDGEN_FREQUENCY, icon_element="stinkrays.tex"),
     "snake": ModWorldSetting(key="snake", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="monsters",
-        name={"zh": "蛇窝", "en": "Snake Dens"}, values=None, icon_element="snakeden.tex"),
+        name={"zh": "蛇窝", "en": "Snake Dens"}, values=_WORLDGEN_FREQUENCY, icon_element="snakeden.tex"),
     "dragoon": ModWorldSetting(key="dragoon", is_rule=False, mod_id=_IA_SHIPWRECKED_ID, group="monsters",
-        name={"zh": "呆龙窝", "en": "Dragoon Dens"}, values=None, icon_element="dragoonden.tex"),
+        name={"zh": "呆龙窝", "en": "Dragoon Dens"}, values=_WORLDGEN_FREQUENCY, icon_element="dragoonden.tex"),
 }
 
 # workshop-3322803908 == 云霄国度-Above the Clouds（移植单机版猪镇 Porkland）
@@ -556,41 +567,41 @@ PORKLAND_SETTINGS: dict[str, ModWorldSetting] = {
         name={"zh": "吸血蝙蝠袭击", "en": "Vampire Bat Attacks"}, values=_PL_FREQUENCY,
         icon_element="vampire_bats.tex"),
 
-    # ── 世界生成（只读）──
+    # ── 世界生成 ──
     "porkland_season_start": ModWorldSetting(key="porkland_season_start", is_rule=False, mod_id=_PORKLAND_ID, group="global",
         name={"zh": "猪镇起始季节", "en": "Hamlet Starting Season"},
         values=["default", "humid", "lush", "temperate|humid|lush"], order=2,
         icon_element="season_start.tex"),
     "dungpile": ModWorldSetting(key="dungpile", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "粪堆", "en": "Dung Pile"}, values=None, icon_element="dungpile.tex"),
+        name={"zh": "粪堆", "en": "Dung Pile"}, values=_WORLDGEN_FREQUENCY, icon_element="dungpile.tex"),
     "hippopotamoose": ModWorldSetting(key="hippopotamoose", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "河鹿", "en": "Hippopotamooses"}, values=None, icon_element="hippopotamoose.tex"),
+        name={"zh": "河鹿", "en": "Hippopotamooses"}, values=_WORLDGEN_FREQUENCY, icon_element="hippopotamoose.tex"),
     "peagawk": ModWorldSetting(key="peagawk", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "呆望雀", "en": "Peagawk"}, values=None, icon_element="peagawk.tex"),
+        name={"zh": "呆望雀", "en": "Peagawk"}, values=_WORLDGEN_FREQUENCY, icon_element="peagawk.tex"),
     "pog": ModWorldSetting(key="pog", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "哈巴狸", "en": "Pogs"}, values=None, icon_element="pogs.tex"),
+        name={"zh": "哈巴狸", "en": "Pogs"}, values=_WORLDGEN_FREQUENCY, icon_element="pogs.tex"),
     "pangolden": ModWorldSetting(key="pangolden", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "淘金兽", "en": "Pangolden"}, values=None, icon_element="pangolden.tex"),
+        name={"zh": "淘金兽", "en": "Pangolden"}, values=_WORLDGEN_FREQUENCY, icon_element="pangolden.tex"),
     "hanging_vine_patch": ModWorldSetting(key="hanging_vine_patch", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "垂下的藤蔓", "en": "Hanging Vine"}, values=None, icon_element="hanging_vine.tex"),
+        name={"zh": "垂下的藤蔓", "en": "Hanging Vine"}, values=_WORLDGEN_FREQUENCY, icon_element="hanging_vine.tex"),
     "thunderbirdnest": ModWorldSetting(key="thunderbirdnest", is_rule=False, mod_id=_PORKLAND_ID, group="animals",
-        name={"zh": "雷鸟巢", "en": "Thundernest"}, values=None, icon_element="thunderbirds.tex"),
+        name={"zh": "雷鸟巢", "en": "Thundernest"}, values=_WORLDGEN_FREQUENCY, icon_element="thunderbirds.tex"),
     "asparagus": ModWorldSetting(key="asparagus", is_rule=False, mod_id=_PORKLAND_ID, group="resources",
-        name={"zh": "芦笋", "en": "Asparagus"}, values=None, icon_element="asparagus.tex"),
+        name={"zh": "芦笋", "en": "Asparagus"}, values=_WORLDGEN_FREQUENCY, icon_element="asparagus.tex"),
     "grass_tall": ModWorldSetting(key="grass_tall", is_rule=False, mod_id=_PORKLAND_ID, group="resources",
-        name={"zh": "高草", "en": "Tall Grass"}, values=None, icon_element="grass_tall.tex"),
+        name={"zh": "高草", "en": "Tall Grass"}, values=_WORLDGEN_FREQUENCY, icon_element="grass_tall.tex"),
     "grass_tall_bunches": ModWorldSetting(key="grass_tall_bunches", is_rule=False, mod_id=_PORKLAND_ID, group="resources",
-        name={"zh": "高草丛田", "en": "Tall Grass Fields"}, values=None, icon_element="grass_tall_bunches.tex"),
+        name={"zh": "高草丛田", "en": "Tall Grass Fields"}, values=_WORLDGEN_FREQUENCY, icon_element="grass_tall_bunches.tex"),
     "lotus": ModWorldSetting(key="lotus", is_rule=False, mod_id=_PORKLAND_ID, group="resources",
-        name={"zh": "睡莲", "en": "lotus"}, values=None, icon_element="lotus.tex"),
+        name={"zh": "睡莲", "en": "lotus"}, values=_WORLDGEN_FREQUENCY, icon_element="lotus.tex"),
     "lost_relics": ModWorldSetting(key="lost_relics", is_rule=False, mod_id=_PORKLAND_ID, group="resources",
-        name={"zh": "失落的文物", "en": "Lost Relics"}, values=None, icon_element="lost_relics.tex"),
+        name={"zh": "失落的文物", "en": "Lost Relics"}, values=_PL_FREQUENCY, icon_element="lost_relics.tex"),
     "ruined_sculptures": ModWorldSetting(key="ruined_sculptures", is_rule=False, mod_id=_PORKLAND_ID, group="resources",
-        name={"zh": "毁坏的雕塑", "en": "Ruined Sculptures"}, values=None, icon_element="lost_sculptures.tex"),
+        name={"zh": "毁坏的雕塑", "en": "Ruined Sculptures"}, values=_PL_FREQUENCY, icon_element="lost_sculptures.tex"),
     "jungle_border_vine": ModWorldSetting(key="jungle_border_vine", is_rule=False, mod_id=_PORKLAND_ID, group="misc",
-        name={"zh": "雨林树冠的藤蔓", "en": "Jungle Canopy Vines"}, values=None, icon_element="jungle_border_vine.tex"),
+        name={"zh": "雨林树冠的藤蔓", "en": "Jungle Canopy Vines"}, values=_PL_FREQUENCY, icon_element="jungle_border_vine.tex"),
     "deep_jungle_fern_noise": ModWorldSetting(key="deep_jungle_fern_noise", is_rule=False, mod_id=_PORKLAND_ID, group="misc",
-        name={"zh": "雨林地皮上的蕨类植物", "en": "Jungle Floor Ferns"}, values=None, icon_element="deep_jungle_fern_noise.tex"),
+        name={"zh": "雨林地皮上的蕨类植物", "en": "Jungle Floor Ferns"}, values=_PL_FREQUENCY, icon_element="deep_jungle_fern_noise.tex"),
 }
 
 
@@ -936,7 +947,7 @@ _TA_ENABLE = ["enabled", "disabled"]
 _TA_DISABLED_ONLY = ["disabled"]
 
 TROPICAL_ADVENTURES_SETTINGS: dict[str, ModWorldSetting] = {s.key: s for s in (
-    # ── 世界生成（ta_worldgen，只读）──
+    # ── 世界生成（ta_worldgen）──
     _ta("rog", False, "巨人国", "Region of Gaints", ["default", "fixed", "disabled"], "fixed", 1,
         _TA_FOREST, vanilla_icon="deerclops", labels={
             "default": {"zh": "默认", "en": "Default"},

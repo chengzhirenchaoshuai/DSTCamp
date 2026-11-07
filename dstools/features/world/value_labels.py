@@ -137,6 +137,8 @@ _PER_KEY_LABELS = {
         "wet|dry": {"zh": "飓风季或旱季", "en": "Hurricane or Dry"},
         "mild|wet|green|dry": {"zh": "随机", "en": "Random"},
     },
+    # 火山岛（enableddisabled_descriptions）：always=启用
+    "volcanoisland": {"always": {"zh": "启用", "en": "Enabled"}, "none": {"zh": "禁用", "en": "Disabled"}},
     # 猪镇起始季节（云霄国度 mod 的 season_start_descriptions，中文取自
     # pl_chinese_s.po 的 SANDBOXMENU 对应条目）
     "porkland_season_start": {
