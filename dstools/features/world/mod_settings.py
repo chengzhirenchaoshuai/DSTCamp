@@ -1150,6 +1150,24 @@ for _mod_id in (_PORKLAND_ID, _THREE_WORLDS_ID):
         for location in (CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION)
     }
 
+# 岛屿冒险核心 modservercreationmain.lua 的 set_world_overrides：海难、火山里这几个原版选项改用海难图集
+# images/hud/customization_shipwrecked.xml 里的图标（前五个同名换图集，树精守卫换成棕榈树精、鱼群换成浅滩）。
+# 图集由海难 Mod 或三合一提供（三合一映射到 Mod 根目录的同名路径）。
+IA_VANILLA_ICON_ELEMENTS = {
+    "krampus": "krampus.tex", "butterfly": "butterfly.tex", "birds": "birds.tex",
+    "berrybush": "berrybush.tex", "grass": "grass.tex",
+    "liefs": "palmguard.tex", "fishschools": "shoals.tex",
+}
+IA_VANILLA_ICON_LOCATIONS = (SHIPWRECKED_LOCATION, VOLCANO_LOCATION)
+IA_VANILLA_ICON_ATLAS_MODS = (_IA_SHIPWRECKED_ID, _THREE_WORLDS_ID)
+
+
+def location_icon_key(key: str, location: str) -> str | None:
+    """原版选项在该世界类型下换用 Mod 图标时，Mod 图标表里对应的键；不换图标返回 None。"""
+    if location in IA_VANILLA_ICON_LOCATIONS and key in IA_VANILLA_ICON_ELEMENTS:
+        return f"{location}/{key}"
+    return None
+
 # workshop id -> 登记表核对时的 modinfo version。本机版本不同时世界设置页提示"可能未适配"；
 # Mod 更新后用 reference/dev_scripts/audit_world_settings.py 核对差异，改完登记表再更新这里。
 MOD_VERIFIED_VERSIONS: dict[str, str] = {

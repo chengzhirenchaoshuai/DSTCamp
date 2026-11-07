@@ -59,10 +59,30 @@ def resolve_mod_setting_icons(mod_settings: dict, platform, wegame_client_mods_d
     """
     from dstools.features.mod.parser import find_mod_folder
     from dstools.features.world.icons import get_icon_path
-    from dstools.features.world.mod_settings import MOD_ICON_ATLAS
+    from dstools.features.world.mod_settings import (
+        IA_VANILLA_ICON_ATLAS_MODS, IA_VANILLA_ICON_ELEMENTS, IA_VANILLA_ICON_LOCATIONS, MOD_ICON_ATLAS,
+        location_icon_key,
+    )
 
     images: dict[str, Image.Image] = {}
     mod_folder_cache: dict[str, Path | None] = {}
+
+    def mod_folder_of(mod_id: str) -> Path | None:
+        if mod_id not in mod_folder_cache:
+            known = known_folders or {}
+            folder = known.get(f"workshop-{mod_id}") or known.get(mod_id)
+            mod_folder_cache[mod_id] = Path(folder) if folder else find_mod_folder(
+                f"workshop-{mod_id}", platform, wegame_client_mods_dir, steam_runtime_mods_dir)
+        return mod_folder_cache[mod_id]
+
+    def crop(mod_folder: Path, mod_id: str, atlas_info: tuple[str, str], element: str) -> Image.Image | None:
+        icon_path = get_mod_setting_icon_path(mod_folder, mod_id, atlas_info[0], atlas_info[1], element)
+        if not icon_path:
+            return None
+        try:
+            return Image.open(icon_path).convert("RGBA")
+        except OSError:
+            return None
 
     for key, info in mod_settings.items():
         if info.vanilla_icon_key:
@@ -78,21 +98,22 @@ def resolve_mod_setting_icons(mod_settings: dict, platform, wegame_client_mods_d
         atlas_info = info.icon_atlas or MOD_ICON_ATLAS.get(info.mod_id)
         if not atlas_info:
             continue
-        if info.mod_id not in mod_folder_cache:
-            known = known_folders or {}
-            folder = known.get(f"workshop-{info.mod_id}") or known.get(info.mod_id)
-            mod_folder_cache[info.mod_id] = Path(folder) if folder else find_mod_folder(
-                f"workshop-{info.mod_id}", platform, wegame_client_mods_dir, steam_runtime_mods_dir)
-        mod_folder = mod_folder_cache[info.mod_id]
+        mod_folder = mod_folder_of(info.mod_id)
         if not mod_folder:
             continue
-        atlas_rel, tex_rel = atlas_info
-        icon_path = get_mod_setting_icon_path(mod_folder, info.mod_id, atlas_rel, tex_rel,
-                                               info.icon_element)
-        if not icon_path:
-            continue
-        try:
-            images[key] = Image.open(icon_path).convert("RGBA")
-        except OSError:
-            continue
+        image = crop(mod_folder, info.mod_id, atlas_info, info.icon_element)
+        if image is not None:
+            images[key] = image
+
+    # 岛屿冒险在海难、火山里给部分原版选项换的图标，按 location_icon_key 存放
+    active_mod_ids = {info.mod_id for info in mod_settings.values()}
+    source_id = next((mod_id for mod_id in IA_VANILLA_ICON_ATLAS_MODS if mod_id in active_mod_ids), None)
+    source_folder = mod_folder_of(source_id) if source_id else None
+    if source_folder:
+        atlas_info = MOD_ICON_ATLAS[IA_VANILLA_ICON_ATLAS_MODS[0]]
+        for key, element in IA_VANILLA_ICON_ELEMENTS.items():
+            image = crop(source_folder, source_id, atlas_info, element)
+            if image is not None:
+                for location in IA_VANILLA_ICON_LOCATIONS:
+                    images[location_icon_key(key, location)] = image
     return images

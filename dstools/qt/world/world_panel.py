@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QAbstractScrollArea
 
 from dstools.features.world.categories import CATEGORY_COLORS
 from dstools.features.world.icons import get_icon_path
+from dstools.features.world.mod_settings import location_icon_key
 from dstools.features.world.value_labels import get_value_label
 from dstools.features.world.value_sets import get_value_set, is_mod_readonly
 from dstools.qt.imaging import pil_to_pixmap
@@ -180,8 +181,12 @@ class WorldPanel(QAbstractScrollArea):
         if cache_key in self._icon_cache:
             return self._icon_cache[cache_key]
         pixmap = None
+        # Mod 在当前世界类型下给原版选项换的图标优先（如岛屿冒险在海难里的棕榈树精）
+        location_key = location_icon_key(key, self._location)
         path = get_icon_path(key, self._location)
-        if path is not None:
+        if location_key in self._mod_icons:
+            pixmap = pil_to_pixmap(self._mod_icons[location_key])
+        elif path is not None:
             pixmap = QPixmap(str(path))
         elif key in self._mod_icons:
             pixmap = pil_to_pixmap(self._mod_icons[key])
