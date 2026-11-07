@@ -171,15 +171,18 @@ def split_overrides(overrides: dict, location: str, mod_settings: dict | None = 
 
 
 def applicable_overrides(overrides: dict, location: str, mod_settings: dict | None = None,
-                         is_master_world: bool = True) -> tuple[dict, list[str]]:
-    """套用预设时能改的取值与跳过的 key：当前世界未登记的 key（含从世界里仅主世界的原版项）与只读的
-    Mod 项不套用。"""
+                         is_master_world: bool = True, active_mod_ids=None) -> tuple[dict, list[str]]:
+    """套用预设时能改的取值与跳过的 key：当前世界不显示的 key 不套用，包括未登记的、从世界里仅主世界的
+    原版项、被已启用 Mod 隐藏的原版项（如云霄国度限定到森林的四季，``active_mod_ids`` 见
+    build_world_view_model），以及只读的 Mod 项。"""
+    from dstools.features.world.mod_settings import get_mod_vanilla_world_patches
     from dstools.features.world.value_sets import is_mod_readonly
 
+    hidden, _, _ = get_mod_vanilla_world_patches(mod_settings or {}, location, active_mod_ids)
     values, skipped = {}, []
     for key, value in overrides.items():
         category, _, _ = get_setting_info(key, location, mod_settings, is_master_world)
-        if category == "other" or is_mod_readonly(key, mod_settings):
+        if category == "other" or key in hidden or is_mod_readonly(key, mod_settings):
             skipped.append(key)
         else:
             values[key] = value

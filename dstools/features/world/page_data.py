@@ -220,7 +220,8 @@ def apply_preset_values(data: WorldPageData, overrides: dict) -> tuple[list[str]
     current = {o.key: o for o in preset.overrides}
     changed = []
     values, skipped = applicable_overrides(overrides, data.location, data.mod_settings,
-                                           is_master_world=data.shard_name == "Master")
+                                           is_master_world=data.shard_name == "Master",
+                                           active_mod_ids=data.active_mod_ids)
     for key, value in values.items():
         override = current.get(key)
         text = _display_value(value)

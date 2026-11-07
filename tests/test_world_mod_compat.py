@@ -398,6 +398,13 @@ def test_porkland_limits_master_only_vanilla_to_forest() -> None:
     for location in (CAVE_LOCATION, SHIPWRECKED_LOCATION):
         shown = visible(location)
         assert not PORKLAND_FOREST_ONLY_KEYS & shown and remaining <= shown
+    # 载入预设同样跳过：洞穴主世界不写 autumn，森林主世界照写
+    from dstools.features.world.user_presets import applicable_overrides
+    preset = {"autumn": "longseason", "day": "longday"}
+    cave = {k: v for k, v in all_settings.items() if v.visible_in(CAVE_LOCATION, True)}
+    assert applicable_overrides(preset, CAVE_LOCATION, cave, active_mod_ids=active) == (
+        {"day": "longday"}, ["autumn"])
+    assert applicable_overrides(preset, FOREST_LOCATION, {}, active_mod_ids=active)[1] == []
     # 猪镇白名单里的仅主世界项正好是没被限定到森林的那些
     from dstools.features.world.catalog_resolver import PORKLAND_VANILLA_KEYS
     assert PORKLAND_VANILLA_KEYS & MASTER_ONLY_VANILLA_KEYS == remaining

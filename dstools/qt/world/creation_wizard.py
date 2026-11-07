@@ -801,7 +801,8 @@ class CreationWizardDialog(QDialog):
         # 计划里的取值直接写进 leveldataoverride.lua，数字、布尔保持预设里的原类型即可
         values, skipped = user_presets.applicable_overrides(
             dialog.selected.overrides, plan.location, self._active_mod_settings,
-            is_master_world=self._shard_combo.currentText() == MASTER_SHARD)
+            is_master_world=self._shard_combo.currentText() == MASTER_SHARD,
+            active_mod_ids=frozenset(info.mod_id for info in self._mod_settings.values()))
         changed = [key for key, value in values.items() if plan.overrides.get(key) != value]
         plan.overrides.update(values)
         if changed:
