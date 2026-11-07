@@ -81,6 +81,7 @@ ISLAND_REQUIRED_OVERRIDES = {
         "start_location": "shipwrecked_default",
         "layout_mode": "LinkNodesByKeys",
         "has_ocean": True,
+        "volcanoisland": "none",  # 与游戏新建世界一致，默认不生成火山岛
     },
     VOLCANO_LOCATION: {
         "task_set": "volcano",

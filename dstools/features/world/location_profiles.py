@@ -54,7 +54,8 @@ ALL_MOD_LOCATIONS = (
 # 分片 ID 固定，"世界分组暂停"按它配对（森林+洞穴、海难+火山、猪镇）；Master 无 ID。
 # 新补丁 twpatch/groups.lua 的分片 ID 与时钟表和整合版相同，沿用同一布局。
 # 海难的 volcanoisland：IA postinit/map/levels/shipwrecked.lua 判断 ``~= "none"`` 才加火山岛，
-# 缺 key 也会生成，有独立火山分片时必须显式写 "none"。
+# 缺 key 也会生成。海难的默认取值已是 "none"，这里仍显式写上：有独立火山分片时火山岛必须禁用，
+# 不随默认值变化。
 THREE_WORLDS_SHARD_LAYOUT = (
     ("Master", FOREST_LOCATION, None, {}),
     ("Shipwrecked", SHIPWRECKED_LOCATION, 2, {"volcanoisland": "none"}),
@@ -159,6 +160,9 @@ _MOD_CREATION_LEVEL_DATA: dict[str, dict[str, object]] = {
             "dst_boats": "none",
             "ia_boats": "always",
             "ia_drowning": "always",
+            # 游戏建服把所有选项连同默认值写进 leveldataoverride，火山岛选项默认 "none"；缺这个 key
+            # 时 IA 会生成火山岛（只判断 ~= "none"），所以要显式写上，与游戏新建的世界一致
+            "volcanoisland": "none",
         },
     },
     VOLCANO_LOCATION: {
