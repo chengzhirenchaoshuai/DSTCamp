@@ -49,9 +49,13 @@ def get_mod_setting_icon_path(mod_folder: Path, mod_id: str, atlas_rel: str, tex
     return cache_path
 
 
-def resolve_mod_setting_icons(mod_settings: dict, platform, wegame_client_mods_dir=None) -> dict:
+def resolve_mod_setting_icons(mod_settings: dict, platform, wegame_client_mods_dir=None,
+                              steam_runtime_mods_dir=None, known_folders: dict | None = None) -> dict:
     """按 mod_settings 中各条的 icon_element 裁出图标，返回 {key: PIL.Image(RGBA)}；
     失败的条目跳过（调用方显示占位）。同一 Mod 的目录只查找一次。
+
+    ``known_folders`` 为 Mod 列表已解析好的目录（键为 ``workshop-<id>`` 或纯数字 ID），优先使用；
+    其余按 find_mod_folder 查找，``steam_runtime_mods_dir`` 为专服实际读取的 mods 目录，与 Mod 页一致。
     """
     from dstools.features.mod.parser import find_mod_folder
     from dstools.features.world.icons import get_icon_path
@@ -75,8 +79,10 @@ def resolve_mod_setting_icons(mod_settings: dict, platform, wegame_client_mods_d
         if not atlas_info:
             continue
         if info.mod_id not in mod_folder_cache:
-            mod_folder_cache[info.mod_id] = find_mod_folder(
-                f"workshop-{info.mod_id}", platform, wegame_client_mods_dir)
+            known = known_folders or {}
+            folder = known.get(f"workshop-{info.mod_id}") or known.get(info.mod_id)
+            mod_folder_cache[info.mod_id] = Path(folder) if folder else find_mod_folder(
+                f"workshop-{info.mod_id}", platform, wegame_client_mods_dir, steam_runtime_mods_dir)
         mod_folder = mod_folder_cache[info.mod_id]
         if not mod_folder:
             continue

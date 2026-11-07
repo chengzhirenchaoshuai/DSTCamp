@@ -55,10 +55,11 @@ class WorldPageData:
 
 
 def load_world_page(
-    cluster: Cluster | None, shard_name: str, enabled_mod_ids=None,
+    cluster: Cluster | None, shard_name: str, enabled_mod_ids=None, steam_runtime_mods_dir=None,
 ) -> WorldPageData:
     """``enabled_mod_ids`` 为 Mod 页尚未保存的启用集合，传入时优先于磁盘上的 modoverrides.lua（即时预览），
-    为 None 时按磁盘内容。"""
+    为 None 时按磁盘内容。``steam_runtime_mods_dir`` 为专服实际读取的 mods 目录（与 Mod 页一致），
+    只装在那里的 Mod 也能找到图标和版本。"""
     if cluster is None:
         return WorldPageData(STATUS_NO_CLUSTER)
     is_server = cluster.source == SaveSource.SERVER
@@ -94,7 +95,8 @@ def load_world_page(
         enabled_mod_ids if enabled_mod_ids is not None else get_enabled_mod_ids(cluster))
     # 图标解析要读 mod 自己的图集文件（第一次或 mod 更新过才会真的调 ktech，其余命中磁盘缓存）
     mod_icons = resolve_mod_setting_icons(
-        all_mod_settings, cluster.platform, resolve_wegame_client_mods_dir(cluster.platform))
+        all_mod_settings, cluster.platform, resolve_wegame_client_mods_dir(cluster.platform),
+        steam_runtime_mods_dir)
     is_master_world = shard.name == "Master"
     mod_settings = filter_mod_world_settings(all_mod_settings, location, is_master_world)
     mod_categories = get_mod_categories(mod_settings)
@@ -112,11 +114,12 @@ def load_world_page(
         generation_by_category=view_model.generation_by_category,
         generation_categories=view_model.generation_categories,
         local_index_error=local_index_error,
-        unverified_mods=find_unverified_mods(all_mod_settings, cluster.platform),
+        unverified_mods=find_unverified_mods(all_mod_settings, cluster.platform, steam_runtime_mods_dir),
     )
 
 
-def find_unverified_mods(mod_settings: dict, platform) -> list[tuple[str, str, str]]:
+def find_unverified_mods(mod_settings: dict, platform,
+                         steam_runtime_mods_dir=None) -> list[tuple[str, str, str]]:
     """列出贡献了世界设置、但本机版本不是登记表核对版本的 Mod；版本读不出（目录缺失、沙箱失败）的不报，
     免得误报。版本读取走内容指纹缓存，Mod 没变时不重跑沙箱。"""
     from dstools.features.mod.local_version import VERSION_CONFIRMED, resolve_local_mod_version
@@ -125,8 +128,8 @@ def find_unverified_mods(mod_settings: dict, platform) -> list[tuple[str, str, s
     result = []
     for mod_id in sorted({info.mod_id for info in mod_settings.values()}):
         verified = MOD_VERIFIED_VERSIONS.get(mod_id)
-        folder = find_mod_folder(f"workshop-{mod_id}", platform,
-                                 resolve_wegame_client_mods_dir(platform)) if verified else None
+        folder = find_mod_folder(f"workshop-{mod_id}", platform, resolve_wegame_client_mods_dir(platform),
+                                 steam_runtime_mods_dir) if verified else None
         if folder is None:
             continue
         version = resolve_local_mod_version(mod_id, folder)

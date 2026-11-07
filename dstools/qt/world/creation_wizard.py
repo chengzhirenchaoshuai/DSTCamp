@@ -936,7 +936,8 @@ class CreationWizardDialog(QDialog):
                 records = [(mid, snapshot.infos.get(mid), snapshot.icons.get(mid), snapshot.paths.get(mid))
                           for mid in snapshot.mod_ids]
                 self._apply_mod_scan_result(generation, records, {}, None)
-                self._refresh_world_icons(generation, tuple(snapshot.mod_ids), platform, client_mods_dir)
+                self._refresh_world_icons(generation, tuple(snapshot.mod_ids), platform, client_mods_dir,
+                                          dict(snapshot.paths))
                 return
         self._mod_scan_running = True
         self._mod_scan_status_label.setText(t("mod.loading"))
@@ -969,7 +970,9 @@ class CreationWizardDialog(QDialog):
             from dstools.features.world.mod_icons import resolve_mod_setting_icons
             installed_settings = get_mod_world_settings(ids)
             try:
-                world_icons = resolve_mod_setting_icons(installed_settings, platform, client_mods_dir)
+                world_icons = resolve_mod_setting_icons(
+                    installed_settings, platform, client_mods_dir,
+                    known_folders={mid: folder for mid, _i, _icon, folder in records if folder})
             except Exception:
                 world_icons = {}
             return records, world_icons
@@ -983,14 +986,17 @@ class CreationWizardDialog(QDialog):
 
         run_async(work, done, error)
 
-    def _refresh_world_icons(self, generation: int, mod_ids: tuple, platform, client_mods_dir) -> None:
-        """缓存命中路径下补齐世界设置里 Mod 图标的后台刷新，不阻塞已经出来的列表。"""
+    def _refresh_world_icons(self, generation: int, mod_ids: tuple, platform, client_mods_dir,
+                             known_folders: dict) -> None:
+        """缓存命中路径下补齐世界设置里 Mod 图标的后台刷新，不阻塞已经出来的列表。
+        快照来自 Mod 页时含专服 mods 目录里的 Mod，沿用快照里的目录，不按客户端目录重新查找。"""
         from dstools.features.world.mod_icons import resolve_mod_setting_icons
 
         def work():
             settings = get_mod_world_settings(mod_ids)
             try:
-                return resolve_mod_setting_icons(settings, platform, client_mods_dir)
+                return resolve_mod_setting_icons(settings, platform, client_mods_dir,
+                                                 known_folders=known_folders)
             except Exception:
                 return {}
 

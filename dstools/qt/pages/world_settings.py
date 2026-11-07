@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.local_service.backup_manager import create_backup
+from dstools.features.local_service.server_runtime import current_runtime
 from dstools.features.local_service.steam_backend import SteamBackend, get_backend
 from dstools.features.world import page_data, shard_management, user_presets
 from dstools.features.world.location_profiles import FOREST_LOCATION, get_location_definition
@@ -19,6 +20,7 @@ from dstools.features.mod.shardindex import (
     LOCAL_SAVE_HOSTED, LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, ShardIndexError,
 )
 from dstools.i18n import get_lang, t
+from dstools.models import Platform
 from dstools.qt import dialogs
 from dstools.qt.pages.base import Page
 from dstools.qt.server import restart_prompt
@@ -418,7 +420,12 @@ class WorldSettingsPage(Page):
 
         # 在界面线程先取 Mod 页未保存的预览集合（它读 Mod 页内存字典，在后台线程读会与开关点击竞态）
         enabled_mod_ids = self.ctx.pending_enabled_mod_ids(cluster)
-        run_async(lambda: page_data.load_world_page(cluster, shard, enabled_mod_ids), done,
+        # 与 Mod 页一样按开服程序取专服 mods 目录，只装在那里的 Mod 也能找到世界设置图标
+        steam_runtime_mods_dir = None
+        if cluster is not None and cluster.platform == Platform.STEAM:
+            runtime = current_runtime()
+            steam_runtime_mods_dir = runtime.mods_dir if runtime else None
+        run_async(lambda: page_data.load_world_page(cluster, shard, enabled_mod_ids, steam_runtime_mods_dir), done,
                   lambda exc: self._show_info(str(exc), "") if generation == self._generation else None)
 
     def _show_info(self, title: str, desc: str) -> None:
