@@ -44,18 +44,21 @@ def build_world_view_model(
     mod_categories: list[tuple[str, str]] | None = None,
     is_master_world: bool = True,
     new_world: bool = False,
+    active_mod_ids=None,
 ) -> WorldViewModel:
     """按位置和已启用 Mod 补齐可展示项，并保持未保存项显式可辨。
 
     ``new_world`` 为创建向导里尚未写盘的世界：缺项的 Mod 设置显示游戏默认值（创建时会写入），
-    已有世界则显示缺项时的实际取值（见 ModWorldSetting.missing_values）。"""
+    已有世界则显示缺项时的实际取值（见 ModWorldSetting.missing_values）。
+    ``active_mod_ids`` 为已启用的 Mod（纯数字 ID）：有的 Mod 在当前世界没有设置项，却会隐藏原版项
+    （如云霄国度把四季等限定到森林），不传时只按 ``mod_settings`` 里出现的 Mod 处理。"""
     location = preset.location or "forest"
     visible_mod_settings = {
         key: info for key, info in mod_settings.items()
         if not hasattr(info, "visible_in") or info.visible_in(location, is_master_world)
     }
     hidden_vanilla, rule_order, generation_order = get_mod_vanilla_world_patches(
-        visible_mod_settings, location,
+        visible_mod_settings, location, active_mod_ids,
     )
     # 海难关闭火山岛时同游戏一样隐藏火山岛的项；存档里已有的取值不显示但原样保留
     island_value = next((o.value for o in preset.overrides if o.key == VOLCANO_ISLAND_KEY), None)

@@ -38,6 +38,8 @@ class WorldPageData:
     location: str = "forest"
     location_label: str = ""
     mod_settings: dict = field(default_factory=dict)
+    # 已启用且登记了世界设置的 Mod（纯数字 ID），含当前世界没有设置项的（见 build_world_view_model）
+    active_mod_ids: frozenset = frozenset()
     mod_categories: list = field(default_factory=list)
     mod_icons: dict = field(default_factory=dict)   # key -> PIL RGBA 图像（尚未转成界面控件的图片）
     rules_by_category: dict = field(default_factory=dict)
@@ -104,12 +106,14 @@ def load_world_page(
         location_label = get_location_definition(location).name_zh
     except ValueError:
         location_label = location
+    active_mod_ids = frozenset(info.mod_id for info in all_mod_settings.values())
     view_model = build_world_view_model(
-        preset, mod_settings, mod_categories, is_master_world=is_master_world)
+        preset, mod_settings, mod_categories, is_master_world=is_master_world, active_mod_ids=active_mod_ids)
     return WorldPageData(
         STATUS_OK, is_server=is_server, shard_name=shard_name, path=shard.leveldata_path,
         preset=preset, location=location, location_label=location_label,
-        mod_settings=mod_settings, mod_categories=mod_categories, mod_icons=mod_icons,
+        mod_settings=mod_settings, active_mod_ids=active_mod_ids, mod_categories=mod_categories,
+        mod_icons=mod_icons,
         rules_by_category=view_model.rules_by_category, rule_categories=view_model.rule_categories,
         generation_by_category=view_model.generation_by_category,
         generation_categories=view_model.generation_categories,
@@ -240,7 +244,8 @@ def apply_preset_values(data: WorldPageData, overrides: dict) -> tuple[list[str]
 def rebuild_view(data: WorldPageData) -> None:
     """按当前取值重新生成分类列表（显示哪些项取决于取值时调用，如海难的火山岛开关）。"""
     view_model = build_world_view_model(
-        data.preset, data.mod_settings, data.mod_categories, is_master_world=data.shard_name == "Master")
+        data.preset, data.mod_settings, data.mod_categories, is_master_world=data.shard_name == "Master",
+        active_mod_ids=data.active_mod_ids)
     data.rules_by_category, data.rule_categories = view_model.rules_by_category, view_model.rule_categories
     data.generation_by_category = view_model.generation_by_category
     data.generation_categories = view_model.generation_categories

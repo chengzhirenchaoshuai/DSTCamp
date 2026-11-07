@@ -1134,6 +1134,24 @@ for _source_id, _source in (
 MOD_WORLD_SETTINGS[_THREE_WORLDS_ID] = THREE_WORLDS_SETTINGS
 MOD_LOAD_PRIORITY[_THREE_WORLDS_ID] = 5
 
+# 云霄国度 modcustomizeitems.lua 的 delete_items：把这些 world=nil 的原版项改成 world={"forest"}
+# （events、resources 两组是 "all"，只改其中 world=nil 的项）。启用后它们只在森林做主世界时显示，
+# 洞穴、海难、火山、猪镇做主世界时都没有；三合一的 modules/pl 同一份文件，一样处理。
+PORKLAND_FOREST_ONLY_KEYS = frozenset({
+    "season_start",  # worldgen global
+    "specialevent", "autumn", "winter", "spring", "summer", "spawnmode", "beefaloheat",  # global
+    "seasonalstartingitems", "temperaturedamage", "brightmarecreatures",  # survivors
+    "crow_carnival", "hallowed_nights", "winters_feast", "year_of_the_gobbler", "year_of_the_varg",
+    "year_of_the_pig", "year_of_the_carrat", "year_of_the_beefalo", "year_of_the_catcoon",
+    "year_of_the_bunnyman", "year_of_the_dragonfly", "year_of_the_snake", "year_of_the_knight",  # events
+    "basicresource_regrowth",  # resources
+})
+for _mod_id in (_PORKLAND_ID, _THREE_WORLDS_ID):
+    MOD_VANILLA_WORLD_PATCHES[_mod_id] = {
+        location: {"hidden": PORKLAND_FOREST_ONLY_KEYS}
+        for location in (CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION)
+    }
+
 # workshop id -> 登记表核对时的 modinfo version。本机版本不同时世界设置页提示"可能未适配"；
 # Mod 更新后用 reference/dev_scripts/audit_world_settings.py 核对差异，改完登记表再更新这里。
 MOD_VERIFIED_VERSIONS: dict[str, str] = {
@@ -1181,10 +1199,14 @@ def get_mod_world_settings(
 
 
 def get_mod_vanilla_world_patches(
-    mod_settings: dict[str, ModWorldSetting], location: str,
+    mod_settings: dict[str, ModWorldSetting], location: str, active_mod_ids=None,
 ) -> tuple[set[str], dict[str, float], dict[str, float]]:
-    """合并当前已启用 Mod 对原版目录的隐藏和排序补丁。"""
-    active_mod_ids = {info.mod_id for info in mod_settings.values()}
+    """合并当前已启用 Mod 对原版目录的隐藏和排序补丁。
+
+    ``active_mod_ids`` 为已启用的 Mod（纯数字 ID）；不传时按 ``mod_settings`` 里出现的 Mod 推断，
+    但按世界过滤过的登记表会漏掉在当前世界没有设置项的 Mod（如洞穴里的云霄国度）。"""
+    if active_mod_ids is None:
+        active_mod_ids = {info.mod_id for info in mod_settings.values()}
     hidden: set[str] = set()
     rule_order: dict[str, float] = {}
     generation_order: dict[str, float] = {}

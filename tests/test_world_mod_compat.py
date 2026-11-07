@@ -380,6 +380,29 @@ def test_shipwrecked_volcano_island_options_follow_toggle() -> None:
     assert kept.value == "often"
 
 
+def test_porkland_limits_master_only_vanilla_to_forest() -> None:
+    """云霄国度的 delete_items 把四季、活动等改成只在森林显示：启用后洞穴等做主世界时没有这些项。"""
+    from dstools.features.world.mod_settings import PORKLAND_FOREST_ONLY_KEYS
+
+    all_settings = get_mod_world_settings({IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID})
+    active = frozenset(info.mod_id for info in all_settings.values())
+
+    def visible(location):
+        settings = {k: v for k, v in all_settings.items() if v.visible_in(location, True)}
+        view = build_world_view_model(WorldPreset(location=location), settings, active_mod_ids=active)
+        return {row.key for grouped in (view.rules_by_category, view.generation_by_category)
+                for rows in grouped.values() for row in rows}
+
+    assert PORKLAND_FOREST_ONLY_KEYS <= visible(FOREST_LOCATION)
+    remaining = MASTER_ONLY_VANILLA_KEYS - PORKLAND_FOREST_ONLY_KEYS
+    for location in (CAVE_LOCATION, SHIPWRECKED_LOCATION):
+        shown = visible(location)
+        assert not PORKLAND_FOREST_ONLY_KEYS & shown and remaining <= shown
+    # 猪镇白名单里的仅主世界项正好是没被限定到森林的那些
+    from dstools.features.world.catalog_resolver import PORKLAND_VANILLA_KEYS
+    assert PORKLAND_VANILLA_KEYS & MASTER_ONLY_VANILLA_KEYS == remaining
+
+
 def test_ia_core_boats_in_porkland_match_game() -> None:
     mods = {IA_CORE_MOD_ID, PORKLAND_MOD_ID}
     settings = get_mod_world_settings(mods, PORKLAND_LOCATION, True)
