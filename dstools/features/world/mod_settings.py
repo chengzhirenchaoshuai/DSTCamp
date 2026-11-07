@@ -768,14 +768,12 @@ def creation_defaults(mod_ids, location: str) -> dict[str, str]:
         if info.missing_values and info.missing_values.get(location, info.initial_value) != info.initial_value
     }
 
-# Above the Clouds 新增条目在注册前统一补 ``world={"porkland"}``。
+# Above the Clouds 新增条目在注册前统一补 ``world={"porkland"}``（customize_items 那一段）。
 _set_verified_scope(PORKLAND_SETTINGS, PORKLAND_SETTINGS, {PORKLAND_LOCATION})
-_set_verified_scope(
-    PORKLAND_SETTINGS,
-    {"temperate", "humid", "lush", "porkland_season_start"},
-    {PORKLAND_LOCATION},
-    master_controlled=True,
-)
+_set_verified_scope(PORKLAND_SETTINGS, {"porkland_season_start"}, {PORKLAND_LOCATION}, master_controlled=True)
+# 例外：平和季/潮湿季/繁茂季在 pl_customize_table 里，经 add_group_and_item 注册时不补 world，
+# 与岛屿冒险的四个季节一样跟着主世界走（任何世界类型做主世界都显示）
+_set_verified_scope(PORKLAND_SETTINGS, {"temperate", "humid", "lush"}, None, master_controlled=True)
 
 # workshop-3360553731 == Beneath the World Below（深埋之下），0.4.16.6
 # 来源（content/322330/3360553731/）：

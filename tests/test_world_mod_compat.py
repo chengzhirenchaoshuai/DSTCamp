@@ -184,9 +184,13 @@ def test_setting_location_isolation() -> None:
     porkland_in_forest = get_mod_world_settings(
         {PORKLAND_MOD_ID}, FOREST_LOCATION, True,
     )
+    # 云霄国度的条目只在猪镇，例外是平和季/潮湿季/繁茂季：注册时不补 world，跟着主世界走
+    seasons = {"temperate", "humid", "lush"}
     assert porkland
-    assert all(item.locations == frozenset({PORKLAND_LOCATION}) for item in porkland.values())
-    assert not porkland_in_forest
+    assert all(item.locations == frozenset({PORKLAND_LOCATION})
+               for key, item in porkland.items() if key not in seasons)
+    assert set(porkland_in_forest) == seasons
+    assert not get_mod_world_settings({PORKLAND_MOD_ID}, PORKLAND_LOCATION, False).keys() & seasons
 
     island_master = get_mod_world_settings(
         {IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID}, SHIPWRECKED_LOCATION, True,
