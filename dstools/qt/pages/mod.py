@@ -1341,22 +1341,34 @@ class ModPage(Page):
         QGuiApplication.clipboard().setText(name)
         dialogs.show_toast(self.window(), t("mod.name_copied_toast", name=name))
 
-    def _can_unsubscribe(self, workshop_id: str) -> bool:
-        """Steam 创意工坊 Mod 才能取消订阅；LuaJIT 配套 Mod 是补丁必需的，不提供。"""
+    def _unsubscribe_block_reason(self, workshop_id: str) -> str:
+        """不能取消订阅的原因，可以取消时返回空串。
+        只有 Steam 创意工坊 Mod 能取消；LuaJIT 配套 Mod 是补丁必需的，不提供。"""
         cluster = self.get_cluster()
         if cluster is not None and cluster.platform == Platform.WEGAME:
-            return False
+            return t("mod.unsubscribe_blocked_wegame")
         numeric = str(workshop_id).removeprefix("workshop-")
-        return (str(workshop_id).startswith("workshop-") and numeric.isdigit()
-                and workshop_id != luajit_injector.WORKSHOP_MOD_KEY)
+        if not (str(workshop_id).startswith("workshop-") and numeric.isdigit()):
+            return t("mod.unsubscribe_blocked_local")
+        if workshop_id == luajit_injector.WORKSHOP_MOD_KEY:
+            return t("mod.unsubscribe_blocked_luajit")
+        if workshop_id in self._unsubscribing:
+            return t("mod.unsubscribe_blocked_running")
+        return ""
 
     def _on_mod_context_menu(self, workshop_id: str, global_pos) -> None:
-        if not self._can_unsubscribe(workshop_id):
+        if workshop_id == CLIENT_MODS_DISABLED_KEY:  # "禁用客户端模组"开关行不是 Mod
             return
+        reason = self._unsubscribe_block_reason(workshop_id)
         menu = QMenu(self)
+        menu.setToolTipsVisible(True)
         action = menu.addAction(t("mod.unsubscribe_menu"))
-        action.setEnabled(workshop_id not in self._unsubscribing)
-        action.triggered.connect(lambda: self._unsubscribe_mod(workshop_id))
+        if reason:
+            # 只读：灰显不可点，悬停显示原因（QMenu 对禁用项同样显示提示）
+            action.setEnabled(False)
+            action.setToolTip(reason)
+        else:
+            action.triggered.connect(lambda: self._unsubscribe_mod(workshop_id))
         menu.exec(global_pos)
 
     def _unsubscribe_mod(self, workshop_id: str) -> None:
