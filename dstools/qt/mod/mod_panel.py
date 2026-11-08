@@ -3,7 +3,7 @@
 用 QPainter 在 QAbstractScrollArea 视口上只画可见行（与 world_panel.py 相同思路）。
 """
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QAbstractScrollArea, QToolTip
 
@@ -63,6 +63,7 @@ class ModListPanel(QAbstractScrollArea):
     folder_requested = Signal(str)
     copy_id_requested = Signal(str)
     copy_name_requested = Signal(str)
+    context_menu_requested = Signal(str, QPoint)  # 右键某行：(workshop_id, 全局坐标)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -469,7 +470,8 @@ class ModListPanel(QAbstractScrollArea):
                 dpr = folder_icon.devicePixelRatio()
                 painter.drawPixmap(QPointF(folder.left(), link_cy - folder_icon.height() / dpr / 2), folder_icon)
 
-    def _hit_test_grid(self, x: float, y: float):
+    def _grid_index_at(self, x: float, y: float) -> int | None:
+        """多列布局下 (x, y)（含滚动偏移）落在哪一格，格子之间的空隙返回 None。"""
         width = self.viewport().width()
         m = _Metrics(width)
         n = self._column_count
@@ -484,9 +486,17 @@ class ModListPanel(QAbstractScrollArea):
         index = line * n + col
         if index >= len(self._rows):
             return None
-        cell = self._cell_rect(m, width, index)
-        if not cell.contains(QPointF(x, y)):
+        if not self._cell_rect(m, width, index).contains(QPointF(x, y)):
             return None
+        return index
+
+    def _hit_test_grid(self, x: float, y: float):
+        index = self._grid_index_at(x, y)
+        if index is None:
+            return None
+        width = self.viewport().width()
+        m = _Metrics(width)
+        cell = self._cell_rect(m, width, index)
         row = self._rows[index]
         wid = row["workshop_id"]
         fonts = self._grid_fonts(m.s)
@@ -630,6 +640,20 @@ class ModListPanel(QAbstractScrollArea):
     def _show_locked_tip(self) -> None:
         if self._locked_tip_pos is not None:
             QToolTip.showText(self._locked_tip_pos, t("mod.locked_switch_hover"), self)
+
+    def _row_id_at(self, pos) -> str | None:
+        """视口坐标所在的整行（多列时为整格）对应的 Mod，不区分点在行内哪个控件上。"""
+        y = pos.y() + self.verticalScrollBar().value()
+        if self._column_count > 1:
+            index = self._grid_index_at(pos.x(), y)
+            return None if index is None else self._rows[index]["workshop_id"]
+        _index, row, _top = self._row_at(y)
+        return None if row is None else row["workshop_id"]
+
+    def contextMenuEvent(self, event):
+        wid = self._row_id_at(QPointF(event.pos()))
+        if wid is not None:
+            self.context_menu_requested.emit(wid, event.globalPos())
 
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:

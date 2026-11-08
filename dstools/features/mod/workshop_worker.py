@@ -16,6 +16,7 @@ from dstools.features.mod.workshop_api import (
     _get_workshop_item_snapshot_in_process,
     _snapshot_to_payload,
     _subscribe_workshop_items_in_process,
+    _unsubscribe_workshop_items_in_process,
     _update_workshop_items_in_process,
 )
 
@@ -75,6 +76,11 @@ def run_request(request: dict, emit) -> dict:
         }
     if action == "subscribe":
         results = _subscribe_workshop_items_in_process(
+            request.get("ids") or (), dll_path=dll_path
+        )
+        return {"results": {str(key): value for key, value in results.items()}}
+    if action == "unsubscribe":
+        results = _unsubscribe_workshop_items_in_process(
             request.get("ids") or (), dll_path=dll_path
         )
         return {"results": {str(key): value for key, value in results.items()}}

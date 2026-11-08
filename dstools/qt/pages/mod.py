@@ -15,7 +15,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QVBoxLayout,
 )
 
 from dstools.features.local_service import luajit_injector
@@ -245,6 +245,8 @@ class ModPage(Page):
         self._list_panel.folder_requested.connect(self._on_open_mod_folder)
         self._list_panel.copy_id_requested.connect(self._on_copy_id)
         self._list_panel.copy_name_requested.connect(self._on_copy_name)
+        self._list_panel.context_menu_requested.connect(self._on_mod_context_menu)
+        self._unsubscribing: set[str] = set()
         self._list_panel.set_column_count(columns)
         root.addWidget(self._list_panel, 1)
 
@@ -1338,6 +1340,60 @@ class ModPage(Page):
         name = self._resolve_mod_display_name(workshop_id)
         QGuiApplication.clipboard().setText(name)
         dialogs.show_toast(self.window(), t("mod.name_copied_toast", name=name))
+
+    def _can_unsubscribe(self, workshop_id: str) -> bool:
+        """Steam 创意工坊 Mod 才能取消订阅；LuaJIT 配套 Mod 是补丁必需的，不提供。"""
+        cluster = self.get_cluster()
+        if cluster is not None and cluster.platform == Platform.WEGAME:
+            return False
+        numeric = str(workshop_id).removeprefix("workshop-")
+        return (str(workshop_id).startswith("workshop-") and numeric.isdigit()
+                and workshop_id != luajit_injector.WORKSHOP_MOD_KEY)
+
+    def _on_mod_context_menu(self, workshop_id: str, global_pos) -> None:
+        if not self._can_unsubscribe(workshop_id):
+            return
+        menu = QMenu(self)
+        action = menu.addAction(t("mod.unsubscribe_menu"))
+        action.setEnabled(workshop_id not in self._unsubscribing)
+        action.triggered.connect(lambda: self._unsubscribe_mod(workshop_id))
+        menu.exec(global_pos)
+
+    def _unsubscribe_mod(self, workshop_id: str) -> None:
+        """以当前 Steam 账号取消订阅（经短生命周期工作进程，GUI 不加载 Steam API）。
+        只取消订阅、不删文件：Steam 自己会删，没删的留给「更新 Mod」的清理残留处理。"""
+        numeric = int(str(workshop_id).removeprefix("workshop-"))
+        name = self._resolve_mod_display_name(workshop_id)
+        text = t("mod.unsubscribe_confirm", name=name, id=numeric)
+        mod = self._mod_data.get(workshop_id)
+        if mod is not None and mod.enabled:
+            text += t("mod.unsubscribe_enabled_note")
+        if not dialogs.ask_yes_no(self.window(), t("mod.unsubscribe_title"), text, danger=True):
+            return
+        self._unsubscribing.add(workshop_id)
+
+        def work():
+            from dstools.features.mod.workshop_api import unsubscribe_workshop_items
+            return unsubscribe_workshop_items([numeric]).get(numeric, "")
+
+        def done(error: str) -> None:
+            self._unsubscribing.discard(workshop_id)
+            # 订阅状态变了：作废更新状态缓存，下次打开「更新 Mod」重新查
+            self._workshop_status_cache.clear()
+            self._workshop_status_checked_at = 0.0
+            self._update_workshop_update_hint()
+            if error:
+                dialogs.show_error(self.window(), t("mod.unsubscribe_title"),
+                                   t("mod.unsubscribe_failed", name=name, error=error))
+            else:
+                dialogs.show_info(self.window(), t("mod.unsubscribe_title"), t("mod.unsubscribe_done", name=name))
+
+        def failed(exc: Exception) -> None:
+            self._unsubscribing.discard(workshop_id)
+            dialogs.show_error(self.window(), t("mod.unsubscribe_title"),
+                               t("mod.unsubscribe_failed", name=name, error=exc))
+
+        run_async(work, done, failed)
 
     def _open_recommend_mods(self) -> None:
         RecommendModsDialog(self).exec()

@@ -124,7 +124,8 @@ class _SteamUGCQueryCompleted(ctypes.Structure):
 
 
 class _RemoteStorageSubscribePublishedFileResult(ctypes.Structure):
-    """RemoteStorageSubscribePublishedFileResult_t（回调号 1300 + 13）。"""
+    """RemoteStorageSubscribePublishedFileResult_t（回调号 1300 + 13）；
+    取消订阅的 RemoteStorageUnsubscribePublishedFileResult_t（1300 + 15）字段相同，共用此结构。"""
 
     _fields_ = [
         ("result", ctypes.c_int32),
@@ -134,6 +135,7 @@ class _RemoteStorageSubscribePublishedFileResult(ctypes.Structure):
 
 _STEAM_UGC_QUERY_COMPLETED_CALLBACK = 3401
 _REMOTE_STORAGE_SUBSCRIBE_RESULT_CALLBACK = 1313
+_REMOTE_STORAGE_UNSUBSCRIBE_RESULT_CALLBACK = 1315
 _STEAM_RESULT_OK = 1
 _STEAM_RESULT_ACCESS_DENIED = 15
 _UGC_DETAILS_BUFFER_SIZE = 32768
@@ -703,9 +705,22 @@ class SteamWorkshopSession:
 
     def subscribe_item(self, workshop_id: int, *, timeout: float = 30.0) -> int:
         """以当前 Steam 账号订阅 Workshop 项目，返回 Steam 的 EResult（1 为成功）。"""
+        return self._subscription_call(
+            "SteamAPI_ISteamUGC_SubscribeItem", _REMOTE_STORAGE_SUBSCRIBE_RESULT_CALLBACK,
+            workshop_id, timeout=timeout, action="订阅")
+
+    def unsubscribe_item(self, workshop_id: int, *, timeout: float = 30.0) -> int:
+        """以当前 Steam 账号取消订阅，返回 EResult（1 为成功）。只认 ID，已下架的项目也能取消（已实测）。"""
+        return self._subscription_call(
+            "SteamAPI_ISteamUGC_UnsubscribeItem", _REMOTE_STORAGE_UNSUBSCRIBE_RESULT_CALLBACK,
+            workshop_id, timeout=timeout, action="取消订阅")
+
+    def _subscription_call(self, export: str, callback_id: int, workshop_id: int, *,
+                           timeout: float, action: str) -> int:
+        """发起订阅/取消订阅这类异步调用，等回调结果后返回 EResult。"""
         self._ensure_started()
         names = (
-            "SteamAPI_ISteamUGC_SubscribeItem",
+            export,
             "SteamAPI_SteamUtils_v010",
             "SteamAPI_ISteamUtils_IsAPICallCompleted",
             "SteamAPI_ISteamUtils_GetAPICallResult",
@@ -717,8 +732,9 @@ class SteamWorkshopSession:
             self.utils = d.SteamAPI_SteamUtils_v010()
             if not self.utils:
                 raise RuntimeError("SteamAPI_SteamUtils_v010 返回空接口")
-        d.SteamAPI_ISteamUGC_SubscribeItem.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
-        d.SteamAPI_ISteamUGC_SubscribeItem.restype = ctypes.c_uint64
+        call = getattr(d, export)
+        call.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+        call.restype = ctypes.c_uint64
         d.SteamAPI_ISteamUtils_IsAPICallCompleted.argtypes = [
             ctypes.c_void_p, ctypes.c_uint64, ctypes.POINTER(ctypes.c_bool),
         ]
@@ -728,9 +744,9 @@ class SteamWorkshopSession:
             ctypes.c_int, ctypes.POINTER(ctypes.c_bool),
         ]
         d.SteamAPI_ISteamUtils_GetAPICallResult.restype = ctypes.c_bool
-        api_call = int(d.SteamAPI_ISteamUGC_SubscribeItem(self.ugc, int(workshop_id)))
+        api_call = int(call(self.ugc, int(workshop_id)))
         if not api_call:
-            raise RuntimeError("Steam 拒绝了订阅请求")
+            raise RuntimeError(f"Steam 拒绝了{action}请求")
         run_callbacks = d.SteamAPI_RunCallbacks
         run_callbacks.restype = None
         io_failed = ctypes.c_bool()
@@ -741,15 +757,15 @@ class SteamWorkshopSession:
                 break
             time.sleep(0.05)
         else:
-            raise TimeoutError("等待 Steam 订阅结果超时")
+            raise TimeoutError(f"等待 Steam {action}结果超时")
         completed = _RemoteStorageSubscribePublishedFileResult()
         result_failed = ctypes.c_bool()
         ok = d.SteamAPI_ISteamUtils_GetAPICallResult(
             self.utils, api_call, ctypes.byref(completed), ctypes.sizeof(completed),
-            _REMOTE_STORAGE_SUBSCRIBE_RESULT_CALLBACK, ctypes.byref(result_failed),
+            callback_id, ctypes.byref(result_failed),
         )
         if not ok or io_failed.value or result_failed.value:
-            raise RuntimeError("Steam 订阅请求发生 IO 错误")
+            raise RuntimeError(f"Steam {action}请求发生 IO 错误")
         return int(completed.result)
 
     def item_state(self, workshop_id: int) -> WorkshopItemState:
@@ -2037,5 +2053,42 @@ def subscribe_workshop_items(
         return {}
     payload = _run_workshop_worker(
         {"action": "subscribe", "ids": ids, "dll_path": str(dll_path) if dll_path else None}
+    )
+    return {int(key): str(value) for key, value in (payload.get("results") or {}).items()}
+
+
+def _unsubscribe_workshop_items_in_process(
+    workshop_ids, *, dll_path: Path | None = None
+) -> dict[int, str]:
+    """逐个取消订阅；返回 {ID: 错误信息}，成功项为空串。
+    当前账号本来就没订阅的直接报出来：Steam 对未订阅项也可能返回成功，不能当成取消了。"""
+    resolved_dll = find_steam_api_dll(dll_path)
+    if resolved_dll is None:
+        raise FileNotFoundError("找不到 DST 或专用服务器的 bin64\\steam_api64.dll")
+    results: dict[int, str] = {}
+    with SteamWorkshopSession(resolved_dll) as session:
+        subscribed = set(session.subscribed_item_ids())
+        for workshop_id in workshop_ids:
+            wid = int(workshop_id)
+            if wid not in subscribed:
+                results[wid] = "当前登录的 Steam 账号没有订阅这个 Mod"
+                continue
+            try:
+                code = session.unsubscribe_item(wid)
+                results[wid] = "" if code == _STEAM_RESULT_OK else f"Steam 返回错误码 {code}"
+            except (RuntimeError, TimeoutError, OSError) as exc:
+                results[wid] = str(exc)
+    return results
+
+
+def unsubscribe_workshop_items(
+    workshop_ids: list[int] | tuple[int, ...], *, dll_path: Path | None = None
+) -> dict[int, str]:
+    """在独立进程中以当前 Steam 账号取消订阅；返回 {ID: 错误信息}，成功为空串。"""
+    ids = list(dict.fromkeys(int(item) for item in workshop_ids if int(item) > 0))
+    if not ids:
+        return {}
+    payload = _run_workshop_worker(
+        {"action": "unsubscribe", "ids": ids, "dll_path": str(dll_path) if dll_path else None}
     )
     return {int(key): str(value) for key, value in (payload.get("results") or {}).items()}
