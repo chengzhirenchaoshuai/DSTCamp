@@ -607,6 +607,8 @@ class Theme(QObject):
                 padding: 4px; }}
             QMenu::item {{ padding: 6px 22px; border-radius: 4px; }}
             QMenu::item:selected {{ background: {c['PRIMARY_LIGHT']}; color: {c['TEXT']}; }}
+            QMenu::item:disabled, QMenu::item:disabled:selected {{ background: transparent;
+                color: {c['TEXT_MUTED']}; }}
             QMenu::separator {{ height: 1px; background: {c['CARD_BORDER']}; margin: 4px 8px; }}
             FrostedMenu {{ background: {_rgba(c['CARD_BG'], 200)}; border: 1px solid {c['CARD_BORDER']};
                 padding: 5px; }}
