@@ -28,6 +28,7 @@ from dstools.features.mod import presets
 from dstools.features.mod.icons import get_mod_icon_path, load_mod_icon_image
 from dstools.features.mod.list_model import build_mod_rows, localize_mod_name, sort_mod_data
 from dstools.features.mod.locations import resolve_mod_open_location
+from dstools.features.mod.manager import CLIENT_MODS_DISABLED_KEY
 from dstools.features.mod.parser import (
     engine_folder_name, find_mod_folder, list_installed_mod_ids, parse_modinfo, resolve_wegame_client_mods_dir,
     split_installed_mod_counts,
@@ -56,6 +57,7 @@ from dstools.shared.server_ports import (
 )
 from dstools.shared.token_manager import read_token
 from dstools.qt import dialogs
+from dstools.qt.mod import client_mods_switch
 from dstools.qt.mod.mod_config_dialog import open_mod_config
 from dstools.qt.mod.mod_panel import ModListPanel
 from dstools.qt.mod.mod_presets_dialogs import SavePresetDialog
@@ -305,6 +307,11 @@ class CreationWizardDialog(QDialog):
         self._launch_requested = False
         self._selected_mod_ids: set[str] = set()
         self._mod_overrides: dict[str, dict] = {}
+        # "禁用客户端 Mod"开关（新世界都是服务器存档，开关有效）；_mod_sort_* 是上次排序时的快照，
+        # 用来定开关行在列表里的位置，切换时不跳动
+        self._client_mods_disabled = False
+        self._client_mods_sort_enabled = False
+        self._mod_sort_enabled_ids: frozenset = frozenset()
         self._mod_data: dict[str, ModEntry] = {}
         self._mod_infos: dict = {}
         self._mod_paths: dict = {}
@@ -1047,6 +1054,8 @@ class CreationWizardDialog(QDialog):
                 self._icon_imgs[mod_id] = icon
         self._ensure_mod_dependencies(show_dialog=False)
         self._mod_data = sort_mod_data(self._mod_data, self._mod_infos)
+        self._mod_sort_enabled_ids = frozenset(wid for wid, mod in self._mod_data.items() if mod.enabled)
+        self._client_mods_sort_enabled = self._client_mods_disabled
         regular, custom = split_installed_mod_counts((mid for mid, _i, _icon, _f in records), self._mod_scan_platform)
         self._mod_scan_status_label.setText(t("mod.scan_found_breakdown", regular=regular, custom=custom))
         self._render_list()
@@ -1109,14 +1118,29 @@ class CreationWizardDialog(QDialog):
             path = self._mod_paths.get(row["workshop_id"])
             row["has_folder"] = bool(path and Path(path).is_dir())
             row["mod_format"] = None if row.get("is_local") else detect_mod_format(row["workshop_id"], workshop_root)
+        switch_row = client_mods_switch.switch_row(
+            self._client_mods_disabled, self._MOD_FILTER_SHOWS[self._mod_filter_tabs.current_index()],
+            self._mod_filter_edit.text())
+        if switch_row is not None:
+            rows.insert(client_mods_switch.switch_row_index(
+                rows, switch_row["name"], self._client_mods_sort_enabled, self._mod_sort_enabled_ids), switch_row)
         return rows
 
     def _render_list(self) -> None:
         if not hasattr(self, "_mod_list_panel"):
             return
-        self._mod_list_panel.set_rows(self._build_mod_rows(), self._icon_imgs, interactive=True)
+        rows = self._build_mod_rows()
+        icons = self._icon_imgs
+        if any(row["workshop_id"] == CLIENT_MODS_DISABLED_KEY for row in rows):
+            icons = {**icons, CLIENT_MODS_DISABLED_KEY: client_mods_switch.client_mods_disabled_icon()}
+        self._mod_list_panel.set_rows(rows, icons, interactive=True)
 
     def _toggle_mod(self, mod_id: str) -> None:
+        if mod_id == CLIENT_MODS_DISABLED_KEY:
+            self._dirty = True
+            self._client_mods_disabled = not self._client_mods_disabled
+            self._render_list()
+            return
         mod = self._mod_data.get(mod_id)
         if mod is None:
             return
@@ -1223,8 +1247,11 @@ class CreationWizardDialog(QDialog):
         dialogs.show_toast(self, t("mod.id_copied_toast", id=numeric_id))
 
     def _on_copy_name(self, mod_id: str) -> None:
-        info = self._mod_infos.get(mod_id)
-        name = localize_mod_name(mod_id, info.name if info else "") or mod_id
+        if mod_id == CLIENT_MODS_DISABLED_KEY:
+            name = t("mod.client_mods_disabled")
+        else:
+            info = self._mod_infos.get(mod_id)
+            name = localize_mod_name(mod_id, info.name if info else "") or mod_id
         QGuiApplication.clipboard().setText(name)
         dialogs.show_toast(self, t("mod.name_copied_toast", name=name))
 
@@ -1386,7 +1413,8 @@ class CreationWizardDialog(QDialog):
                     mod_ids=frozenset(self._selected_mod_ids), mod_overrides=copy.deepcopy(self._mod_overrides),
                     shard_configs=shard_configs, cluster_token=server_settings.get("cluster_token", ""),
                     admin_ids=server_settings.get("admin_ids", ()), block_ids=server_settings.get("block_ids", ()),
-                    extra_shards=copy.deepcopy(self._extra_plans)),
+                    extra_shards=copy.deepcopy(self._extra_plans),
+                    client_mods_disabled=self._client_mods_disabled),
                 root)
             self.ctx.refresh_env()
             self._created_path = out

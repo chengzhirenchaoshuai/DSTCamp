@@ -15,6 +15,7 @@ from dstools.features.world.location_profiles import (
     resolve_world_location_profile,
     with_required_dependencies,
 )
+from dstools.features.mod.manager import CLIENT_MODS_DISABLED_KEY
 from dstools.features.world.mod_settings import creation_defaults
 from dstools.shared.ini_parser import write_cluster_ini, write_server_ini
 from dstools.models import ClusterConfig, ShardConfig
@@ -51,6 +52,9 @@ class WorldCreationPlan:
     # 额外世界目录名 -> 世界计划。Master/Caves 保持独立字段以兼容现有调用方；
     # 新增的多层世界统一放在这里，目录名同时也是 server.ini 的分片名称。
     extra_shards: dict[str, WorldShardPlan] = field(default_factory=dict)
+    # 各世界 modoverrides.lua 写入"禁用客户端 Mod"开关（不是 Mod，不放进 mod_overrides，
+    # 免得被当成 Mod ID 参与依赖补齐和世界类型判断）
+    client_mods_disabled: bool = False
 
 
 def _selected_mod_ids(plan: WorldCreationPlan) -> frozenset[str]:
@@ -235,6 +239,7 @@ def _write_shard(
     mod_ids: frozenset[str],
     mod_overrides: dict[str, dict],
     shard_config: ShardConfig | None = None,
+    client_mods_disabled: bool = False,
 ) -> None:
     root.mkdir(parents=True, exist_ok=True)
     if shard_config is None:
@@ -256,6 +261,9 @@ def _write_shard(
         data = dict(entry) if isinstance(entry, dict) else {}
         data.setdefault("enabled", True)
         overrides[key] = data
+    if client_mods_disabled:
+        # 游戏只看值的真假（与 manager.save_mod_overrides 写法一致），关闭时不写这个键
+        overrides[CLIENT_MODS_DISABLED_KEY] = {"enabled": True}
     _write_lua(root / "modoverrides.lua", overrides)
 
 
@@ -292,12 +300,12 @@ def create_world(plan: WorldCreationPlan, destination_root: Path) -> Path:
         if plan.master is not None:
             _write_shard(
                 temp_dir / "Master", plan.master, effective_mod_ids, effective_mod_overrides,
-                plan.shard_configs.get("Master"),
+                plan.shard_configs.get("Master"), plan.client_mods_disabled,
             )
         if plan.caves is not None:
             _write_shard(
                 temp_dir / "Caves", plan.caves, effective_mod_ids, effective_mod_overrides,
-                plan.shard_configs.get("Caves"),
+                plan.shard_configs.get("Caves"), plan.client_mods_disabled,
             )
         for shard_index, (shard_name, shard_plan) in enumerate(plan.extra_shards.items(), start=2):
             _write_shard(
@@ -307,6 +315,7 @@ def create_world(plan: WorldCreationPlan, destination_root: Path) -> Path:
                 effective_mod_overrides,
                 plan.shard_configs.get(shard_name)
                 or default_shard_config(False, shard_name, shard_index),
+                plan.client_mods_disabled,
             )
         os.replace(temp_dir, destination)
         return destination

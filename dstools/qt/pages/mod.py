@@ -26,7 +26,7 @@ from dstools.features.mod.config_memory import recall, recall_for, remember
 from dstools.features.mod.icons import get_cached_mod_icon_path, get_mod_icon_path, load_mod_icon_image
 from dstools.features.mod.legacy_v1 import find_legacy_packages
 from dstools.features.mod.list_model import (
-    build_mod_rows, localize_mod_name, merge_visible_mod_ids, mod_name_cmp, referenced_missing_status_text,
+    build_mod_rows, localize_mod_name, merge_visible_mod_ids, referenced_missing_status_text,
     sort_mod_data,
 )
 from dstools.features.mod.local_version import apply_local_version, resolve_local_version_target
@@ -50,6 +50,7 @@ from dstools.features.world.location_profiles import (
 from dstools.i18n import t
 from dstools.models import ModEntry, ModOverrides, Platform, SaveSource
 from dstools.qt import dialogs
+from dstools.qt.mod import client_mods_switch
 from dstools.qt.mod.mod_config_dialog import open_mod_config
 from dstools.qt.mod.mod_config_sync import start_sync as start_config_sync
 from dstools.qt.mod.mod_panel import ModListPanel
@@ -64,26 +65,11 @@ from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar
 from dstools.shared import app_settings, tex_convert
-from dstools.shared.resource_paths import bundled_resource_dir, bundled_runtime_damaged
+from dstools.shared.resource_paths import bundled_runtime_damaged
 
 _FILTER_DEBOUNCE_MS = 150
 # 工坊更新状态的复用有效期（秒）；更新、清理等操作后会立即作废
 _WORKSHOP_STATUS_TTL = 300.0
-_CLIENT_MODS_ICON_PATH = bundled_resource_dir() / "icons" / "ui" / "client_mods_disabled.png"
-_client_mods_icon = None
-
-
-def _client_mods_disabled_icon():
-    """"禁用客户端 Mod"行的图标（PIL 图像，首次用到时读取）；读不到时返回 None，面板画默认图标。"""
-    global _client_mods_icon
-    if _client_mods_icon is None:
-        from PIL import Image
-        try:
-            with Image.open(_CLIENT_MODS_ICON_PATH) as image:
-                _client_mods_icon = image.convert("RGBA")
-        except OSError:
-            _client_mods_icon = False
-    return _client_mods_icon or None
 
 
 def _expand_workshop_candidate_ids(list_ids, cluster_ids) -> list[int]:
@@ -1022,42 +1008,15 @@ class ModPage(Page):
                 # 名称和版本都是空的，用户不知道这一行从哪来——写明来源和原因。
                 row["name"] = row["name"] or t("mod.reference_missing_name")
                 row["version_text"] = referenced_missing_status_text(status)
-        switch_row = self._client_mods_switch_row(cluster)
-        if switch_row is not None:
-            rows.insert(self._client_mods_row_index(rows, switch_row["name"]), switch_row)
+        # 服务器存档的"禁用客户端 Mod"开关行。本地存档开服时游戏会按启用的 Mod 重写
+        # modoverrides.lua，留不住这个键，所以不显示。
+        if cluster and cluster.source == SaveSource.SERVER and self._current_shard_name:
+            filters = self._row_filter_args()
+            row = client_mods_switch.switch_row(self._client_mods_disabled, filters["show"], filters["query"])
+            if row is not None:
+                rows.insert(client_mods_switch.switch_row_index(
+                    rows, row["name"], self._client_mods_sort_enabled, self._sort_enabled_ids), row)
         return rows
-
-    def _client_mods_row_index(self, rows: list[dict], name: str) -> int:
-        """按 sort_mod_data 的规则（启用在前、再按名称）找开关行的位置，置顶的 LuaJIT 行之后。
-        各行的启用状态取加载排序时的快照：行顺序没有随切换重排，用当前状态会让开关行跳到刚关掉的 Mod 前面。"""
-        for index, row in enumerate(rows):
-            if row.get("locked"):
-                continue
-            if self._client_mods_sort_enabled != (row["workshop_id"] in self._sort_enabled_ids):
-                if self._client_mods_sort_enabled:
-                    return index
-                continue
-            if mod_name_cmp(name, row["name"] or row["workshop_id"]) < 0:
-                return index
-        return len(rows)
-
-    def _client_mods_switch_row(self, cluster) -> dict | None:
-        """服务器存档的"禁用客户端 Mod"行：借用 Mod 行的样式，开关跟普通 Mod 一样随"保存"写入。
-        本地存档开服时游戏会按启用的 Mod 重写 modoverrides.lua，留不住这个键，所以不显示。"""
-        if not cluster or cluster.source != SaveSource.SERVER or not self._current_shard_name:
-            return None
-        filters = self._row_filter_args()
-        show = filters["show"]
-        if show == "client" or show == ("disabled" if self._client_mods_disabled else "enabled"):
-            return None
-        name = t("mod.client_mods_disabled")
-        needle = filters["query"].strip().casefold()
-        if needle and needle not in name.casefold() and needle not in CLIENT_MODS_DISABLED_KEY:
-            return None
-        return {"workshop_id": CLIENT_MODS_DISABLED_KEY, "name": name,
-                "version_text": t("mod.client_mods_disabled_desc"), "enabled": self._client_mods_disabled,
-                "is_local": False, "has_config": False, "has_link": False,
-                "has_folder": False, "mod_format": None}
 
     def _mod_format(self, workshop_id: str, workshop_root) -> str | None:
         """列表和导出图片共用的 V1/V2 判断：有 Steam 状态时以它为准，否则看工坊目录内容。"""
@@ -1095,7 +1054,7 @@ class ModPage(Page):
         rows = self._build_rows()
         icons = self._icon_imgs
         if any(row["workshop_id"] == CLIENT_MODS_DISABLED_KEY for row in rows):
-            icons = {**icons, CLIENT_MODS_DISABLED_KEY: _client_mods_disabled_icon()}
+            icons = {**icons, CLIENT_MODS_DISABLED_KEY: client_mods_switch.client_mods_disabled_icon()}
         self._list_panel.set_rows(rows, icons, interactive=self._editable(self.get_cluster()))
 
     def _update_enabled_count(self, count: int | None = None) -> None:

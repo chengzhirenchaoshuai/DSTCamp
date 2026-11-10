@@ -1281,6 +1281,17 @@ def test_world_creation_plan_and_atomic_writer():
         else:
             raise AssertionError("existing cluster must not be overwritten")
 
+        # "禁用客户端 Mod"开关写进每个世界，且不被当成 Mod
+        from dataclasses import replace
+        from dstools.features.mod.manager import load_mod_overrides
+
+        switched = create_world(replace(plan, cluster_name="Cluster_Switch_Test", client_mods_disabled=True), Path(td))
+        for shard in ("Master", "Caves"):
+            loaded = load_mod_overrides(switched / shard / "modoverrides.lua")
+            assert loaded.client_mods_disabled
+            assert set(loaded.mods) == {"workshop-3322803908"}
+        assert not load_mod_overrides(path / "Master" / "modoverrides.lua").client_mods_disabled
+
 
 def test_mod_resolve_cache():
     """resolve_full_modinfo() 结果的磁盘缓存：按内容哈希与目录失效、格式版本校验与 ModConfigOption 的 JSON 往返。"""
