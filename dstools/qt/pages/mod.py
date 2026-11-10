@@ -181,11 +181,11 @@ class ModPage(Page):
         self._filter_edit.textChanged.connect(lambda _t: self._filter_timer.start())
         filter_row.addWidget(self._filter_edit)
         self._filter_tabs = PillTabBar(
-            [t("mod.show_all"), t("mod.show_enabled"), t("mod.show_disabled"), t("mod.show_custom"),
-             t("mod.show_client")],
-            # 不统一宽度："客户端模组"较长，统一后其余短标签两侧空白过宽
-            height=32, pill_height=24, font_size_key="FONT_SIZE_SM", gap=2, pad=16)
-        self._filter_tabs.current_changed.connect(lambda _i: self._render_list())
+            [t(f"mod.show_{show}") for show in self._FILTER_SHOWS],
+            # 不统一宽度："客户端 Mod"较长，统一后其余短标签两侧空白过宽；
+            # 内边距取 12（与列数页签相同），六个页签不至于太宽，后面的按钮也往左靠
+            height=32, pill_height=24, font_size_key="FONT_SIZE_SM", gap=2, pad=12)
+        self._filter_tabs.current_changed.connect(lambda _i: self._on_filter_tab_changed())
         filter_row.addWidget(self._filter_tabs)
         self._recommend_btn = QPushButton(t("mod.recommend_btn"))
         self._recommend_btn.clicked.connect(self._open_recommend_mods)
@@ -213,6 +213,12 @@ class ModPage(Page):
         self._export_image_btn = QPushButton(t("mod.export_image_btn"))
         self._export_image_btn.clicked.connect(self._export_mod_list_image)
         status_row.addWidget(self._export_image_btn)
+        status_row.addSpacing(10)
+        # 当前筛选页签的说明，紧挨在筛选行下面
+        self._filter_hint_label = QLabel()
+        self._filter_hint_label.setProperty("muted", True)
+        status_row.addWidget(self._filter_hint_label)
+        self._update_filter_hint()
         status_row.addSpacing(10)
         self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
         self._unsaved_label.setProperty("accent", True)
@@ -1066,11 +1072,22 @@ class ModPage(Page):
         steam = status.evidence.steam_state if status is not None and status.evidence is not None else None
         return detect_mod_format(numeric, workshop_root, steam)
 
+    # 筛选页签顺序，与构造时的页签一一对应；文案键为 mod.show_<键> 和 mod.filter_desc_<键>
+    _FILTER_SHOWS = ("all", "enabled", "disabled", "server", "client", "custom")
+
+    def _on_filter_tab_changed(self) -> None:
+        self._update_filter_hint()
+        self._render_list()
+
+    def _update_filter_hint(self) -> None:
+        show = self._FILTER_SHOWS[self._filter_tabs.current_index()]
+        self._filter_hint_label.setText(
+            t("mod.filter_hint", name=t(f"mod.show_{show}"), desc=t(f"mod.filter_desc_{show}")))
+
     def _row_filter_args(self) -> dict:
         """当前筛选页签与搜索词对应的 build_mod_rows 参数（界面线程读取，可交给后台线程用）。"""
-        show_map = {0: "all", 1: "enabled", 2: "disabled", 3: "custom", 4: "client"}
-        show = show_map[self._filter_tabs.current_index()]
-        # "全部"同时列出客户端模组；"客户端模组"只列它们；其余筛选只看服务端 Mod
+        show = self._FILTER_SHOWS[self._filter_tabs.current_index()]
+        # "全部"同时列出客户端 Mod；"客户端 Mod"只列它们；其余筛选（含"服务端 Mod"）只看服务端 Mod
         return dict(query=self._filter_edit.text(), show=show,
                     show_local=show == "client", separate_client_mods=show != "all")
 
