@@ -849,8 +849,12 @@ class CreationWizardDialog(QDialog):
         self._mod_filter_tabs = PillTabBar(
             [t(f"mod.show_{show}") for show in self._MOD_FILTER_SHOWS],
             # 间距参数跟主页面 Mod 管理的同一排筛选页签一致（qt/pages/mod.py）。
-            height=32, pill_height=24, font_size_key="FONT_SIZE_SM", gap=2, pad=12)
-        self._mod_filter_tabs.current_changed.connect(lambda _i: self._on_mod_filter_tab_changed())
+            height=32, pill_height=24, font_size_key="FONT_SIZE_SM", gap=2, pad=12, margin=6)
+        # 每个筛选列出哪些 Mod，鼠标停在页签上时显示；"全部""已启用"在向导里含义与主页面不同，用向导自己的说明
+        self._mod_filter_tabs.set_tooltips([
+            t(f"world.creation_filter_desc_{show}" if show in ("all", "enabled") else f"mod.filter_desc_{show}")
+            for show in self._MOD_FILTER_SHOWS])
+        self._mod_filter_tabs.current_changed.connect(lambda _i: self._render_list())
         filter_row.addWidget(self._mod_filter_tabs)
         rescan_btn = QPushButton(t("world.creation_rescan"))
         rescan_btn.clicked.connect(lambda: self._scan_installed_mods(force=True))
@@ -871,11 +875,6 @@ class CreationWizardDialog(QDialog):
         self._mod_scan_status_label.setProperty("muted", True)
         filter_row.addWidget(self._mod_scan_status_label)
         layout.addLayout(filter_row)
-        # 当前筛选页签的说明，单独一行放在筛选行下面
-        self._mod_filter_hint_label = QLabel()
-        self._mod_filter_hint_label.setProperty("muted", True)
-        layout.addWidget(self._mod_filter_hint_label)
-        self._update_mod_filter_hint()
 
         self._mod_list_panel = ModListPanel()
         self._mod_list_panel.toggle_requested.connect(self._toggle_mod)
@@ -902,16 +901,6 @@ class CreationWizardDialog(QDialog):
     # 筛选页签顺序，与构造时的页签一一对应。向导只列服务端 Mod（新世界用不到客户端 Mod），
     # 所以没有"客户端 Mod"页签，"全部"实际也就是全部服务端 Mod。
     _MOD_FILTER_SHOWS = ("all", "enabled", "disabled", "server", "custom")
-
-    def _on_mod_filter_tab_changed(self) -> None:
-        self._update_mod_filter_hint()
-        self._render_list()
-
-    def _update_mod_filter_hint(self) -> None:
-        show = self._MOD_FILTER_SHOWS[self._mod_filter_tabs.current_index()]
-        # "全部""已启用"在向导里的含义与主页面不同，用向导自己的说明
-        desc_key = f"world.creation_filter_desc_{show}" if show in ("all", "enabled") else f"mod.filter_desc_{show}"
-        self._mod_filter_hint_label.setText(t("mod.filter_hint", name=t(f"mod.show_{show}"), desc=t(desc_key)))
 
     def _on_mod_columns_changed(self, index: int) -> None:
         columns = self._mod_column_choices[index]

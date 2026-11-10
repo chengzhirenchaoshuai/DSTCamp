@@ -74,7 +74,7 @@ _client_mods_icon = None
 
 
 def _client_mods_disabled_icon():
-    """"禁用客户端模组"行的图标（PIL 图像，首次用到时读取）；读不到时返回 None，面板画默认图标。"""
+    """"禁用客户端 Mod"行的图标（PIL 图像，首次用到时读取）；读不到时返回 None，面板画默认图标。"""
     global _client_mods_icon
     if _client_mods_icon is None:
         from PIL import Image
@@ -116,7 +116,7 @@ class ModPage(Page):
         self._filter_timer.timeout.connect(self._render_list)
         self._current_shard_name = ""
         self._global_defaults_dialog = None
-        # 列表里"禁用客户端模组"开关行：当前世界 modoverrides.lua 的状态（含未保存改动），随"保存"写入；
+        # 列表里"禁用客户端 Mod"开关行：当前世界 modoverrides.lua 的状态（含未保存改动），随"保存"写入；
         # 排序位置按加载时的状态定，跟其它 Mod 一样切换开关不重排
         self._client_mods_disabled = False
         self._client_mods_sort_enabled = False
@@ -183,9 +183,11 @@ class ModPage(Page):
         self._filter_tabs = PillTabBar(
             [t(f"mod.show_{show}") for show in self._FILTER_SHOWS],
             # 不统一宽度："客户端 Mod"较长，统一后其余短标签两侧空白过宽；
-            # 内边距取 12（与列数页签相同），六个页签不至于太宽，后面的按钮也往左靠
-            height=32, pill_height=24, font_size_key="FONT_SIZE_SM", gap=2, pad=12)
-        self._filter_tabs.current_changed.connect(lambda _i: self._on_filter_tab_changed())
+            # 内边距取 12（与列数页签相同）、两侧留白取 6，与左右控件的间距跟同一行其它控件一致
+            height=32, pill_height=24, font_size_key="FONT_SIZE_SM", gap=2, pad=12, margin=6)
+        # 每个筛选列出哪些 Mod，鼠标停在页签上时显示
+        self._filter_tabs.set_tooltips([t(f"mod.filter_desc_{show}") for show in self._FILTER_SHOWS])
+        self._filter_tabs.current_changed.connect(lambda _i: self._render_list())
         filter_row.addWidget(self._filter_tabs)
         self._recommend_btn = QPushButton(t("mod.recommend_btn"))
         self._recommend_btn.clicked.connect(self._open_recommend_mods)
@@ -213,12 +215,6 @@ class ModPage(Page):
         self._export_image_btn = QPushButton(t("mod.export_image_btn"))
         self._export_image_btn.clicked.connect(self._export_mod_list_image)
         status_row.addWidget(self._export_image_btn)
-        status_row.addSpacing(10)
-        # 当前筛选页签的说明，紧挨在筛选行下面
-        self._filter_hint_label = QLabel()
-        self._filter_hint_label.setProperty("muted", True)
-        status_row.addWidget(self._filter_hint_label)
-        self._update_filter_hint()
         status_row.addSpacing(10)
         self._unsaved_label = QLabel(t("dlg.unsaved_hint"))
         self._unsaved_label.setProperty("accent", True)
@@ -1046,7 +1042,7 @@ class ModPage(Page):
         return len(rows)
 
     def _client_mods_switch_row(self, cluster) -> dict | None:
-        """服务器存档的"禁用客户端模组"行：借用 Mod 行的样式，开关跟普通 Mod 一样随"保存"写入。
+        """服务器存档的"禁用客户端 Mod"行：借用 Mod 行的样式，开关跟普通 Mod 一样随"保存"写入。
         本地存档开服时游戏会按启用的 Mod 重写 modoverrides.lua，留不住这个键，所以不显示。"""
         if not cluster or cluster.source != SaveSource.SERVER or not self._current_shard_name:
             return None
@@ -1074,15 +1070,6 @@ class ModPage(Page):
 
     # 筛选页签顺序，与构造时的页签一一对应；文案键为 mod.show_<键> 和 mod.filter_desc_<键>
     _FILTER_SHOWS = ("all", "enabled", "disabled", "server", "client", "custom")
-
-    def _on_filter_tab_changed(self) -> None:
-        self._update_filter_hint()
-        self._render_list()
-
-    def _update_filter_hint(self) -> None:
-        show = self._FILTER_SHOWS[self._filter_tabs.current_index()]
-        self._filter_hint_label.setText(
-            t("mod.filter_hint", name=t(f"mod.show_{show}"), desc=t(f"mod.filter_desc_{show}")))
 
     def _row_filter_args(self) -> dict:
         """当前筛选页签与搜索词对应的 build_mod_rows 参数（界面线程读取，可交给后台线程用）。"""
@@ -1374,7 +1361,7 @@ class ModPage(Page):
         return ""
 
     def _on_mod_context_menu(self, workshop_id: str, global_pos) -> None:
-        if workshop_id == CLIENT_MODS_DISABLED_KEY:  # "禁用客户端模组"开关行不是 Mod
+        if workshop_id == CLIENT_MODS_DISABLED_KEY:  # "禁用客户端 Mod"开关行不是 Mod
             return
         reason = self._unsubscribe_block_reason(workshop_id)
         menu = QMenu(self)

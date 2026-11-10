@@ -5,7 +5,7 @@ from ctypes import wintypes
 
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QMenu, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QMenu, QScrollArea, QToolTip, QVBoxLayout, QWidget
 
 from dstools.qt.text_halo import draw_adaptive_text
 from dstools.qt.theme import theme
@@ -146,9 +146,12 @@ class PillTabBar(QWidget):
 
     def __init__(self, labels: list[str], parent=None, height: int = 44, pill_height: int = 34,
                  font_size_key: str | None = None, gap: int = 6, pad: int | None = None,
-                 uniform_width: bool = False, bold: bool = False):
+                 uniform_width: bool = False, bold: bool = False, margin: int = 24):
         super().__init__(parent)
         self._labels = list(labels)
+        # 左右留白：顶层页签条两侧要空出来；放进一行控件里的子页签条传小值，免得与左右控件隔得太开
+        self._margin = margin
+        self._tooltips: list[str] | None = None  # 每个页签各自的悬停说明，None 时沿用整条的 toolTip
         self._bold = bold  # 主页签文字加粗，子页签保持常规字重
         self._index = 0
         self._hover = -1
@@ -168,6 +171,24 @@ class PillTabBar(QWidget):
         self.updateGeometry()  # 文字变长（如"待更新（83）"）时通知布局按新的 sizeHint 重排，否则会被右侧控件压住
         self.update()
 
+    def set_tooltips(self, tooltips: list[str]) -> None:
+        """给每个页签单独设悬停说明，顺序与标签一致。"""
+        self._tooltips = list(tooltips)
+
+    def event(self, event):
+        if event.type() == QEvent.Type.ToolTip and self._tooltips is not None:
+            pos = QPointF(event.pos())
+            index = next((i for i, r in enumerate(self._rects()) if r.contains(pos)), -1)
+            if 0 <= index < len(self._tooltips) and self._tooltips[index]:
+                # 带上页签矩形：鼠标移出这个页签时提示自动消失，移到别的页签会重新触发
+                QToolTip.showText(event.globalPos(), self._tooltips[index], self,
+                                  self._rects()[index].toAlignedRect())
+            else:
+                QToolTip.hideText()
+                event.ignore()
+            return True
+        return super().event(event)
+
     def current_index(self) -> int:
         return self._index
 
@@ -182,7 +203,7 @@ class PillTabBar(QWidget):
         widths = [metrics.horizontalAdvance(text) + self._pad for text in self._labels]
         if self._uniform_width and widths:
             widths = [max(widths)] * len(widths)
-        x = 24.0
+        x = float(self._margin)
         top = (self.height() - self._pill_h) / 2
         rects = []
         for width in widths:
@@ -200,7 +221,7 @@ class PillTabBar(QWidget):
     def sizeHint(self) -> QSize:
         # 坑：放进 QHBoxLayout 并与 addStretch() 抢空间时会被挤成 0 宽，必须提供尺寸提示
         rects = self._rects()
-        width = int(rects[-1].right()) + 24 if rects else 0
+        width = int(rects[-1].right()) + self._margin if rects else 0
         return QSize(width, self.height())
 
     def mouseMoveEvent(self, event):
