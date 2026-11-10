@@ -1507,6 +1507,13 @@ class ModPage(Page):
             return
         SavePresetDialog(self).exec()
 
+    def preset_client_mods_disabled(self) -> bool | None:
+        """保存配置集时"禁用客户端 Mod"开关的当前状态（含未保存改动）；列表里没有这个开关时返回 None。"""
+        cluster = self.get_cluster()
+        if cluster is None or cluster.source != SaveSource.SERVER or not self._current_shard_name:
+            return None
+        return self._client_mods_disabled
+
     def _apply_preset_dialog(self) -> None:
         if self._loading:
             dialogs.show_info(self.window(), t("mod.preset_apply_btn"), t("mod.loading"))

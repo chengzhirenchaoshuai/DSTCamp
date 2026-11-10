@@ -1293,6 +1293,38 @@ def test_world_creation_plan_and_atomic_writer():
         assert not load_mod_overrides(path / "Master" / "modoverrides.lua").client_mods_disabled
 
 
+def test_preset_apply_client_mods_switch():
+    """配置集带的"禁用客户端 Mod"开关只写服务器存档；没带开关时保留存档现状，清空后套用时关闭。"""
+    from dstools.features.mod.manager import load_mod_overrides, save_mod_overrides
+    from dstools.features.mod.presets import ModPreset, apply_preset, plan_apply_preset
+    from dstools.models import Cluster, ModOverrides, SaveSource, Shard
+
+    def make_cluster(root: Path, source, switch_on: bool) -> Cluster:
+        shards = []
+        for name in ("Master", "Caves"):
+            path = root / name / "modoverrides.lua"
+            save_mod_overrides(ModOverrides(path=path, client_mods_disabled=switch_on))
+            shards.append(Shard(name, root / name, mod_overrides_path=path))
+        return Cluster(root.name, root, source=source, shards=shards)
+
+    def switch_states(cluster: Cluster) -> set:
+        return {load_mod_overrides(s.mod_overrides_path).client_mods_disabled for s in cluster.shards}
+
+    mods = {"workshop-1": {"enabled": True, "configuration_options": {}}}
+    with tempfile.TemporaryDirectory() as td:
+        server = make_cluster(Path(td) / "Server", SaveSource.SERVER, False)
+        apply_preset(server, plan_apply_preset(ModPreset("on", mods, client_mods_disabled=True), {}))
+        assert switch_states(server) == {True}
+        apply_preset(server, plan_apply_preset(ModPreset("none", mods), {}))
+        assert switch_states(server) == {True}
+        apply_preset(server, plan_apply_preset(ModPreset("none", mods), {}), clear_first=True)
+        assert switch_states(server) == {False}
+
+        local = make_cluster(Path(td) / "Local", SaveSource.LOCAL, False)
+        apply_preset(local, plan_apply_preset(ModPreset("on", mods, client_mods_disabled=True), {}))
+        assert switch_states(local) == {False}
+
+
 def test_mod_resolve_cache():
     """resolve_full_modinfo() 结果的磁盘缓存：按内容哈希与目录失效、格式版本校验与 ModConfigOption 的 JSON 往返。"""
 

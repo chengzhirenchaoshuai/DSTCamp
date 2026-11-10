@@ -921,6 +921,10 @@ class CreationWizardDialog(QDialog):
     def get_cluster(self):
         return None
 
+    def preset_client_mods_disabled(self) -> bool | None:
+        """保存配置集时"禁用客户端 Mod"开关的当前状态；新世界都是服务器存档，开关总在列表里。"""
+        return self._client_mods_disabled
+
     def _mark_dirty(self) -> None:
         self._status_label.setText(t("world.creation_mod_dirty_hint"))
 
@@ -1279,6 +1283,8 @@ class CreationWizardDialog(QDialog):
             saved = preset.mods.get(mod_id, {})
             mod.enabled = bool(saved.get("enabled", False)) if saved else False
             mod.configuration_options = copy.deepcopy(saved.get("configuration_options", {})) if saved else {}
+        # 载入是整体替换当前选择（不在配置集里的 Mod 会被关掉），开关同样按配置集来，没带就关闭
+        self._client_mods_disabled = bool(preset.client_mods_disabled)
         self._ensure_mod_dependencies(show_dialog=True)
         if "world" in self._initialized_pages:
             self._reload_template(apply_profile_defaults=True)

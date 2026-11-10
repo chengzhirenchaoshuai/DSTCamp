@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from dstools.features.mod import presets
 from dstools.features.mod.list_model import localize_mod_name
+from dstools.features.mod.manager import CLIENT_MODS_DISABLED_KEY
 from dstools.i18n import t
 from dstools.qt import dialogs
 from dstools.qt.server import restart_prompt
@@ -50,10 +51,17 @@ class SavePresetDialog(dialogs.Dialog):
                             key=lambda wid: (page._mod_infos.get(wid).name if page._mod_infos.get(wid) else "") or wid)
         enabled_ids = [wid for wid in ordered_ids if page._mod_data[wid].enabled]
         disabled_ids = [wid for wid in ordered_ids if not page._mod_data[wid].enabled]
+        # "禁用客户端 Mod"开关跟 Mod 一样可勾选带进配置集，按开关状态排在对应分组最前面
+        switch = page.preset_client_mods_disabled()
+        if switch is not None:
+            (enabled_ids if switch else disabled_ids).insert(0, CLIENT_MODS_DISABLED_KEY)
 
         def make_row(wid: str, checked: bool) -> QCheckBox:
-            info = page._mod_infos.get(wid)
-            name = localize_mod_name(wid, (info.name if info else "") or wid)
+            if wid == CLIENT_MODS_DISABLED_KEY:
+                name = t("mod.client_mods_disabled")
+            else:
+                info = page._mod_infos.get(wid)
+                name = localize_mod_name(wid, (info.name if info else "") or wid)
             box = QCheckBox(f"{name}  ({wid})")
             box.setChecked(checked)
             self._checks[wid] = box
@@ -102,7 +110,11 @@ class SavePresetDialog(dialogs.Dialog):
             return
         cluster = self.page.get_cluster()
         platform = cluster.platform.value if cluster else ""
-        preset = presets.capture_preset(name, self.page._mod_data, self.page._mod_infos, selected, platform)
+        # 勾选了开关就记下它当前的状态，没勾选则配置集不带它
+        switch = self.page.preset_client_mods_disabled() if CLIENT_MODS_DISABLED_KEY in selected else None
+        selected.discard(CLIENT_MODS_DISABLED_KEY)
+        preset = presets.capture_preset(name, self.page._mod_data, self.page._mod_infos, selected, platform,
+                                        client_mods_disabled=switch)
         presets.save_preset(preset, overwrite=True)
         dialogs.show_info(self, t("preset.save_dialog_title"), t("preset.save_done", name=name, count=len(selected)))
         self.accept()
@@ -116,6 +128,9 @@ class ApplyReportDialog(dialogs.Dialog):
                          confirm_text=t("preset.report_confirm_btn"))
         self.clear_first = False
         self.body.addWidget(self.text_label(t("preset.report_ok_count", count=len(plan.ok_ids))))
+        if plan.preset.client_mods_disabled is not None:
+            key = "preset.report_switch_on" if plan.preset.client_mods_disabled else "preset.report_switch_off"
+            self.body.addWidget(self.text_label(t(key)))
 
         def section(title_key: str, items: list[str], color: str) -> None:
             if not items:

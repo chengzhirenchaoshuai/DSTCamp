@@ -33,6 +33,8 @@ class ModPreset:
     mods: dict[str, dict] = field(default_factory=dict)
     created_at: str = ""
     source_platform: str = ""  # 仅展示用（"steam"/"wegame"），不做强制校验
+    # "禁用客户端 Mod"开关；None 表示配置集没带它（旧配置集或保存时没勾选），套用时不改存档现状
+    client_mods_disabled: bool | None = None
 
 
 @dataclass
@@ -66,11 +68,13 @@ def list_presets() -> list[ModPreset]:
         mods = item.get("mods")
         if not name or not isinstance(mods, dict):
             continue
+        switch = item.get("client_mods_disabled")
         presets.append(ModPreset(
             name=name,
             mods=mods,
             created_at=item.get("created_at", ""),
             source_platform=item.get("source_platform", ""),
+            client_mods_disabled=switch if isinstance(switch, bool) else None,
         ))
     presets.sort(key=lambda p: p.name)
     return presets
@@ -81,13 +85,17 @@ def find_preset(name: str) -> ModPreset | None:
 
 
 def _to_raw(preset: ModPreset) -> dict:
-    return {
+    raw = {
         "format_version": _FORMAT_VERSION,
         "name": preset.name,
         "mods": preset.mods,
         "created_at": preset.created_at,
         "source_platform": preset.source_platform,
     }
+    # 没带开关时不写这个键，旧版 DSTCamp 读到的配置集与原来完全一样
+    if preset.client_mods_disabled is not None:
+        raw["client_mods_disabled"] = preset.client_mods_disabled
+    return raw
 
 
 def save_preset(preset: ModPreset, overwrite: bool = False) -> bool:
@@ -114,8 +122,9 @@ def delete_preset(name: str) -> None:
 
 
 def capture_preset(name: str, mod_data: dict, mod_infos: dict, selected_ids: set,
-                    source_platform: str) -> ModPreset:
-    """把当前界面状态（可能含未保存改动）中 selected_ids 的 Mod 打包成配置集。
+                    source_platform: str, client_mods_disabled: bool | None = None) -> ModPreset:
+    """把当前界面状态（可能含未保存改动）中 selected_ids 的 Mod 打包成配置集；
+    client_mods_disabled 为 None 表示不带"禁用客户端 Mod"开关。
 
     坑：modoverrides.lua 里可能混有标题项的占位键（如 AddTitle 生成的 "null"），打包时按 Mod
     当前声明的非标题选项过滤，否则套用时会被误报为"已不再声明的选项"。拿不到可信的选项名单
@@ -134,7 +143,7 @@ def capture_preset(name: str, mod_data: dict, mod_infos: dict, selected_ids: set
         mods[wid] = {"enabled": entry.enabled, "configuration_options": config}
     return ModPreset(name=name, mods=mods,
                       created_at=datetime.now().isoformat(timespec="seconds"),
-                      source_platform=source_platform)
+                      source_platform=source_platform, client_mods_disabled=client_mods_disabled)
 
 
 def _is_freeform_option(opt) -> bool:
@@ -192,9 +201,12 @@ def apply_preset(cluster: "Cluster", plan: ApplyPlan, clear_first: bool = False)
     """把 plan.ok_ids 的 Mod 状态写入存档每个世界的 modoverrides.lua，返回处理的世界数。
 
     默认合并：只覆盖配置集中的 Mod；clear_first=True 先清空现有 Mod 状态（调用方须已获用户确认）。
+    "禁用客户端 Mod"开关只写服务器存档：本地存档开服时游戏会重写 modoverrides.lua，留不住它。
     """
     from dstools.features.mod.manager import load_mod_overrides, save_mod_overrides
+    from dstools.models import SaveSource
 
+    switch_supported = cluster.source == SaveSource.SERVER
     count = 0
     for shard in cluster.shards:
         if not shard.mod_overrides_path:
@@ -202,6 +214,9 @@ def apply_preset(cluster: "Cluster", plan: ApplyPlan, clear_first: bool = False)
         overrides = load_mod_overrides(shard.mod_overrides_path)
         if clear_first:
             overrides.mods.clear()
+            overrides.client_mods_disabled = False
+        if switch_supported and plan.preset.client_mods_disabled is not None:
+            overrides.client_mods_disabled = plan.preset.client_mods_disabled
         for wid in plan.ok_ids:
             saved = plan.preset.mods.get(wid)
             if not saved:
