@@ -2937,13 +2937,19 @@ class LocalServicePage(Page):
                                 on_rollback=lambda: self._open_rollback_dialog(), on_failure=self._on_server_failure,
                                 on_registered=self._on_server_registered,
                                 on_export_mods=lambda p, c=cluster: self._export_running_mods(p, c),
-                                token_conflict_actions=self._token_conflict_actions)
+                                token_conflict_actions=self._token_conflict_actions,
+                                cluster_procs=lambda c=cluster: self._cluster_procs(c))
             self._console_panes[key] = pane
             if str(cluster.path) == (str(self.get_cluster().path) if self.get_cluster() else None):
                 self._add_console_tab(pane, shard.name)
                 self._console_tabs.setCurrentWidget(pane)
         self._update_console_panel_visibility()
         self._refresh_shard_rows(self.get_cluster())
+
+    def _cluster_procs(self, cluster) -> list:
+        """存档各世界当前的专服进程（按世界顺序，跳过没启动过的）；控制台"在线玩家"按它查询。"""
+        procs = (self.manager.get(cluster.path, shard.name) for shard in ordered_shards(cluster))
+        return [proc for proc in procs if proc is not None]
 
     def _close_console_pane(self, key, cluster, shard) -> None:
         proc = self.manager.get(cluster.path, shard.name)

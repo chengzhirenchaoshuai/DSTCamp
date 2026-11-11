@@ -241,5 +241,65 @@ def test_invalid_token_while_process_alive() -> None:
     assert report is not None and report.category == "token_invalid"
 
 
+def test_console_player_commands_run_in_lua() -> None:
+    """控制台"在线玩家"/暂停的命令在 Lua 5.1 里实际执行：输出能解析，复活/杀死只作用于对应状态的玩家。"""
+    from lupa.lua51 import LuaRuntime
+
+    from dstools.features.local_service import player_commands as pc
+
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    output: list[str] = []
+    # 与游戏 print 一致：参数以 \t 连接，日志行带时间前缀、末尾带 \t
+    lua.globals().print = lambda *args: output.append("[00:00:01]: " + "\t".join(map(str, args)) + "\t")
+    lua.execute("""
+        local function make(userid, name, tags, hp, invincible)
+            local p = {userid=userid, name=name, prefab="wilson", _tags=tags, events={}}
+            function p:HasTag(t) return self._tags[t] == true end
+            function p:PushEvent(e) table.insert(self.events, e) end
+            local h = {hp=hp, inv=invincible}
+            function h:IsDead() return self.hp <= 0 end
+            function h:Kill() if not self.inv then self.hp = 0 end end
+            function h:ForceKill() self.hp = 0 end
+            p.components = {health=h}
+            return p
+        end
+        AllPlayers = {
+            make("KU_alive", "A\\tB", {}, 100, true),
+            make("KU_ghost", "Ghost", {playerghost=true}, 0, false),
+            make("KU_corpse", "Corpse", {corpse=true}, 0, false),
+        }
+    """)
+    lua.execute(pc.list_players_command("ab12cd34"))
+    players, done = pc.parse_player_lines(output, "ab12cd34")
+    assert done and [(p.userid, p.name, p.state) for p in players] == [
+        ("KU_alive", "A B", "alive"), ("KU_ghost", "Ghost", "ghost"), ("KU_corpse", "Corpse", "corpse")]
+    assert pc.parse_player_lines(output, "ffff0000") == ([], False)  # 别的查询的结果不混进来
+    assert all(pc.is_query_output(line) for line in output)
+
+    lua.execute(pc.revive_command("KU_alive"))  # 活人不受复活影响
+    lua.execute(pc.kill_command("KU_alive"))  # 开了无敌也要能杀
+    assert lua.eval("AllPlayers[1].components.health.hp") == 0
+    assert len(lua.eval("AllPlayers[1].events")) == 0
+    lua.execute(pc.revive_command("KU_ghost"))
+    lua.execute(pc.revive_all_command())
+    assert list(lua.eval("AllPlayers[2].events").values()) == ["respawnfromghost", "respawnfromghost"]
+    assert list(lua.eval("AllPlayers[3].events").values()) == ["respawnfromcorpse"]
+    lua.execute(pc.kill_command("KU_missing"))  # 找不到的玩家什么都不做
+    lua.globals().TheNet = lua.eval("{SetServerPaused=function(self, v) PAUSED=v end}")
+    lua.execute(pc.pause_command(True))
+    assert lua.eval("PAUSED") is True
+    for bad in ('KU_x" end os.exit() --', "KU x", ""):
+        try:
+            pc.kill_command(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"应拒绝非法 ID：{bad!r}")
+
+    # 真机日志里的暂停行（主世界与洞穴同一秒打印，行尾带 \t）
+    assert [pc.parse_pause_line(line) for line in (
+        "[00:04:06]: Server Paused\t", "[00:04:19]: Server Unpaused\t",
+        "[00:06:24]: Server Autopaused\t", "[00:04:19]: Sim paused")] == [True, False, False, None]
+
+
 if __name__ == "__main__":
     run(globals())

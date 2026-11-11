@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QTabBar, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from dstools.features.local_service import player_commands
 from dstools.features.local_service.dedicated_server import ServerStatus, advance_world_ready_marker
 from dstools.features.local_service.server_diagnostics import (
     analyze_mod_loading, contains_runtime_lua_error, contains_server_registration_success,
@@ -358,9 +359,13 @@ class ConsolePane(QWidget):
     status_changed = Signal(object)
 
     def __init__(self, proc, on_close, on_rollback, on_failure=None, on_registered=None, on_export_mods=None,
-                 token_conflict_actions=None, parent=None):
+                 token_conflict_actions=None, cluster_procs=None, parent=None):
         super().__init__(parent)
         self._on_export_mods = on_export_mods
+        # 同一存档各世界当前的进程（按世界顺序），"在线玩家"要查所有世界；未提供时只查本世界
+        self._cluster_procs = cluster_procs or (lambda: [self.proc])
+        # 手动暂停状态，按日志里的 "Server Paused/Unpaused" 跟踪（只有主世界控制台有暂停按钮）
+        self._server_paused = False
         # 令牌冲突诊断弹窗里的处理按钮：proc -> [(文字, 回调)]，每次弹出时按当时的令牌池现算
         self._token_conflict_actions = token_conflict_actions
         # Mod 横幅点击时的去向：全部成功→导出图片；有失败→失败列表
@@ -471,14 +476,19 @@ class ConsolePane(QWidget):
         quick = QHBoxLayout()
         self.announce_btn = QPushButton(t("local.console_announce_btn"))
         self.announce_btn.clicked.connect(self._announce)
-        self.list_players_btn = QPushButton(t("local.console_list_players_btn"))
-        self.list_players_btn.clicked.connect(lambda: self.proc.send_command("c_listallplayers()"))
+        self.players_btn = QPushButton(t("local.console_players_btn"))
+        self.players_btn.clicked.connect(self._open_players)
         quick.addWidget(self.announce_btn)
-        quick.addWidget(self.list_players_btn)
+        quick.addWidget(self.players_btn)
+        self.pause_btn = None
         self.rollback_btn = None
         self.reset_world_btn = None
         self.save_btn = None
         if getattr(proc, "is_master", True):
+            # 暂停会同步到所有世界（真机日志核对），只在主世界控制台放按钮
+            self.pause_btn = QPushButton(t("local.console_pause_btn"))
+            self.pause_btn.clicked.connect(self._toggle_pause)
+            quick.addWidget(self.pause_btn)
             self.rollback_btn = QPushButton(t("local.rollback_btn"))
             self.rollback_btn.clicked.connect(self._on_rollback)
             quick.addWidget(self.rollback_btn)
@@ -493,7 +503,7 @@ class ConsolePane(QWidget):
         quick.addWidget(self.copy_log_btn)
         quick.addStretch()
         outer.addLayout(quick)
-        for button in (self.announce_btn, self.list_players_btn, self.rollback_btn, self.reset_world_btn,
+        for button in (self.announce_btn, self.players_btn, self.pause_btn, self.rollback_btn, self.reset_world_btn,
                       self.save_btn, self.copy_log_btn):
             if button is not None:
                 button.setFont(theme.font("FONT_SIZE_SM"))
@@ -660,6 +670,15 @@ class ConsolePane(QWidget):
         escaped = text.replace("\\", "\\\\").replace('"', '\\"')
         self.proc.send_command(f'c_announce("{escaped}")')
 
+    def _open_players(self) -> None:
+        from dstools.qt.server.players_dialog import PlayersDialog
+
+        PlayersDialog(self.window(), self._cluster_procs).exec()
+
+    def _toggle_pause(self) -> None:
+        # 按钮文字等日志里出现 "Server Paused/Unpaused" 再切换，以游戏实际状态为准
+        self.proc.send_command(player_commands.pause_command(not self._server_paused))
+
     def _reset_world(self) -> None:
         if not dialogs.ask_yes_no(
                 self.window(), t("local.console_reset_world_confirm_title"),
@@ -738,6 +757,7 @@ class ConsolePane(QWidget):
     def rebind(self, proc) -> None:
         """同一个世界停止后重新启动时复用这个标签页，而不是每次都开一个新的。"""
         self.proc = proc
+        self._server_paused = False  # 重新开服后游戏不是暂停状态
         self._close_search()
         self.text.clear()
         self._mod_status_label.setVisible(False)
@@ -764,9 +784,15 @@ class ConsolePane(QWidget):
                 self._mod_check_real_start_seen, ready_now = advance_world_ready_marker(
                     line, self.proc.is_master, self._mod_check_real_start_seen)
                 self._mod_check_ready_seen |= ready_now
+                paused = player_commands.parse_pause_line(line)
+                if paused is not None:
+                    self._server_paused = paused
             scrollbar = self.text.verticalScrollBar()
             at_bottom = scrollbar.value() >= scrollbar.maximum() - 2 or not self.isVisible()
-            self.text.appendPlainText("\n".join(lines))
+            # "在线玩家"查询打印的结果行由弹窗读取，不在控制台里显示
+            shown = [line for line in lines if not player_commands.is_query_output(line)]
+            if shown:
+                self.text.appendPlainText("\n".join(shown))
             if at_bottom:
                 scrollbar.setValue(scrollbar.maximum())
 
@@ -819,10 +845,14 @@ class ConsolePane(QWidget):
         self.cmd_edit.setEnabled(can_send)
         self.send_btn.setEnabled(can_send)
         self.announce_btn.setEnabled(world_ready)
-        self.list_players_btn.setEnabled(world_ready)
+        self.players_btn.setEnabled(world_ready)
         hint = t("local.world_not_ready_hint") if can_send and not world_ready else ""
         self.announce_btn.setToolTip(hint)
-        self.list_players_btn.setToolTip(hint)
+        self.players_btn.setToolTip(hint or t("local.console_players_hover"))
+        if self.pause_btn is not None:
+            self.pause_btn.setEnabled(world_ready)
+            self.pause_btn.setText(t("local.console_resume_btn" if self._server_paused else "local.console_pause_btn"))
+            self.pause_btn.setToolTip(hint or t("local.console_pause_hover"))
         if self.rollback_btn is not None:
             self.rollback_btn.setEnabled(world_ready)
         has_log = (Path(self.proc.cluster_path) / self.proc.shard_name / "server_log.txt").is_file()
