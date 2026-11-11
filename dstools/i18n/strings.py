@@ -1725,7 +1725,11 @@ STRINGS = {
         "local.console_players_hover": "查看各世界的在线玩家，可复活鬼魂或杀死玩家",
         "local.console_pause_btn": "暂停游戏",
         "local.console_resume_btn": "继续游戏",
-        "local.console_pause_hover": "暂停整个存档（各世界一起暂停，与游戏内暂停相同），再点一次继续",
+        "local.console_pause_hover": "暂停整个存档（各世界一起暂停，与游戏内暂停相同），再点一次继续。需要有管理员在线",
+        "local.console_pause_not_applied": (
+            "游戏没有响应这次暂停/继续。\n\n"
+            "游戏只在有管理员在线时才允许暂停。令牌主人进服时自动是管理员；用别人的令牌开服时，"
+            "请在「服务器配置」里把你的玩家 ID（KU_ 开头）加入管理员列表，重启服务器后再进服操作。"),
         "local.players_title": "在线玩家",
         "local.players_loading": "正在读取各世界的在线玩家…",
         "local.players_count": "共 {count} 名玩家在线",
@@ -3658,7 +3662,12 @@ STRINGS = {
         "local.console_players_hover": "View online players in every world; revive ghosts or kill players",
         "local.console_pause_btn": "Pause Game",
         "local.console_resume_btn": "Resume Game",
-        "local.console_pause_hover": "Pause the whole cluster (all worlds pause together, same as the in-game pause); click again to resume",
+        "local.console_pause_hover": "Pause the whole cluster (all worlds pause together, same as the in-game pause); click again to resume. Requires an admin online",
+        "local.console_pause_not_applied": (
+            "The game did not respond to this pause/resume.\n\n"
+            "The game only allows pausing while an admin is online. The token owner is an admin automatically; "
+            "if the server runs on someone else's token, add your player ID (starting with KU_) to the admin list "
+            "in Server Config, restart the server and try again after joining."),
         "local.players_title": "Online Players",
         "local.players_loading": "Reading online players from each world…",
         "local.players_count": "{count} player(s) online",

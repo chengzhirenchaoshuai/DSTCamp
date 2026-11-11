@@ -5,6 +5,9 @@
   OnServerPauseDirty，打印 "Server Paused" / "Server Unpaused"；玩家开地图等自动暂停打印 "Server Autopaused"，
   不算手动暂停。真机日志里主世界暂停时洞穴同一秒也打印 "Server Paused"，暂停会同步到所有世界，只发给主世界即可。
   空服暂停（pause_when_empty）打印的是 "Sim paused"，与这里无关。
+  坑：只有管理员在线时游戏才接受暂停，否则命令被静默忽略、不报错（真机实测：用别人的令牌开服、自己不在
+  adminlist 时无效，加入管理员后有效）。令牌主人进服时自动是管理员（日志 admin=1，未在 adminlist 里）。
+  复活、杀死不受此限制。
 - 复活：游戏没有 c_revive；c_godmode 对鬼魂是复活、对活人却是切换无敌，不能直接用。改为按 userid 找到玩家，
   鬼魂发 "respawnfromghost"、尸体发 "respawnfromcorpse"（与 c_godmode 相同，事件不带参数也能处理）。
 - 杀死：游戏没有 c_kill；Health:Kill() 对无敌玩家无效，优先用能绕过无敌的 ForceKill()。

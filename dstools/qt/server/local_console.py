@@ -35,6 +35,7 @@ from dstools.shared.clipboard import copy_file_to_clipboard
 _COMMAND_HISTORY_LIMIT = 100
 _CONSOLE_MAX_LINES = 5000  # 每个世界控制台保留的最近行数
 _SEARCH_HISTORY_LIMIT = 20
+_PAUSE_CONFIRM_MS = 3000  # 点暂停/继续后等日志确认的时间，超时仍未变化就提示原因
 _SEARCH_HIGHLIGHT = "#ffd54f"
 _SEARCH_HIGHLIGHT_CURRENT = "#ff9800"
 _SEARCH_HIGHLIGHT_FG = "#000000"
@@ -366,6 +367,10 @@ class ConsolePane(QWidget):
         self._cluster_procs = cluster_procs or (lambda: [self.proc])
         # 手动暂停状态，按日志里的 "Server Paused/Unpaused" 跟踪（只有主世界控制台有暂停按钮）
         self._server_paused = False
+        self._pause_expected: bool | None = None  # 刚点了暂停/继续、还在等日志确认的目标状态
+        # 子对象定时器：页签关闭时随之销毁，不会在已删除的控件上弹窗
+        self._pause_confirm_timer = QTimer(self, singleShot=True, interval=_PAUSE_CONFIRM_MS)
+        self._pause_confirm_timer.timeout.connect(self._check_pause_applied)
         # 令牌冲突诊断弹窗里的处理按钮：proc -> [(文字, 回调)]，每次弹出时按当时的令牌池现算
         self._token_conflict_actions = token_conflict_actions
         # Mod 横幅点击时的去向：全部成功→导出图片；有失败→失败列表
@@ -677,7 +682,20 @@ class ConsolePane(QWidget):
 
     def _toggle_pause(self) -> None:
         # 按钮文字等日志里出现 "Server Paused/Unpaused" 再切换，以游戏实际状态为准
-        self.proc.send_command(player_commands.pause_command(not self._server_paused))
+        target = not self._server_paused
+        if not self.proc.send_command(player_commands.pause_command(target)):
+            return
+        # 游戏只在有管理员在线时才接受暂停（真机实测：用别人的令牌、自己不在管理员列表时命令被静默忽略），
+        # 过一会儿还没看到状态变化就说明原因，免得以为按钮坏了
+        self._pause_expected = target
+        self._pause_confirm_timer.start()
+
+    def _check_pause_applied(self) -> None:
+        expected, self._pause_expected = self._pause_expected, None
+        if expected is None or self._server_paused == expected or self.proc.status != ServerStatus.RUNNING:
+            return
+        dialogs.show_warning(self.window(), t("local.console_pause_btn" if expected else "local.console_resume_btn"),
+                             t("local.console_pause_not_applied"))
 
     def _reset_world(self) -> None:
         if not dialogs.ask_yes_no(
@@ -758,6 +776,8 @@ class ConsolePane(QWidget):
         """同一个世界停止后重新启动时复用这个标签页，而不是每次都开一个新的。"""
         self.proc = proc
         self._server_paused = False  # 重新开服后游戏不是暂停状态
+        self._pause_expected = None
+        self._pause_confirm_timer.stop()
         self._close_search()
         self.text.clear()
         self._mod_status_label.setVisible(False)
