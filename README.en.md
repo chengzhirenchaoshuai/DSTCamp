@@ -108,13 +108,29 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.2 changes
+## 1.9.3 changes
 
 ### ✨ New features
 
+- **"Pause Game / Resume Game" and "Players" in the server console**: the master world console can pause the whole save in one click (all worlds pause together), and the button follows the game's actual state; the old player list is now a "Players" window listing each online player's character portrait, world and alive/ghost state, where you can revive ghosts, kill a player (with confirmation) or revive all ghosts at once.
+- **Unsubscribe from Workshop Mods from the Mod list's right-click menu**: Mods that were taken down or whose Workshop page won't open have no unsubscribe button on the web, and can now be unsubscribed in DSTCamp with the Steam account currently logged in; where unsubscribing isn't possible (local Mods, WeGame saves, the LuaJIT companion Mod and so on) the menu item is greyed out and a tooltip explains why.
+- The "Disable client mods" switch is easier to use: it can be turned on right in the create-world wizard's Mod list (previously only from the Mod page after the save was created), and Mod configuration sets can include it, writing it when applied and mentioning it in the preview beforehand.
+
+### ✨ Improvements
+
+- The Mod list filter adds a "Server Mods" tab, with the order now All / Enabled / Disabled / Server Mods / Client Mods / Local Mods, and filter descriptions shown on hover (the create-world wizard too).
+- Unavailable menu items are now shown in grey and aren't highlighted on hover; they used to look the same as available ones.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.2)</strong></summary>
+
+### 1.9.2
+
+#### ✨ New features
+
 - **Mod world generation options are now adjustable**: the world generation options of Sakura Forest, Island Adventures Shipwrecked and Above the Clouds (including the three-in-one Mod) used to be view-only; their values are now registered from each Mod's source, matching the game.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 All of these now match the game:
 
@@ -127,9 +143,6 @@ All of these now match the game:
 - New Porkland worlds with Island Adventures enabled have DST boats enabled and IA boats and drowning disabled; existing worlds missing these show the values actually in effect instead of the opposite.
 - Krampus, butterflies, berry bushes, treeguards, fish shoals and others use Island Adventures' icons in Shipwrecked and Volcano worlds.
 - Settings of a Mod installed only in the dedicated server's mods folder had no icons in World Settings.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.1)</strong></summary>
 
 ### 1.9.1
 
