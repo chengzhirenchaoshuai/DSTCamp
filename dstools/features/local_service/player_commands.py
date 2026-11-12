@@ -7,7 +7,8 @@
   空服暂停（pause_when_empty）打印的是 "Sim paused"，与这里无关。
   坑：只有管理员在线时游戏才接受暂停，否则命令被静默忽略、不报错（真机实测：用别人的令牌开服、自己不在
   adminlist 时无效，加入管理员后有效）。令牌主人进服时自动是管理员（日志 admin=1，未在 adminlist 里）。
-  复活、杀死不受此限制。
+  复活、杀死不受此限制。管理员是否在线用 TheNet:GetClientTable() 查：每项带 admin 字段；专服自身也在表里且
+  admin=1，要按 performance 字段排除（与本体 c_listplayers 的写法一致）。
 - 复活：游戏没有 c_revive；c_godmode 对鬼魂是复活、对活人却是切换无敌，不能直接用。改为按 userid 找到玩家，
   鬼魂发 "respawnfromghost"、尸体发 "respawnfromcorpse"（与 c_godmode 相同，事件不带参数也能处理）。
 - 杀死：游戏没有 c_kill；Health:Kill() 对无敌玩家无效，优先用能绕过无敌的 ForceKill()。
@@ -25,6 +26,11 @@ _PAUSE_LINE_RE = re.compile(r"\bServer (Paused|Unpaused|Autopaused)\b")
 # 输出行的标记。Lua 里拼接生成（"DSTCamp".."P:"），命令文本本身不含完整标记，
 # 专服回显命令时也不会被误当成结果行
 _MARK_PREFIX = "DSTCampP:"
+_ADMIN_MARK_PREFIX = "DSTCampA:"
+# 专服把执行的命令记成 RemoteCommandInput: "..."，DSTCamp 自动发的查询都含这段拼接
+_QUERY_ECHO_MARK = '"DSTCamp".."'
+# 主世界日志里玩家进服、离开的行：出现时重新查询管理员是否在线
+_PLAYER_PRESENCE_RE = re.compile(r"\[ClientObject\] Initialized \(authenticated\)|\[Shard\] \(\S+\) disconnected from")
 
 PLAYER_ALIVE = "alive"
 PLAYER_GHOST = "ghost"
@@ -100,9 +106,41 @@ def parse_player_lines(lines, nonce: str) -> tuple[list[OnlinePlayer], bool]:
     return players, done
 
 
+def admin_query_command(nonce: str) -> str:
+    """打印一行：标记、在线管理员数、在线玩家数（不含专服自身），以 \\t 分隔。"""
+    if not _NONCE_RE.fullmatch(nonce):
+        raise ValueError(f"非法的标记：{nonce!r}")
+    return (
+        f'local m="DSTCamp".."A:{nonce}" local a,n=0,0 '
+        "for _,c in ipairs(TheNet:GetClientTable() or {}) do "
+        "if c.performance==nil then n=n+1 if c.admin then a=a+1 end end end "
+        'print(m.."\\t"..a.."\\t"..n)'
+    )
+
+
+def parse_admin_line(lines, nonce: str) -> tuple[int, int] | None:
+    """取出 admin_query_command(nonce) 的结果（在线管理员数, 在线玩家数）；还没读到时返回 None。"""
+    marker = f"{_ADMIN_MARK_PREFIX}{nonce}\t"
+    for line in lines:
+        index = line.find(marker)
+        if index < 0:
+            continue
+        fields = line[index + len(marker):].split("\t")
+        try:
+            return int(fields[0]), int(fields[1])
+        except (IndexError, ValueError):
+            return None
+    return None
+
+
+def is_player_presence_line(line: str) -> bool:
+    """主世界日志里是否是玩家进服/离开的行（据此重新查询管理员是否在线）。"""
+    return _PLAYER_PRESENCE_RE.search(line) is not None
+
+
 def is_query_output(line: str) -> bool:
-    """是不是 list_players_command 打印的结果行（控制台不显示它们）。"""
-    return _MARK_PREFIX in line
+    """是不是 DSTCamp 自动查询的结果行或命令回显（控制台不显示它们）。"""
+    return _MARK_PREFIX in line or _ADMIN_MARK_PREFIX in line or _QUERY_ECHO_MARK in line
 
 
 def revive_command(userid: str) -> str:

@@ -1,6 +1,7 @@
 """运行中世界的控制台标签：只读日志、命令输入、快捷指令、搜索栏、崩溃诊断与 Mod 加载提示条（由本地服务器页定时器驱动 pump()）。"""
 
 import os
+import secrets
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
@@ -36,6 +37,7 @@ _COMMAND_HISTORY_LIMIT = 100
 _CONSOLE_MAX_LINES = 5000  # 每个世界控制台保留的最近行数
 _SEARCH_HISTORY_LIMIT = 20
 _PAUSE_CONFIRM_MS = 3000  # 点暂停/继续后等日志确认的时间，超时仍未变化就提示原因
+_ADMIN_QUERY_DELAY_MS = 1500  # 玩家进出后稍等再查管理员（进服时 admin 标记在认证完成后才确定）
 _SEARCH_HIGHLIGHT = "#ffd54f"
 _SEARCH_HIGHLIGHT_CURRENT = "#ff9800"
 _SEARCH_HIGHLIGHT_FG = "#000000"
@@ -371,6 +373,12 @@ class ConsolePane(QWidget):
         # 子对象定时器：页签关闭时随之销毁，不会在已删除的控件上弹窗
         self._pause_confirm_timer = QTimer(self, singleShot=True, interval=_PAUSE_CONFIRM_MS)
         self._pause_confirm_timer.timeout.connect(self._check_pause_applied)
+        # 游戏只在有管理员在线时接受暂停：主世界就绪后、玩家进出时查一次（合并 1.5 秒内的多次进出），
+        # 没有管理员就把暂停按钮置灰。None 表示还不知道（不置灰，靠上面的超时提示兜底）
+        self._admin_online: bool | None = None
+        self._admin_query_nonce = ""
+        self._admin_query_timer = QTimer(self, singleShot=True, interval=_ADMIN_QUERY_DELAY_MS)
+        self._admin_query_timer.timeout.connect(self._query_admins)
         # 令牌冲突诊断弹窗里的处理按钮：proc -> [(文字, 回调)]，每次弹出时按当时的令牌池现算
         self._token_conflict_actions = token_conflict_actions
         # Mod 横幅点击时的去向：全部成功→导出图片；有失败→失败列表
@@ -690,6 +698,13 @@ class ConsolePane(QWidget):
         self._pause_expected = target
         self._pause_confirm_timer.start()
 
+    def _query_admins(self) -> None:
+        if self.pause_btn is None or self.proc.status != ServerStatus.RUNNING or not self.proc.world_ready:
+            return
+        # 先记下标记再发：发送失败也不会在每次 pump 时反复重发
+        self._admin_query_nonce = secrets.token_hex(4)
+        self.proc.send_command(player_commands.admin_query_command(self._admin_query_nonce))
+
     def _check_pause_applied(self) -> None:
         expected, self._pause_expected = self._pause_expected, None
         if expected is None or self._server_paused == expected or self.proc.status != ServerStatus.RUNNING:
@@ -778,6 +793,9 @@ class ConsolePane(QWidget):
         self._server_paused = False  # 重新开服后游戏不是暂停状态
         self._pause_expected = None
         self._pause_confirm_timer.stop()
+        self._admin_online = None
+        self._admin_query_nonce = ""
+        self._admin_query_timer.stop()
         self._close_search()
         self.text.clear()
         self._mod_status_label.setVisible(False)
@@ -807,6 +825,13 @@ class ConsolePane(QWidget):
                 paused = player_commands.parse_pause_line(line)
                 if paused is not None:
                     self._server_paused = paused
+                if self.pause_btn is not None and player_commands.is_player_presence_line(line):
+                    self._admin_query_timer.start()  # 重启计时：一串进出只查一次
+            if self.pause_btn is not None and self._admin_query_nonce:
+                counts = player_commands.parse_admin_line(lines, self._admin_query_nonce)
+                if counts is not None:
+                    self._admin_online = counts[0] > 0
+                    self._admin_query_nonce = ""
             scrollbar = self.text.verticalScrollBar()
             at_bottom = scrollbar.value() >= scrollbar.maximum() - 2 or not self.isVisible()
             # "在线玩家"查询打印的结果行由弹窗读取，不在控制台里显示
@@ -870,9 +895,14 @@ class ConsolePane(QWidget):
         self.announce_btn.setToolTip(hint)
         self.players_btn.setToolTip(hint or t("local.console_players_hover"))
         if self.pause_btn is not None:
-            self.pause_btn.setEnabled(world_ready)
+            if world_ready and self._admin_online is None and not self._admin_query_nonce \
+                    and not self._admin_query_timer.isActive():
+                self._query_admins()  # 主世界刚就绪：查一次当前有没有管理员在线
+            no_admin = world_ready and self._admin_online is False
+            self.pause_btn.setEnabled(world_ready and not no_admin)
             self.pause_btn.setText(t("local.console_resume_btn" if self._server_paused else "local.console_pause_btn"))
-            self.pause_btn.setToolTip(hint or t("local.console_pause_hover"))
+            self.pause_btn.setToolTip(hint or t("local.console_pause_no_admin" if no_admin
+                                                else "local.console_pause_hover"))
         if self.rollback_btn is not None:
             self.rollback_btn.setEnabled(world_ready)
         has_log = (Path(self.proc.cluster_path) / self.proc.shard_name / "server_log.txt").is_file()

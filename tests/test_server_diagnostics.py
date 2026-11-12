@@ -295,6 +295,27 @@ def test_console_player_commands_run_in_lua() -> None:
             continue
         raise AssertionError(f"应拒绝非法 ID：{bad!r}")
 
+    # 管理员是否在线：专服自身（带 performance）即使 admin=true 也不算
+    lua.execute('TheNet.GetClientTable = function(self) return CLIENTS end')
+    lua.execute('CLIENTS = {{userid="KU_server", admin=true, performance=0}, {userid="KU_a", admin=false}}')
+    output.clear()
+    lua.execute(pc.admin_query_command("0a1b2c3d"))
+    assert pc.parse_admin_line(output, "0a1b2c3d") == (0, 1)
+    assert pc.parse_admin_line(output, "ffff0000") is None
+    lua.execute('CLIENTS[3] = {userid="KU_b", admin=true}')
+    output.clear()
+    lua.execute(pc.admin_query_command("0a1b2c3d"))
+    assert pc.parse_admin_line(output, "0a1b2c3d") == (1, 2)
+    assert pc.is_query_output(output[0])
+    # 专服回显的命令也不显示在控制台
+    assert pc.is_query_output('[00:02:39]: RemoteCommandInput: "' + pc.admin_query_command("0a1b2c3d") + '"')
+    # 真机日志里玩家进服、离开的行
+    assert pc.is_player_presence_line("[00:01:42]: [ClientObject] Initialized (authenticated) on server: "
+                                      "guid=974529692710868792 userid=KU_dwt6dfPl netid=76561198240522844 admin=1")
+    assert pc.is_player_presence_line("[00:03:31]: [Shard] (KU_dwt6dfPl) disconnected from Master(1)")
+    assert not pc.is_player_presence_line("[00:00:07]: [ClientObject] Initialized (self/server object, "
+                                          "locally trusted) on server: guid=1 userid=KU_x netid= admin=1")
+
     # 真机日志里的暂停行（主世界与洞穴同一秒打印，行尾带 \t）
     assert [pc.parse_pause_line(line) for line in (
         "[00:04:06]: Server Paused\t", "[00:04:19]: Server Unpaused\t",
