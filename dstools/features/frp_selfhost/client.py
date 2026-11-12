@@ -20,7 +20,9 @@ from dstools.shared.frpc_log import FrpcOutputLog
 
 IS_WINDOWS = sys.platform == "win32"
 _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
-_SECURITY_BLOCK_WINERROR = 225  # "操作无法成功完成，因为文件包含病毒或潜在的垃圾软件"
+# 225："文件包含病毒或潜在的垃圾软件"（Defender 拒绝执行）；
+# 5："拒绝访问"：文件能读但启动被拦（真机见于用户加白名单后恢复），按安全软件拦截处理
+_SECURITY_BLOCK_WINERRORS = {5, 225}
 
 
 def _pid_exists(pid: int) -> bool:
@@ -150,9 +152,11 @@ class FrpcProcess:
             )
         except OSError as exc:
             self.status = FrpcStatus.CRASHED
-            self.error = f"启动失败：{exc}"
-            # 检查后到启动前被删（FileNotFoundError），或系统以"文件包含病毒"拒绝执行（WinError 225）
-            self.blocked = isinstance(exc, FileNotFoundError) or getattr(exc, "winerror", None) == _SECURITY_BLOCK_WINERROR
+            # 检查后到启动前被删（FileNotFoundError），或被安全软件拒绝执行（见 _SECURITY_BLOCK_WINERRORS）
+            self.blocked = (isinstance(exc, FileNotFoundError)
+                            or getattr(exc, "winerror", None) in _SECURITY_BLOCK_WINERRORS)
+            self.error = (f"启动失败：frpc.exe 被杀毒软件拦截，请把它所在目录加入信任（{exc}）"
+                          if self.blocked else f"启动失败：{exc}")
             return
         self.status = FrpcStatus.RUNNING
         if self._log:

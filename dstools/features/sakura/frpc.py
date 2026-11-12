@@ -59,7 +59,11 @@ class FrpcProcess:
             )
         except OSError as exc:
             self.status = FrpcStatus.CRASHED
-            self.error = f"启动失败：{exc}"
+            # 5（拒绝访问）/225（含病毒）：文件在但启动被安全软件拦截
+            if getattr(exc, "winerror", None) in {5, 225}:
+                self.error = f"启动失败：frpc.exe 被杀毒软件拦截，请把它所在目录加入信任（{exc}）"
+            else:
+                self.error = f"启动失败：{exc}"
             return
         self.status = FrpcStatus.RUNNING
         self._log.started()
