@@ -1077,6 +1077,13 @@ class MainWindow(QWidget):
         version = self._update_release.version if self._update_release is not None else ""
         self._update_notice.setText(t("update.downloading", version=version, percent=percent))
 
+    def set_update_verifying(self) -> None:
+        """下载完成、正在冒烟启动新版本时显示：进度条保持满格，文字改为验证中。"""
+        self._update_progress.setVisible(True)
+        self._update_progress.setValue(100)
+        version = self._update_release.version if self._update_release is not None else ""
+        self._update_notice.setText(t("update.verifying", version=version))
+
     def switch_language(self, lang: str) -> None:
         """切换界面语言：标题栏/菜单/存档栏/页签名/托盘立即刷新；页面内容只重建当前页，其余标脏切过去再补。"""
         old_lang = get_lang()

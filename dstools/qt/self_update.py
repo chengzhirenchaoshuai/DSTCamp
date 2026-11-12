@@ -160,7 +160,7 @@ class UpdatePromptDialog(dialogs.Dialog):
 
 class SelfUpdater:
     """挂在主窗口上的更新流程。window 需要提供：
-    ``set_update_progress(percent | None)``、``ctx.manager``、``quit_app()``。"""
+    ``set_update_progress(percent | None)``、``set_update_verifying()``、``ctx.manager``、``quit_app()``。"""
 
     def __init__(self, window):
         self._window = window
@@ -172,7 +172,7 @@ class SelfUpdater:
         if self._busy:
             # 下载在后台线程回调，转回界面线程更新进度条
             post_to_ui(lambda percent: self._window.set_update_progress(percent),
-                       min(99, int(downloaded * 100 / max(1, total))))
+                       min(100, int(downloaded * 100 / max(1, total))))
 
     def prefetch(self, release: UpdateRelease) -> None:
         """发现新版本后在后台静默下载并校验，用户点"立即更新"时直接安装；失败不提示，点更新时会再下。
@@ -240,6 +240,8 @@ class SelfUpdater:
         def work():
             prepared = prepare()
             path, version = prepared if isinstance(prepared, tuple) else (prepared, "")
+            # 冒烟启动要解压整个单文件 EXE，约 2 秒，期间提示在验证而不是停在下载进度上
+            post_to_ui(lambda _a: window.set_update_verifying())
             validate_staged_executable(path)   # 实际启动一次新 EXE 的冒烟入口
             ensure_install_dir_writable()      # 退出前确认能替换 EXE 所在目录
             ensure_install_target_replaceable()  # 同目录已有的固定名字 EXE 不能正在运行
@@ -255,7 +257,6 @@ class SelfUpdater:
 
         def prepared(result) -> None:
             path, version = result
-            window.set_update_progress(100)
             if confirm and not dialogs.ask_yes_no(window, t("update.title"),
                                                   t("update.import_confirm", version=version)):
                 cancel()
