@@ -22,6 +22,11 @@ class ShardCombo(QComboBox):
         super().__init__(parent)
         self._master = ""
 
+    def showPopup(self) -> None:
+        # 坑（离屏点击实测）：子类不重写 showPopup 时，点击展开走不到 theme 打在 QComboBox 上的
+        # showPopup 补丁，列表不收窄、没有假透明背景；重写后经 super() 就能走到（wheelEvent/paintEvent 补丁不受影响）
+        super().showPopup()
+
     def _label(self, name: str) -> str:
         return t("world.shard_master_label", name=name) if name and name == self._master else name
 
