@@ -3,7 +3,7 @@
 import ctypes
 from ctypes import wintypes
 
-from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QMenu, QScrollArea, QToolTip, QVBoxLayout, QWidget
 
@@ -101,6 +101,19 @@ def clear_layout(layout, keep_last: int = 0) -> None:
             widget.hide()
             widget.setParent(None)
             widget.deleteLater()
+
+
+class _WheelBlocker(QObject):
+    """吞掉滚轮事件的过滤器，见 block_wheel。"""
+
+    def eventFilter(self, _obj, event) -> bool:
+        return event.type() == QEvent.Type.Wheel
+
+
+def block_wheel(widget: QWidget) -> None:
+    """让控件不响应鼠标滚轮。QComboBox 默认在指针悬停时滚一格就切换选项并发出 activated，
+    鼠标路过就会误改（如创建向导把主世界从森林滚成洞穴），改动影响大的下拉都应调用。"""
+    widget.installEventFilter(_WheelBlocker(widget))
 
 
 def section_card(title: str | None = None) -> tuple[Card, QVBoxLayout]:
