@@ -72,10 +72,12 @@ from dstools.qt.server.auto_restart import AutoRestartController
 from dstools.qt.widgets import Banner, Card, ToggleSwitch, VScrollArea
 from dstools.shared.app_settings import (
     blocking_token_holds, get_auto_restart_enabled, get_backup_auto_enabled, get_backup_interval_minutes,
-    get_dedicated_server_extra_args, get_global_tokens, get_lolia_mapping, get_sakura_token, get_selfhost_frp_mapping,
+    get_dedicated_server_extra_args, get_global_tokens, get_lolia_mapping, get_public_connect_host, get_sakura_token,
+    get_selfhost_frp_mapping,
     get_selfhost_frp_server, get_steamcmd_account, get_token_holds, get_token_switch_on_timeout, clear_token_hold, prune_token_holds,
     set_auto_restart_enabled,
-    set_dedicated_server_extra_args, set_global_tokens, set_steamcmd_account, set_steamcmd_path, set_token_hold,
+    set_dedicated_server_extra_args, set_global_tokens, set_steamcmd_account, set_steamcmd_path,
+    set_token_hold,
 )
 from dstools.shared.clipboard import copy_file_to_clipboard
 from dstools.shared.resource_paths import path_is_ascii
@@ -839,6 +841,7 @@ class _ConnectRow(QWidget):
         self._title.setProperty("muted", True)
         self._title.setFixedWidth(90)
         self._hint = hint
+        self._display = ""
         self._value = QLabel("")
         self._value.setCursor(Qt.CursorShape.PointingHandCursor)
         self._value.setToolTip(hint)
@@ -858,8 +861,18 @@ class _ConnectRow(QWidget):
         """复制提示贴着它显示。"""
         return self._value
 
+    def set_hint(self, hint: str) -> None:
+        """换掉值的悬停说明（下次 set_value 时生效）。"""
+        self._hint = hint
+
+    def _show_display(self) -> None:
+        # 值列按最长的 IPv4 代码定宽；自定义的长域名放不下时中间省略，完整代码在悬停提示里、点击照常复制
+        fm = QFontMetrics(self._value.font())
+        self._value.setText(fm.elidedText(self._display, Qt.TextElideMode.ElideMiddle, self._value.width() - 8))
+
     def set_value(self, display: str, original: str | None = None) -> None:
-        self._value.setText(display)
+        self._display = display
+        self._show_display()
         if original is None:  # 获取中、不可用等状态文字，点击不是复制
             self._value.setToolTip(self._hint)
             return
@@ -879,6 +892,7 @@ class _ConnectRow(QWidget):
         self._status.setFixedWidth(status_width)
         fm = QFontMetrics(self._value.font())
         self._value.setFixedWidth(fm.horizontalAdvance(self._VALUE_SAMPLE) + 8)
+        self._show_display()
 
 
 class LocalServicePage(Page):
@@ -933,6 +947,7 @@ class LocalServicePage(Page):
         ctx.token_uses = self.token_usage_snapshot
         ctx.restart_running_shards = self._restart_after_config_saved
         ctx.cluster_config_saved.connect(self._on_cluster_config_saved)
+        ctx.public_connect_host_changed.connect(self._on_public_host_changed)
         # 切到其他页签时仍需监督运行中的专服与直连代码，所以直接订阅存档切换，不走懒加载
         ctx.cluster_changed.connect(self.on_cluster_changed)
         ctx.workshop_mods_changed.connect(self._refresh_steamcmd_mod_check)
@@ -3249,6 +3264,11 @@ class LocalServicePage(Page):
             self._public_retry_attempt = 0
             self._start_public_fetch(self.get_cluster())
 
+    def _on_public_host_changed(self) -> None:
+        """设置里改了公网直连地址：按新地址重新生成公网直连代码。"""
+        self._public_retry_attempt = 0
+        self._start_public_fetch(self.get_cluster())
+
     def _copy_nat_connect(self) -> None:
         if self._nat_code:
             self._copy_to_clipboard(self._nat_code, near=self._nat_row.value_label)
@@ -3324,6 +3344,9 @@ class LocalServicePage(Page):
         self._public_row.set_status("", theme.hex("TEXT_MUTED"))
         self._public_pending_since = time.monotonic()
         self._public_timed_out = False
+        custom_host = get_public_connect_host()
+        self._public_row.set_hint(t("local.public_custom_hint", host=custom_host) if custom_host
+                                  else t("local.public_connect_hint"))
 
         def done(result):
             if gen == self._public_gen:
@@ -3334,7 +3357,7 @@ class LocalServicePage(Page):
             if gen == self._public_gen:
                 self._connect_failed("public")
 
-        run_async(lambda: self._fetch_public_result(cluster), done, error)
+        run_async(lambda: self._fetch_public_result(cluster, custom_host), done, error)
 
     def _start_nat_fetch(self, cluster) -> None:
         self._nat_gen += 1
@@ -3419,8 +3442,9 @@ class LocalServicePage(Page):
                 self._start_nat_fetch(cluster)
         self._last_master_ready = ready
 
-    def _fetch_public_result(self, cluster):
-        public_ip = _fetch_public_ipv4()
+    def _fetch_public_result(self, cluster, custom_host: str = ""):
+        # 用户设了自定义地址（固定 IP、DDNS 域名）就直接用，不联网查询，也不做代理检测
+        public_ip = custom_host or _fetch_public_ipv4()
         codes = None
         if cluster and public_ip:
             master = self._master_shard(cluster)
@@ -3428,7 +3452,7 @@ class LocalServicePage(Page):
                 port = get_shard_option(load_shard_config(master.path), "NETWORK", "server_port")
                 if port:
                     codes = self._build_connect_strings(public_ip, port, cluster, mask_ipv4=True)
-        proxy_suspected = public_ip is not None and _tun_proxy_detected()
+        proxy_suspected = public_ip is not None and not custom_host and _tun_proxy_detected()
         return codes, public_ip is not None, proxy_suspected
 
     def _apply_public_result(self, codes, cluster_key, ip_available, proxy_suspected=False) -> None:

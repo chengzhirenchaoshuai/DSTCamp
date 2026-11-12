@@ -22,6 +22,7 @@ class AppContext(QObject):
     platform_changed = Signal()
     cluster_changed = Signal(object)  # 当前选中的 Cluster，可能是 None
     cluster_config_saved = Signal(object)  # 某个存档的 cluster.ini/server.ini 被保存（本地服务器页据此刷新直连代码）
+    public_connect_host_changed = Signal()  # 设置里改了公网直连地址（本地服务器页据此重新生成公网直连代码）
     tab_requested = Signal(str)            # 页面请求跳到另一个页签（如"去内网穿透页处理端口映射"）
     workshop_mods_changed = Signal()       # 本机 Workshop Mod 有增减（如启动前一键订阅下载完成），Mod 页据此重新扫描
     server_runtime_changed = Signal()      # 开服程序选项或程序位置变了（本地服务器页发出），Mod 页据此按新的 mods/LuaJIT 刷新

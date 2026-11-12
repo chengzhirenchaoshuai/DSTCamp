@@ -251,6 +251,7 @@ class MenuStrip(QWidget):
         self._lite_action.setText(t("settings.lite_mode_label"))
         self._scenario_action.setText(t("settings.scenario_label"))
         self._klei_root_action.setText(t("settings.klei_root_menu"))
+        self._public_host_action.setText(t("settings.public_host_menu"))
         self._defender_action.setText(t("settings.defender_label"))
         self._cache_dir_action.setText(t("settings.cache_dir_menu"))
         self._lang_menu.setTitle(t("settings.language_label"))
@@ -344,6 +345,10 @@ class MenuStrip(QWidget):
         klei_root.triggered.connect(self._window.show_klei_root_dialog)
         menu.addAction(klei_root)
         self._klei_root_action = klei_root
+        public_host = QAction(t("settings.public_host_menu"), self)
+        public_host.triggered.connect(self._window.show_public_host_dialog)
+        menu.addAction(public_host)
+        self._public_host_action = public_host
         defender = QAction(t("settings.defender_label"), self)
         defender.triggered.connect(self._window.show_defender_dialog)
         menu.addAction(defender)
@@ -973,6 +978,11 @@ class MainWindow(QWidget):
         from dstools.qt.settings_dialogs import KleiRootDialog
 
         KleiRootDialog(self).exec()
+
+    def show_public_host_dialog(self) -> None:
+        from dstools.qt.settings_dialogs import PublicHostDialog
+
+        PublicHostDialog(self).exec()
 
     def show_cache_dir_dialog(self) -> None:
         from dstools.qt.settings_dialogs import CacheDirDialog

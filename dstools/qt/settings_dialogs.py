@@ -1,4 +1,4 @@
-"""菜单触发的次级设置/信息弹窗：背景图、字体样式、Windows Defender 排除项、缓存目录、关于。"""
+"""菜单触发的次级设置/信息弹窗：背景图、字体样式、Windows Defender 排除项、缓存目录、公网直连地址、关于。"""
 
 import os
 import webbrowser
@@ -18,11 +18,13 @@ from dstools.qt.theme import FONT_SIZE_LEVELS, freetype_engine_active, theme
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import ToggleSwitch, section_card
 from dstools.shared.discovery import auto_klei_root, list_clusters
+from dstools.features.local_service.connect_address import check_public_host
 from dstools.shared.app_settings import (
-    get_custom_bg_opacity, get_klei_root_override, get_lite_mode_enabled, get_remind_update_enabled,
+    get_custom_bg_opacity, get_klei_root_override, get_lite_mode_enabled, get_public_connect_host,
+    get_remind_update_enabled,
     set_cache_dir_override,
     set_klei_root_override,
-    set_custom_bg_opacity, set_remind_update_enabled,
+    set_custom_bg_opacity, set_public_connect_host, set_remind_update_enabled,
 )
 from dstools.shared.custom_background import (
     clear_custom_bg_image, get_custom_bg_path, set_custom_bg_image,
@@ -687,6 +689,46 @@ class KleiRootDialog(dialogs.Dialog):
                                  t("settings.klei_root_not_found", path=str(current or "")))
             return
         os.startfile(str(current))
+
+
+class PublicHostDialog(dialogs.Dialog):
+    """公网直连代码的地址：填固定公网 IP 或 DDNS 域名，或恢复自动检测（所有存档共用）。
+    保存后发 ctx.public_connect_host_changed，本地服务器页据此重新生成公网直连代码。"""
+
+    def __init__(self, window):
+        super().__init__(window, t("local.public_host_title"), "md")
+        self._window = window
+        self.body.addWidget(self.text_label(t("local.public_host_prompt")))
+        self._edit = QLineEdit(get_public_connect_host())
+        self._edit.setPlaceholderText(t("local.public_host_placeholder"))
+        self._edit.returnPressed.connect(self.accept_if_valid)
+        self.body.addWidget(self._edit)
+        self._error = self.error_label()
+        self.body.addWidget(self._error)
+        auto_btn = dialogs.style_button(QPushButton(t("local.public_host_auto_btn")), "secondary")
+        auto_btn.setAutoDefault(False)
+        auto_btn.clicked.connect(lambda: self._save(""))
+        cancel_btn = dialogs.style_button(QPushButton(t("dlg.cancel_btn")), "secondary")
+        cancel_btn.setAutoDefault(False)
+        cancel_btn.clicked.connect(self.reject)
+        save_btn = QPushButton(t("dlg.confirm_btn"))
+        save_btn.setDefault(True)
+        save_btn.clicked.connect(self.accept_if_valid)
+        self.add_footer([auto_btn], [cancel_btn, save_btn])
+        self._edit.setFocus()
+
+    def accept_if_valid(self) -> None:
+        value = self._edit.text().strip()
+        error = check_public_host(value) if value else None  # 留空等于恢复自动检测
+        if error:
+            self._error.setText(t(f"local.public_host_err_{error}"))
+            return
+        self._save(value)
+
+    def _save(self, value: str) -> None:
+        set_public_connect_host(value)
+        self._window.ctx.public_connect_host_changed.emit()
+        self.accept()
 
 
 class ManualUpdateDialog(dialogs.Dialog):

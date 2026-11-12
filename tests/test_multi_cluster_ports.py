@@ -982,7 +982,8 @@ def test_nat_without_configuration_skips_loading_and_network_thread() -> None:
         service._public_gen = service._nat_gen = 0
         service._lan_connect_code = lambda _cluster: None
         service._refresh_lan_status = lambda: None
-        silent = SimpleNamespace(set_value=lambda *_args: None, set_status=lambda *_args: None)
+        silent = SimpleNamespace(set_value=lambda *_args: None, set_status=lambda *_args: None,
+                                 set_hint=lambda *_args: None)
         service._lan_row = silent
         service._public_row = silent
         nat_text = []

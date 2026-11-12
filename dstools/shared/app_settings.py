@@ -73,6 +73,7 @@ _KEY_TOKEN_SWITCH_ON_TIMEOUT = "token_switch_on_timeout"
 _KEY_TOKEN_SWITCH_AFTER_MINUTES = "token_switch_after_minutes"
 _KEY_MOD_PRESETS = "mod_presets"
 _KEY_DEDICATED_SERVER_EXTRA_ARGS = "dedicated_server_extra_args"
+_KEY_PUBLIC_CONNECT_HOST = "public_connect_host"  # 公网直连代码用的自定义地址（IP 或域名），没有则自动检测
 
 
 def get_settings_dir() -> Path:
@@ -199,6 +200,22 @@ def set_server_runtime_mode(value: str) -> None:
 def get_dedicated_server_extra_args() -> str:
     """返回专用服务器启动时追加的命令行参数。"""
     return str(load_settings().get(_KEY_DEDICATED_SERVER_EXTRA_ARGS, ""))
+
+
+def get_public_connect_host() -> str:
+    """公网直连代码用的自定义地址（IP 或域名）；空字符串表示自动检测本机公网 IP。所有存档共用。"""
+    return str(load_settings().get(_KEY_PUBLIC_CONNECT_HOST, "")).strip()
+
+
+def set_public_connect_host(value: str) -> None:
+    """保存公网直连代码的自定义地址；传空字符串恢复自动检测。"""
+    data = load_settings()
+    value = value.strip()
+    if value:
+        data[_KEY_PUBLIC_CONNECT_HOST] = value
+    else:
+        data.pop(_KEY_PUBLIC_CONNECT_HOST, None)
+    save_settings(data)
 
 
 def set_dedicated_server_extra_args(value: str) -> None:

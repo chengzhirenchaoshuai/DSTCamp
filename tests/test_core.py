@@ -1293,6 +1293,19 @@ def test_world_creation_plan_and_atomic_writer():
         assert not load_mod_overrides(path / "Master" / "modoverrides.lua").client_mods_disabled
 
 
+def test_public_connect_host_check():
+    """公网直连自定义地址：IPv4、域名可用；前缀、端口、IPv6 与会破坏 c_connect 引号的写法都拒绝。"""
+    from dstools.features.local_service.connect_address import check_public_host
+
+    for ok in ("1.2.3.4", "mydst.example.com", "a-b.ddns.net", "MyDST.Example.COM."):
+        assert check_public_host(ok) is None, ok
+    for text, error in (("http://a.com", "scheme"), ("a.com:10999", "port"), ("1.2.3.4:10999", "port"),
+                        ("::1", "ipv6"), ("[2001:db8::1]", "ipv6"), ('a.com", 1) --', "invalid"),
+                        ("a b.com", "invalid"), ("localhost", "invalid"), ("1.2.3.256", "invalid"),
+                        ("-a.com", "invalid"), ("", "invalid"), ("中文.com", "invalid")):
+        assert check_public_host(text) == error, (text, check_public_host(text))
+
+
 def test_preset_apply_client_mods_switch():
     """配置集带的"禁用客户端 Mod"开关只写服务器存档；没带开关时保留存档现状，清空后套用时关闭。"""
     from dstools.features.mod.manager import load_mod_overrides, save_mod_overrides
