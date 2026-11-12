@@ -18,6 +18,7 @@ from pathlib import Path
 
 from dstools.shared.app_settings import get_backup_retention
 from dstools.shared.discovery import list_shards
+from dstools.shared.shard_roles import find_master_dir
 
 _BACKUP_DIR_NAME = "dstcamp_backups"
 _SHARD_ITEMS = ("save", "modoverrides.lua", "leveldataoverride.lua", "server.ini")
@@ -159,7 +160,7 @@ def get_backup_summary(zip_path: Path) -> dict:
                 info["max_players"] = config.gameplay["max_players"]
 
             shards = list_shards(tmp_dir)
-            shard_dir = next((s for s in shards if s.name == "Master"), shards[0] if shards else None)
+            shard_dir = find_master_dir(shards) or (shards[0] if shards else None)
             if shard_dir:
                 sessions = list_save_sessions(shard_dir)
                 if sessions:

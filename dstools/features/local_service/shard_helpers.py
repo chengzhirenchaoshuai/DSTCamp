@@ -6,6 +6,7 @@ from dstools.features.cluster_config.config_manager import load_cluster_config
 from dstools.features.mod.parser import find_game_mods_dir, find_shared_ugc_directory, find_workshop_dir, parse_modinfo
 from dstools.features.local_service.dedicated_server import ServerStatus
 from dstools.i18n import t
+from dstools.shared.shard_roles import master_shard
 
 RUNNING_LIKE = (ServerStatus.STARTING, ServerStatus.RUNNING, ServerStatus.STOPPING)
 
@@ -19,8 +20,9 @@ STATUS_TEXT_KEYS = {
 
 
 def ordered_shards(cluster):
-    """主世界(Master)排在最前面，其余世界保持原有相对顺序。"""
-    return sorted(cluster.shards, key=lambda s: s.name != "Master")
+    """主世界（按 is_master 判定，见 shard_roles）排在最前面，其余世界保持原有相对顺序。"""
+    master = master_shard(cluster)
+    return sorted(cluster.shards, key=lambda s: s is not master)
 
 
 def max_rollback_days(cluster) -> int:

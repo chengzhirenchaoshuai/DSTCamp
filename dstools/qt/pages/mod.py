@@ -66,6 +66,7 @@ from dstools.qt.threads import post_to_ui, run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar
 from dstools.shared import app_settings, tex_convert
 from dstools.shared.resource_paths import bundled_runtime_damaged
+from dstools.shared.shard_roles import master_shard_name
 
 _FILTER_DEBOUNCE_MS = 150
 # 工坊更新状态的复用有效期（秒）；更新、清理等操作后会立即作废
@@ -365,7 +366,7 @@ class ModPage(Page):
         names = [s.name for s in c.shards]
         self._shard_combo.addItems(names)
         if names:
-            self._current_shard_name = "Master" if "Master" in names else names[0]
+            self._current_shard_name = master_shard_name(c) or names[0]
             self._shard_combo.setCurrentText(self._current_shard_name)
         else:
             self._current_shard_name = ""

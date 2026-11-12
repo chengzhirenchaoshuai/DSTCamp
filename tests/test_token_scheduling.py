@@ -359,7 +359,8 @@ def test_auto_restart_controller_flow() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         cluster = SimpleNamespace(name="Cluster_A", path=root / "Cluster_A", token_path=None,
-                                  shards=[SimpleNamespace(name="Master"), SimpleNamespace(name="Caves")])
+                                  shards=[SimpleNamespace(name=name, path=root / "Cluster_A" / name)
+                                          for name in ("Master", "Caves")])
         cluster.path.mkdir()
         procs = {}
         events = []

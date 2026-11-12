@@ -20,6 +20,7 @@ from dstools.features.world.reader import (
 from dstools.features.world.value_sets import get_value_set
 from dstools.features.world.view_model import build_world_view_model
 from dstools.models import Cluster, SaveSource
+from dstools.shared.shard_roles import master_shard
 
 STATUS_OK = "ok"
 STATUS_NO_CLUSTER = "no_cluster"
@@ -37,6 +38,8 @@ class WorldPageData:
     preset: WorldPreset | None = None
     location: str = "forest"
     location_label: str = ""
+    # 是否主世界（按 server.ini 的 is_master，见 shard_roles）：全局、活动、冒险家等项只在主世界显示
+    is_master_world: bool = False
     mod_settings: dict = field(default_factory=dict)
     # 已启用且登记了世界设置的 Mod（纯数字 ID），含当前世界没有设置项的（见 build_world_view_model）
     active_mod_ids: frozenset = frozenset()
@@ -99,7 +102,7 @@ def load_world_page(
     mod_icons = resolve_mod_setting_icons(
         all_mod_settings, cluster.platform, resolve_wegame_client_mods_dir(cluster.platform),
         steam_runtime_mods_dir)
-    is_master_world = shard.name == "Master"
+    is_master_world = master_shard(cluster) is shard
     mod_settings = filter_mod_world_settings(all_mod_settings, location, is_master_world)
     mod_categories = get_mod_categories(mod_settings)
     try:
@@ -111,7 +114,7 @@ def load_world_page(
         preset, mod_settings, mod_categories, is_master_world=is_master_world, active_mod_ids=active_mod_ids)
     return WorldPageData(
         STATUS_OK, is_server=is_server, shard_name=shard_name, path=shard.leveldata_path,
-        preset=preset, location=location, location_label=location_label,
+        preset=preset, location=location, location_label=location_label, is_master_world=is_master_world,
         mod_settings=mod_settings, active_mod_ids=active_mod_ids, mod_categories=mod_categories,
         mod_icons=mod_icons,
         rules_by_category=view_model.rules_by_category, rule_categories=view_model.rule_categories,
@@ -220,7 +223,7 @@ def apply_preset_values(data: WorldPageData, overrides: dict) -> tuple[list[str]
     current = {o.key: o for o in preset.overrides}
     changed = []
     values, skipped = applicable_overrides(overrides, data.location, data.mod_settings,
-                                           is_master_world=data.shard_name == "Master",
+                                           is_master_world=data.is_master_world,
                                            active_mod_ids=data.active_mod_ids)
     for key, value in values.items():
         override = current.get(key)
@@ -245,7 +248,7 @@ def apply_preset_values(data: WorldPageData, overrides: dict) -> tuple[list[str]
 def rebuild_view(data: WorldPageData) -> None:
     """按当前取值重新生成分类列表（显示哪些项取决于取值时调用，如海难的火山岛开关）。"""
     view_model = build_world_view_model(
-        data.preset, data.mod_settings, data.mod_categories, is_master_world=data.shard_name == "Master",
+        data.preset, data.mod_settings, data.mod_categories, is_master_world=data.is_master_world,
         active_mod_ids=data.active_mod_ids)
     data.rules_by_category, data.rule_categories = view_model.rules_by_category, view_model.rule_categories
     data.generation_by_category = view_model.generation_by_category

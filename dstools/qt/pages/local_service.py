@@ -86,6 +86,7 @@ from dstools.shared.server_ports import (
     format_lan_port_issues, lan_restriction_names, rewrite_cluster_ports_atomic,
     rewrite_lan_server_ports_atomic, scan_udp_ports, stable_path_key, system_port_claims,
 )
+from dstools.shared.shard_roles import master_shard
 from dstools.shared.ssl_context import default_ssl_context
 from dstools.shared.token_manager import (
     ServerTokenKind, classify_token, is_valid_token, read_token, token_fingerprint, write_token,
@@ -319,8 +320,7 @@ class _RollbackDialog(dialogs.Dialog):
         self.accept()
         if not dialogs.ask_yes_no(self.page.window(), t("local.rollback_title"), t("local.rollback_confirm", n=n)):
             return
-        master = next((s for s in self.cluster.shards if s.name == "Master"), None)
-        target = master or (self.cluster.shards[0] if self.cluster.shards else None)
+        target = master_shard(self.cluster) or (self.cluster.shards[0] if self.cluster.shards else None)
         if not target:
             dialogs.show_warning(self.page.window(), t("local.rollback_title"), t("local.rollback_none_running"))
             return

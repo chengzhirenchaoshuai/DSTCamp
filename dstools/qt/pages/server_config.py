@@ -36,6 +36,7 @@ from dstools.shared.server_ports import (
     collect_cluster_port_claims, format_lan_port_issues, lan_restriction_names,
     rewrite_lan_server_ports_atomic, scan_udp_ports,
 )
+from dstools.shared.shard_roles import master_shard_name
 from dstools.shared.token_manager import KLEI_SERVERS_URL, is_valid_token, mask_token, write_token
 
 
@@ -473,7 +474,7 @@ class ServerConfigPage(Page):
         self._shard_combo.clear()
         names = [s.name for s in cluster.shards]
         self._shard_combo.addItems(names)
-        self._shard_name = "Master" if "Master" in names else (names[0] if names else "")
+        self._shard_name = master_shard_name(cluster) or (names[0] if names else "")
         self._shard_combo.setCurrentText(self._shard_name)
         self._shard_combo.blockSignals(False)
         self._rebuild_shard_form()

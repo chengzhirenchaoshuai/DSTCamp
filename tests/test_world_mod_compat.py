@@ -1046,5 +1046,25 @@ def test_multi_shard_mod_templates_require_enabled_mods() -> None:
         }
 
 
+def test_master_world_follows_is_master_not_folder_name() -> None:
+    """主世界文件夹不叫 Master（如猪镇做主世界的 Hamlet）时按 server.ini 的 is_master 判定；
+    没有分片写明 is_master = true 才退回 Master 文件夹。"""
+    from dstools.models import Cluster, Shard
+    from dstools.shared.shard_roles import master_shard
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        flags = {"Caves": "false", "Forest": "false", "Hamlet": "true"}
+        for name, flag in flags.items():
+            (root / name).mkdir()
+            (root / name / "server.ini").write_text(f"[SHARD]\nis_master = {flag}\n", encoding="utf-8")
+        cluster = Cluster("c", root, shards=[Shard(name, root / name) for name in flags])
+        assert master_shard(cluster).name == "Hamlet"
+
+        (root / "Master").mkdir()
+        legacy = Cluster("c", root, shards=[Shard("Caves", root / "Caves"), Shard("Master", root / "Master")])
+        assert master_shard(legacy).name == "Master"
+
+
 if __name__ == "__main__":
     run(globals())

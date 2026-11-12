@@ -21,6 +21,7 @@ from dstools.features.mod.shardindex import (
 )
 from dstools.i18n import get_lang, t
 from dstools.models import Platform
+from dstools.shared.shard_roles import master_shard_name
 from dstools.qt import dialogs
 from dstools.qt.pages.base import Page
 from dstools.qt.server import restart_prompt
@@ -266,7 +267,7 @@ class WorldSettingsPage(Page):
         self._shard_combo.clear()
         self._shard_combo.addItems(names)
         if not keep:
-            self._shard = "Master" if "Master" in names else (names[0] if names else "")
+            self._shard = master_shard_name(cluster) or (names[0] if names else "")
         self._shard_combo.setCurrentText(self._shard)
         self._shard_combo.blockSignals(False)
         self._add_shard_button.setVisible(self._selected_is_server())

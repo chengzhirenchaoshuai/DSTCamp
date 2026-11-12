@@ -47,7 +47,7 @@ def test_save_splits_by_category_and_custom_base_resolves():
 def test_apply_skips_unknown_and_retyping_values():
     preset = WorldPreset(location="forest", overrides=[WorldOverride("day", "default"), WorldOverride("autumn", "default")])
     data = page_data.WorldPageData(page_data.STATUS_OK, is_server=True, shard_name="Master",
-                                   preset=preset, location="forest")
+                                   preset=preset, location="forest", is_master_world=True)
     changed, skipped = page_data.apply_preset_values(
         data, {"day": "longday", "autumn": "default", "world_size": "small", "not_a_setting": "x", "wildfires": True})
     assert changed == ["day", "world_size"]

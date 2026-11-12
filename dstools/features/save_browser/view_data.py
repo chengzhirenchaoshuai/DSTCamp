@@ -15,6 +15,7 @@ from dstools.features.save_browser.reader import (
 from dstools.models import Cluster, SaveSource
 from dstools.shared.app_settings import get_player_note
 from dstools.shared.resource_paths import bundled_resource_dir
+from dstools.shared.shard_roles import master_shard_name
 
 # 角色名/头像都查不到时的兜底头像（问号图标），是打包进 icons/ui/ 的固定素材。
 DEFAULT_AVATAR_PATH = bundled_resource_dir() / "icons" / "ui" / "character_icon_default.png"
@@ -68,11 +69,11 @@ def shard_names(cluster: Cluster | None) -> list[str]:
 
 
 def default_shard_name(cluster: Cluster, previous: str | None = None) -> str:
-    """保持上次选的世界；没有则优先 Master，再退回第一个。"""
+    """保持上次选的世界；没有则优先主世界（按 is_master 判定），再退回第一个。"""
     names = shard_names(cluster)
     if previous in names:
         return previous
-    return "Master" if "Master" in names else (names[0] if names else "")
+    return master_shard_name(cluster) or (names[0] if names else "")
 
 
 def load_cluster_overview(cluster: Cluster) -> ClusterOverview:

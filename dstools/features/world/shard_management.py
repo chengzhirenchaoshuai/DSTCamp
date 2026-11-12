@@ -40,6 +40,7 @@ from dstools.models import Cluster, Platform, SaveSource, ShardConfig
 from dstools.shared.ini_parser import parse_cluster_ini, parse_server_ini, write_cluster_ini, write_server_ini
 from dstools.shared.lua_parser import LuaStringKey, parse_lua_file, serialize_lua_table
 from dstools.shared.recycle_bin import move_to_recycle_bin
+from dstools.shared.shard_roles import master_shard
 from dstools.shared.server_ports import (
     DEFAULT_MASTER_PORT,
     DEFAULT_STEAM_AUTH_PORT,
@@ -68,10 +69,7 @@ _SHARD_REQUIRED_KEYS = ("bind_ip", "master_ip", "cluster_key")
 
 def _master_shard(cluster: Cluster):
     """主世界分片：server.ini [SHARD] is_master 为真的那个，没写 is_master 时取 Master 目录。"""
-    for shard in cluster.shards:
-        if (shard.path / "server.ini").is_file() and parse_server_ini(shard.path / "server.ini").shard.get("is_master"):
-            return shard
-    return next((shard for shard in cluster.shards if shard.name == "Master"), None)
+    return master_shard(cluster)
 
 
 def worldgate_installed() -> bool:
