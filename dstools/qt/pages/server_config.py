@@ -9,7 +9,7 @@ import webbrowser
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget, QPlainTextEdit, QPushButton, QScrollArea,
+    QFrame, QHBoxLayout, QLabel, QListWidget, QPlainTextEdit, QPushButton, QScrollArea,
     QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -31,7 +31,7 @@ from dstools.qt.pages.base import Page
 from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import Banner, Card, PillTabBar, clear_layout
+from dstools.qt.widgets import Banner, Card, PillTabBar, ShardCombo, clear_layout
 from dstools.shared.server_ports import (
     collect_cluster_port_claims, format_lan_port_issues, lan_restriction_names,
     rewrite_lan_server_ports_atomic, scan_udp_ports,
@@ -340,7 +340,7 @@ class ServerConfigPage(Page):
         selector = QHBoxLayout()
         self._shard_label = QLabel()
         self._shard_label.setFont(theme.font("FONT_SIZE_SM"))
-        self._shard_combo = QComboBox()
+        self._shard_combo = ShardCombo()
         self._shard_combo.setMinimumWidth(180)
         self._shard_combo.activated.connect(self._on_shard_picked)
         selector.addWidget(self._shard_label)
@@ -471,11 +471,11 @@ class ServerConfigPage(Page):
         self._shard_save.setEnabled(is_server)
         self._rebuild_cluster_form(cluster, local_server)
         self._shard_combo.blockSignals(True)
-        self._shard_combo.clear()
         names = [s.name for s in cluster.shards]
-        self._shard_combo.addItems(names)
-        self._shard_name = master_shard_name(cluster) or (names[0] if names else "")
-        self._shard_combo.setCurrentText(self._shard_name)
+        master = master_shard_name(cluster)
+        self._shard_combo.set_shards(names, master)
+        self._shard_name = master or (names[0] if names else "")
+        self._shard_combo.set_current_shard(self._shard_name)
         self._shard_combo.blockSignals(False)
         self._rebuild_shard_form()
         self._admin.load(cluster)
@@ -512,7 +512,7 @@ class ServerConfigPage(Page):
 
     # ── 世界设置 ────────────────────────────────────────────────────────
     def _on_shard_picked(self, _index: int) -> None:
-        self._shard_name = self._shard_combo.currentText()
+        self._shard_name = self._shard_combo.shard_name()
         self._rebuild_shard_form()
 
     def _clear_shard_form(self) -> None:
@@ -612,7 +612,7 @@ class ServerConfigPage(Page):
         previous_shard = self._shard_name
         self.on_cluster_changed(cluster)
         if previous_shard in [s.name for s in cluster.shards]:  # 不能因为保存房间设置就把正在看的世界切回 Master
-            self._shard_combo.setCurrentText(previous_shard)
+            self._shard_combo.set_current_shard(previous_shard)
             self._on_shard_picked(0)
         # 页面先按新内容重载再提示，选「立即重启」时读到的已是保存后的配置
         restart_prompt.show_saved(self._window(), self.ctx, cluster, t("dlg.save_ok"),
@@ -746,4 +746,5 @@ class ServerConfigPage(Page):
         dialogs.show_info(self._window(), t("dlg.save_ok"), t("dlg.config_saved", name=f"{cluster.name}/{target.name}"))
         # server_port 会拼进"本地服务器"页的直连代码，改了要通知它刷新
         self.ctx.cluster_config_saved.emit(cluster)
+        self._shard_combo.set_master(master_shard_name(cluster))  # 可能刚改了 is_master，主世界标注跟着变
         self._rebuild_shard_form()  # 只重载这个世界自己的字段，不把世界下拉框重置回 Master

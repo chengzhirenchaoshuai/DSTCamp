@@ -15,7 +15,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QVBoxLayout,
+    QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QVBoxLayout,
 )
 
 from dstools.features.local_service import luajit_injector
@@ -63,7 +63,7 @@ from dstools.qt.pages.base import Page
 from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.threads import post_to_ui, run_async
-from dstools.qt.widgets import Banner, Card, PillTabBar
+from dstools.qt.widgets import Banner, Card, PillTabBar, ShardCombo
 from dstools.shared import app_settings, tex_convert
 from dstools.shared.resource_paths import bundled_runtime_damaged
 from dstools.shared.shard_roles import master_shard_name
@@ -151,7 +151,7 @@ class ModPage(Page):
 
         tool_row = QHBoxLayout()
         tool_row.addWidget(QLabel(t("mod.shard")))
-        self._shard_combo = QComboBox()
+        self._shard_combo = ShardCombo()
         self._shard_combo.setMinimumWidth(160)
         self._shard_combo.activated.connect(self._on_shard_select)
         tool_row.addWidget(self._shard_combo)
@@ -364,10 +364,11 @@ class ModPage(Page):
             self._refresh_mods()
             return
         names = [s.name for s in c.shards]
-        self._shard_combo.addItems(names)
+        master = master_shard_name(c)
+        self._shard_combo.set_shards(names, master)
         if names:
-            self._current_shard_name = master_shard_name(c) or names[0]
-            self._shard_combo.setCurrentText(self._current_shard_name)
+            self._current_shard_name = master or names[0]
+            self._shard_combo.set_current_shard(self._current_shard_name)
         else:
             self._current_shard_name = ""
         self._shard_combo.blockSignals(False)
@@ -385,13 +386,13 @@ class ModPage(Page):
         return root is None or find_wegame_client_dir(root) is None
 
     def _on_shard_select(self, _index: int = 0) -> None:
-        name = self._shard_combo.currentText()
+        name = self._shard_combo.shard_name()
         if self._dirty:
             if name == self._current_shard_name:
                 return
             choice = dialogs.ask_unsaved(self.window(), t("tab.mods").strip())
             if choice == "cancel" or (choice == "save" and not self.save_unsaved_changes()):
-                self._shard_combo.setCurrentText(self._current_shard_name)
+                self._shard_combo.set_current_shard(self._current_shard_name)
                 return
         self._current_shard_name = name
         self._refresh_mods()

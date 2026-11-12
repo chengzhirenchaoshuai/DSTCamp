@@ -9,7 +9,7 @@ import zipfile
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget, QWidgetAction,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget, QWidgetAction,
 )
 
 from dstools.features.local_service.backup_manager import (
@@ -31,7 +31,8 @@ from dstools.qt.tunnel.lan_mapping_guard import mapping_method_names
 from dstools.qt.pages.base import Page
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async, run_async_with_log
-from dstools.qt.widgets import Card, FrostedMenu, MenuTextItem, clear_layout
+from dstools.qt.widgets import Card, FrostedMenu, MenuTextItem, ShardCombo, clear_layout
+from dstools.shared.shard_roles import master_shard_name
 from dstools.shared.app_settings import set_player_note
 from dstools.shared.clipboard import copy_file_to_clipboard
 
@@ -115,7 +116,7 @@ class SaveInfoPage(Page):
 
         shard_row = QHBoxLayout()
         self._shard_label = _label(size_key="FONT_SIZE_BASE", muted=False)
-        self._shard_combo = QComboBox()
+        self._shard_combo = ShardCombo()
         self._shard_combo.setMinimumWidth(180)
         self._shard_combo.activated.connect(self._on_shard_picked)
         shard_row.addWidget(self._shard_label)
@@ -182,13 +183,12 @@ class SaveInfoPage(Page):
     def on_cluster_changed(self, cluster) -> None:
         self._generation += 1
         self._shard_combo.blockSignals(True)
-        self._shard_combo.clear()
         if cluster is not None:
-            for name in view_data.shard_names(cluster):
-                self._shard_combo.addItem(name)
+            self._shard_combo.set_shards(view_data.shard_names(cluster), master_shard_name(cluster))
             self._shard = view_data.default_shard_name(cluster, self._shard)
-            self._shard_combo.setCurrentText(self._shard)
+            self._shard_combo.set_current_shard(self._shard)
         else:
+            self._shard_combo.set_shards([])
             self._shard = ""
         self._shard_combo.blockSignals(False)
         self._overview.setVisible(cluster is not None)
@@ -201,7 +201,7 @@ class SaveInfoPage(Page):
         self._load_session(cluster)
 
     def _on_shard_picked(self, _index: int) -> None:
-        self._shard = self._shard_combo.currentText()
+        self._shard = self._shard_combo.shard_name()
         self._generation += 1
         self._load_session(self.ctx.selected_cluster())
 

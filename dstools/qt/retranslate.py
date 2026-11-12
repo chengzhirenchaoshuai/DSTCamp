@@ -53,7 +53,11 @@ def retranslate_all_widgets(from_lang: str, to_lang: str) -> int:
 
 
 def _retranslate_custom(widget: QWidget, mapping: dict[str, str]) -> None:
-    """项目里自绘的控件：胶囊页签条（_labels + set_labels）、自绘菜单项/提示条（_text + setText/set_text）。"""
+    """项目里自绘的控件：胶囊页签条（_labels + set_labels）、自绘菜单项/提示条（_text + setText/set_text）；
+    文字由程序拼出来的控件（如世界下拉的“（主世界）”后缀）提供 refresh_labels() 按当前语言重拼。"""
+    refresh = getattr(widget, "refresh_labels", None)
+    if callable(refresh):
+        refresh()
     labels = getattr(widget, "_labels", None)
     if isinstance(labels, list) and hasattr(widget, "set_labels"):
         widget.set_labels([translate_static_text(label, mapping) or label for label in labels])

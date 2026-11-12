@@ -8,7 +8,7 @@ import webbrowser
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget, QStyle, QVBoxLayout,
+    QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget, QStyle, QVBoxLayout,
 )
 
 from dstools.features.local_service.backup_manager import create_backup
@@ -27,7 +27,7 @@ from dstools.qt.pages.base import Page
 from dstools.qt.server import restart_prompt
 from dstools.qt.theme import theme
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import Banner, Card, PillTabBar
+from dstools.qt.widgets import Banner, Card, PillTabBar, ShardCombo
 from dstools.qt.world.world_manage import ManageWorldsDialog
 from dstools.qt.world.world_panel import WorldPanel
 from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
@@ -107,7 +107,7 @@ class WorldSettingsPage(Page):
         shard_row = QHBoxLayout()
         self._shard_label = QLabel()
         self._shard_label.setFont(theme.font("FONT_SIZE_BASE"))
-        self._shard_combo = QComboBox()
+        self._shard_combo = ShardCombo()
         self._shard_combo.setMinimumWidth(180)
         self._shard_combo.activated.connect(self._on_shard_picked)
         # 新增、管理两个按钮只对专服存档显示（本地存档由游戏前端管理世界），见 on_cluster_changed
@@ -263,12 +263,12 @@ class WorldSettingsPage(Page):
         # 还是同一个存档（别处刷新了存档列表、Mod 页保存等）：保留未保存的改动，不从磁盘重读
         keep = self._dirty and cluster is not None and str(cluster.path) == self._edited_cluster_path \
             and self._shard in names
+        master = master_shard_name(cluster) if cluster is not None else ""
         self._shard_combo.blockSignals(True)
-        self._shard_combo.clear()
-        self._shard_combo.addItems(names)
+        self._shard_combo.set_shards(names, master)
         if not keep:
-            self._shard = master_shard_name(cluster) or (names[0] if names else "")
-        self._shard_combo.setCurrentText(self._shard)
+            self._shard = master or (names[0] if names else "")
+        self._shard_combo.set_current_shard(self._shard)
         self._shard_combo.blockSignals(False)
         self._add_shard_button.setVisible(self._selected_is_server())
         self._manage_button.setVisible(self._selected_is_server())
@@ -276,13 +276,13 @@ class WorldSettingsPage(Page):
             self._load_world()
 
     def _on_shard_picked(self, _index: int) -> None:
-        name = self._shard_combo.currentText()
+        name = self._shard_combo.shard_name()
         if self._dirty:
             if name == self._shard:
                 return
             choice = dialogs.ask_unsaved(self.window(), t("tab.world").strip())
             if choice == "cancel" or (choice == "save" and not self.save_unsaved_changes()):
-                self._shard_combo.setCurrentText(self._shard)
+                self._shard_combo.set_current_shard(self._shard)
                 return
         self._shard = name
         self._load_world()
@@ -337,7 +337,7 @@ class WorldSettingsPage(Page):
         def done(_result) -> None:
             self._add_shard_button.setEnabled(True)
             self.ctx.refresh_env()
-            index = self._shard_combo.findText(shard_name)
+            index = self._shard_combo.find_shard(shard_name)
             if index >= 0:
                 self._shard_combo.setCurrentIndex(index)
                 self._on_shard_picked(index)

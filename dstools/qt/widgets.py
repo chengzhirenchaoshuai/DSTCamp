@@ -5,10 +5,60 @@ from ctypes import wintypes
 
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QMenu, QScrollArea, QToolTip, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QMenu, QScrollArea, QToolTip, QVBoxLayout, QWidget
 
+from dstools.i18n import t
 from dstools.qt.text_halo import draw_adaptive_text
 from dstools.qt.theme import theme
+
+
+class ShardCombo(QComboBox):
+    """世界（分片）下拉：显示文件夹名，主世界后面加“（主世界）”；世界名存在每一项的 data 里。
+
+    取值、定位一律用 shard_name()/set_current_shard()/find_shard()，不要用 currentText()/findText()
+    （主世界那一项的文字带后缀）。切换语言时由 retranslate 调 refresh_labels() 按新语言重拼后缀。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._master = ""
+
+    def _label(self, name: str) -> str:
+        return t("world.shard_master_label", name=name) if name and name == self._master else name
+
+    def set_shards(self, names, master: str = "") -> None:
+        """整体替换列表（调用方自行 blockSignals）；master 为主世界的文件夹名。"""
+        self._master = master
+        self.clear()
+        for name in names:
+            self.addItem(self._label(name), name)
+
+    def set_master(self, master: str) -> None:
+        self._master = master
+        self.refresh_labels()
+
+    def add_shard(self, name: str) -> None:
+        self.addItem(self._label(name), name)
+
+    def insert_shard(self, index: int, name: str) -> None:
+        self.insertItem(index, self._label(name), name)
+
+    def refresh_labels(self) -> None:
+        for index in range(self.count()):
+            self.setItemText(index, self._label(self.itemData(index)))
+
+    def shard_name(self) -> str:
+        return self.currentData() or ""
+
+    def shard_names(self) -> list[str]:
+        return [self.itemData(index) for index in range(self.count())]
+
+    def find_shard(self, name: str) -> int:
+        return self.findData(name)
+
+    def set_current_shard(self, name: str) -> None:
+        index = self.findData(name)
+        if index >= 0:
+            self.setCurrentIndex(index)
 
 
 class ToggleSwitch(QWidget):

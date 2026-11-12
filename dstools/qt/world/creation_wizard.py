@@ -66,7 +66,7 @@ from dstools.qt.theme import theme
 from dstools.shared.resource_paths import bundled_resource_dir
 from dstools.shared.steam_discovery import read_steam_persona_name
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import PillTabBar, TitleButton, resize_border_result
+from dstools.qt.widgets import PillTabBar, ShardCombo, TitleButton, resize_border_result
 from dstools.qt.world.world_panel import WorldPanel
 from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
 
@@ -141,7 +141,7 @@ class DraftServerPanel(ServerConfigPage):
             cluster.shards.append(Shard(name=shard_name, path=path))
         write_server_ini(config, path / "server.ini")
         self.load()
-        self._shard_combo.setCurrentText(shard_name)
+        self._shard_combo.set_current_shard(shard_name)
         self._on_shard_picked(0)
 
     def remove_shard(self, shard_name: str) -> None:
@@ -448,11 +448,11 @@ class CreationWizardDialog(QDialog):
         layout = QVBoxLayout(self._world_page)
         toolbar = QHBoxLayout()
         toolbar.addWidget(QLabel(t("world.creation_world_label")))
-        self._shard_combo = QComboBox()
+        self._shard_combo = ShardCombo()
         # 宽度跟最长的世界名走；展开列表用更不透明的底色（QSS 的 #opaquePopup 规则）。
         self._shard_combo.setObjectName("opaquePopup")
         self._shard_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._shard_combo.addItems([MASTER_SHARD, CAVES_SHARD])
+        self._shard_combo.set_shards([MASTER_SHARD, CAVES_SHARD], MASTER_SHARD)
         self._shard_combo.activated.connect(self._on_shard_changed)
         toolbar.addWidget(self._shard_combo)
         toolbar.addWidget(QLabel(t("world.creation_select_world")))
@@ -562,7 +562,7 @@ class CreationWizardDialog(QDialog):
             self._render_world()
 
     def _refresh_location_combo(self) -> None:
-        shard = self._shard_combo.currentText() or MASTER_SHARD
+        shard = self._shard_combo.shard_name() or MASTER_SHARD
         locations = self._available_locations_for_shard(shard)
         self._location_combo.blockSignals(True)
         self._location_combo.clear()
@@ -577,7 +577,7 @@ class CreationWizardDialog(QDialog):
 
     def _live_shard_names(self) -> list[str]:
         """当前保留的全部世界（下拉框顺序）。"""
-        return [self._shard_combo.itemText(i) for i in range(self._shard_combo.count())]
+        return self._shard_combo.shard_names()
 
     def _live_fixed_shards(self) -> list[str]:
         return [shard for shard in (MASTER_SHARD, CAVES_SHARD) if shard not in self._removed_fixed_shards]
@@ -592,7 +592,7 @@ class CreationWizardDialog(QDialog):
         self._render_world()
 
     def _on_location_changed(self, _index: int) -> None:
-        shard = self._shard_combo.currentText()
+        shard = self._shard_combo.shard_name()
         location = self._location_combo.currentData()
         if not location:
             return
@@ -628,14 +628,14 @@ class CreationWizardDialog(QDialog):
         self._location_drafts[(shard_name, location)] = plan
         if self._server_panel is not None:
             self._server_panel.add_shard(shard_name)
-        self._shard_combo.addItem(shard_name)
-        self._shard_combo.setCurrentText(shard_name)
+        self._shard_combo.add_shard(shard_name)
+        self._shard_combo.set_current_shard(shard_name)
         self._update_remove_world_btn()
         self._refresh_location_combo()
         self._render_world()
 
     def _remove_world(self) -> None:
-        shard_name = self._shard_combo.currentText()
+        shard_name = self._shard_combo.shard_name()
         if self._shard_combo.count() <= 1 or not shard_name:
             return
         if not dialogs.ask_yes_no(self, t("world.creation_remove_world"),
@@ -663,7 +663,7 @@ class CreationWizardDialog(QDialog):
         self._user_selected_location_shards.discard(shard_name)
         if self._server_panel is not None:
             self._server_panel.remove_shard(shard_name)
-        index = self._shard_combo.findText(shard_name)
+        index = self._shard_combo.find_shard(shard_name)
         if index >= 0:
             self._shard_combo.removeItem(index)
 
@@ -680,8 +680,8 @@ class CreationWizardDialog(QDialog):
                 restored = shard_name in self._removed_fixed_shards
                 if restored:
                     self._removed_fixed_shards.discard(shard_name)
-                    position = 0 if shard_name == MASTER_SHARD else int(self._shard_combo.findText(MASTER_SHARD) >= 0)
-                    self._shard_combo.insertItem(position, shard_name)
+                    position = 0 if shard_name == MASTER_SHARD else int(self._shard_combo.find_shard(MASTER_SHARD) >= 0)
+                    self._shard_combo.insert_shard(position, shard_name)
                 # 固定槽位沿用现有计划（优先官方模板），只切换世界类型
                 self._switch_shard_location(shard_name, plan.location, render=False)
                 self._user_selected_location_shards.add(shard_name)
@@ -691,7 +691,7 @@ class CreationWizardDialog(QDialog):
             else:
                 self._extra_plans[shard_name] = plan
                 self._location_drafts[(shard_name, plan.location)] = plan
-                self._shard_combo.addItem(shard_name)
+                self._shard_combo.add_shard(shard_name)
             if self._server_panel is not None:
                 self._server_panel.add_shard(shard_name, config)
         self._shard_combo.setCurrentIndex(0)
@@ -743,7 +743,7 @@ class CreationWizardDialog(QDialog):
             self._status_label.setText(str(exc))
 
     def _active_preset(self):
-        return self._plan_for_shard(self._shard_combo.currentText())
+        return self._plan_for_shard(self._shard_combo.shard_name())
 
     def _render_world(self) -> None:
         plan = self._active_preset()
@@ -753,7 +753,7 @@ class CreationWizardDialog(QDialog):
                              location=plan.location,
                              overrides=[WorldOverride(key, value if isinstance(value, str) else str(value))
                                         for key, value in plan.overrides.items()])
-        is_master = self._shard_combo.currentText() == MASTER_SHARD
+        is_master = self._shard_combo.shard_name() == MASTER_SHARD
         self._active_mod_settings = filter_mod_world_settings(self._mod_settings, preset.location, is_master)
         mod_categories = get_mod_categories(self._active_mod_settings)
         view = build_world_view_model(
@@ -808,7 +808,7 @@ class CreationWizardDialog(QDialog):
         # 计划里的取值直接写进 leveldataoverride.lua，数字、布尔保持预设里的原类型即可
         values, skipped = user_presets.applicable_overrides(
             dialog.selected.overrides, plan.location, self._active_mod_settings,
-            is_master_world=self._shard_combo.currentText() == MASTER_SHARD,
+            is_master_world=self._shard_combo.shard_name() == MASTER_SHARD,
             active_mod_ids=frozenset(info.mod_id for info in self._mod_settings.values()))
         changed = [key for key, value in values.items() if plan.overrides.get(key) != value]
         plan.overrides.update(values)
