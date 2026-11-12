@@ -66,7 +66,7 @@ from dstools.qt.theme import theme
 from dstools.shared.resource_paths import bundled_resource_dir
 from dstools.shared.steam_discovery import read_steam_persona_name
 from dstools.qt.threads import run_async
-from dstools.qt.widgets import PillTabBar, TitleButton, block_wheel, resize_border_result
+from dstools.qt.widgets import PillTabBar, TitleButton, resize_border_result
 from dstools.qt.world.world_panel import WorldPanel
 from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
 
@@ -459,8 +459,6 @@ class CreationWizardDialog(QDialog):
         self._location_combo = QComboBox()
         self._location_combo.setObjectName("opaquePopup")
         self._location_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        # 滚轮一格就会换掉世界类型并覆盖该世界的计划，只允许点开选择
-        block_wheel(self._location_combo)
         self._location_combo.activated.connect(self._on_location_changed)
         toolbar.addWidget(self._location_combo)
         add_btn = QPushButton(t("world.creation_add_world"))

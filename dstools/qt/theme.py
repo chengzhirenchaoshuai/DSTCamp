@@ -108,6 +108,7 @@ def _rgba(hex_color: str, alpha: int) -> str:
 
 _ORIGINAL_COMBO_SHOW_POPUP = None
 _ORIGINAL_COMBO_PAINT = None
+_ORIGINAL_COMBO_WHEEL = None
 _ORIGINAL_LABEL_SET_PIXMAP = None
 _LABEL_PIXMAP_PROP = "dstPixmap"
 _POPUP_SHOW_FILTER = None
@@ -220,6 +221,25 @@ def _patch_combo_paint() -> None:
                            opt.palette, self.isEnabled(), opt.currentText, QPalette.ColorRole.Text)
 
     QComboBox.paintEvent = _paint_event
+
+
+def _patch_combo_wheel() -> None:
+    """全局补丁 QComboBox.wheelEvent：下拉框不响应滚轮，只能点开选择。
+
+    Qt 默认指针悬停时滚一格就换选项并发出 activated，滚动页面时路过就会误改：服务器配置、
+    Mod 设置被改值，分片/存档下拉被切走（服务器配置页还会丢掉未保存的表单），创建向导的主世界
+    被滚成洞穴。忽略事件后滚轮交给外层滚动区继续滚动页面；展开后的列表不经这里，照常可滚。"""
+    global _ORIGINAL_COMBO_WHEEL
+    if _ORIGINAL_COMBO_WHEEL is not None:
+        return
+    from PySide6.QtWidgets import QComboBox
+
+    _ORIGINAL_COMBO_WHEEL = QComboBox.wheelEvent
+
+    def _wheel_event(self, event) -> None:
+        event.ignore()
+
+    QComboBox.wheelEvent = _wheel_event
 
 
 class _PopupShowFilter(QObject):
@@ -554,6 +574,7 @@ class Theme(QObject):
             app.setStyleSheet(self.qss())
             _patch_combo_popup_width()
             _patch_combo_paint()
+            _patch_combo_wheel()
             _patch_label_pixmap()
             _patch_widget_set_font()
             _apply_tooltip_style(app)
