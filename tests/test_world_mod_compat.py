@@ -42,11 +42,9 @@ from dstools.features.world.location_profiles import (  # noqa: E402
     PORKLAND_MOD_ID,
     PORKLAND_PATCH_MOD_ID,
     SHIPWRECKED_LOCATION,
-    THREE_WORLDS_MOD_ID,
     THREE_WORLDS_PATCH_MOD_ID,
     VOLCANO_LOCATION,
     get_location_definition,
-    location_requirements_met,
     get_verified_creation_level_data,
     resolve_world_location_profile,
 )
@@ -139,28 +137,16 @@ def test_location_profiles() -> None:
         {IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID}
     )
 
-    # 三合一整合版：五种世界都可用，但不补独立版依赖，也不触发猪镇+岛屿冒险警告
-    three = resolve_world_location_profile({THREE_WORLDS_MOD_ID})
-    assert set(three.master_locations) == {
-        FOREST_LOCATION, CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION,
-    }
-    assert (three.default_master, three.default_caves) == (FOREST_LOCATION, CAVE_LOCATION)
-    assert three.effective_mod_ids == frozenset({THREE_WORLDS_MOD_ID}) and not three.warnings
-    assert location_requirements_met(PORKLAND_LOCATION, {THREE_WORLDS_MOD_ID})
-    assert location_requirements_met(VOLCANO_LOCATION, {THREE_WORLDS_MOD_ID})
-    # 与原 Mod（海难会连带补核心）同时启用时给出警告，创建校验据此拦下
-    clash = resolve_world_location_profile({THREE_WORLDS_MOD_ID, IA_SHIPWRECKED_MOD_ID})
-    assert clash.warnings and "岛屿冒险 - 核心" in clash.warnings[0]
-
     # 三界同行补丁：自动带上四个原 Mod，五种世界都可用，不触发猪镇+岛屿冒险警告
     patch_profile = resolve_world_location_profile({f"workshop-{THREE_WORLDS_PATCH_MOD_ID}"})
     assert patch_profile.effective_mod_ids == frozenset({
         THREE_WORLDS_PATCH_MOD_ID, IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID, PORKLAND_PATCH_MOD_ID,
     })
-    assert set(patch_profile.caves_locations) == set(three.master_locations) and not patch_profile.warnings
-    # 与旧整合版同时启用时只报一条取代提示
-    legacy = resolve_world_location_profile({THREE_WORLDS_PATCH_MOD_ID, THREE_WORLDS_MOD_ID})
-    assert len(legacy.warnings) == 1 and "三合一整合版" in legacy.warnings[0]
+    assert set(patch_profile.master_locations) == set(patch_profile.caves_locations) == {
+        FOREST_LOCATION, CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION,
+    }
+    assert (patch_profile.default_master, patch_profile.default_caves) == (FOREST_LOCATION, CAVE_LOCATION)
+    assert not patch_profile.warnings
 
 
 def test_setting_location_isolation() -> None:
@@ -221,12 +207,6 @@ def test_setting_location_isolation() -> None:
     assert not any(is_mod_readonly(key, island) for key in island)
     assert len(get_value_set("sandhill", island, location=SHIPWRECKED_LOCATION, is_rule=False)) == 8
     assert get_value_set("doydoy", island, location=SHIPWRECKED_LOCATION, is_rule=False) == ["never", "default"]
-
-    # 三合一整合版与三个独立版同时启用时看到的条目一致
-    standalone = {IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID, PORKLAND_MOD_ID}
-    for location, is_master in ((SHIPWRECKED_LOCATION, True), (PORKLAND_LOCATION, False)):
-        assert get_mod_world_settings({"3811652910"}, location, is_master).keys() == (
-            get_mod_world_settings(standalone, location, is_master).keys())
 
     bwb_forest = get_mod_world_settings({"3360553731"}, FOREST_LOCATION, True)
     bwb_cave = get_mod_world_settings({"3360553731"}, CAVE_LOCATION, True)
@@ -945,10 +925,11 @@ def test_manage_existing_shards() -> None:
             path.write_text(path.read_text(encoding="utf-8").replace('["enabled"] = true', '["enabled"] = false'),
                             encoding="utf-8")
         assert unreachable_shards(cluster) == ["Forest2"]
-        # 三合一（含岛屿冒险核心）按世界类型连接，海洋之椅能到 Forest2，不拦
+        # 岛屿冒险核心按世界类型连接，海洋之椅能到 Forest2，不拦
         path = output / "Caves" / "modoverrides.lua"
         path.write_text(path.read_text(encoding="utf-8").replace(
-            "return {", 'return {\n  ["workshop-3811652910"] = { ["enabled"] = true },', 1), encoding="utf-8")
+            "return {", f'return {{\n  ["workshop-{IA_CORE_MOD_ID}"] = {{ ["enabled"] = true }},', 1),
+            encoding="utf-8")
         assert unreachable_shards(cluster) == []
         for name, content in originals.items():
             (output / name / "modoverrides.lua").write_bytes(content)
@@ -1024,13 +1005,13 @@ def test_multi_shard_mod_templates_require_enabled_mods() -> None:
         assert parse_lua_file(output / "Shipwrecked" / "leveldataoverride.lua")["location"] == SHIPWRECKED_LOCATION
         assert parse_lua_file(output / "Volcano" / "leveldataoverride.lua")["location"] == VOLCANO_LOCATION
 
-        # 三合一整合版五分片：编号固定，海难不生成火山岛，modoverrides 不混入独立版
+        # 三界同行补丁五分片：编号固定，海难不生成火山岛，modoverrides 带上补丁的四个依赖
         layout = {name: (plan, config) for name, plan, config in three_worlds_layout()}
         # 向导里 Master/Caves 沿用模板计划，只切换世界类型
         three = WorldCreationPlan(
             "three_worlds", _complete_plan(layout["Master"][0].location),
             _complete_plan(layout["Caves"][0].location),
-            mod_ids=frozenset({THREE_WORLDS_MOD_ID}),
+            mod_ids=frozenset({THREE_WORLDS_PATCH_MOD_ID}),
             shard_configs={name: config for name, (_plan, config) in layout.items()},
             extra_shards={name: plan for name, (plan, _config) in layout.items()
                           if name not in (MASTER_SHARD, CAVES_SHARD)},
@@ -1041,8 +1022,9 @@ def test_multi_shard_mod_templates_require_enabled_mods() -> None:
         assert ids == {"Shipwrecked": 2, "Porkland": 3, "Caves": 4, "Volcano": 5}
         shipwrecked = parse_lua_file(output / "Shipwrecked" / "leveldataoverride.lua")
         assert shipwrecked["overrides"]["volcanoisland"] == "none"
-        assert parse_lua_file(output / "Porkland" / "modoverrides.lua") == {
-            f"workshop-{THREE_WORLDS_MOD_ID}": {"enabled": True},
+        assert set(parse_lua_file(output / "Porkland" / "modoverrides.lua")) == {
+            f"workshop-{mod_id}" for mod_id in (THREE_WORLDS_PATCH_MOD_ID, IA_CORE_MOD_ID, IA_SHIPWRECKED_MOD_ID,
+                                                PORKLAND_MOD_ID, PORKLAND_PATCH_MOD_ID)
         }
 
 

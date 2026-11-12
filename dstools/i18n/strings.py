@@ -1177,7 +1177,7 @@ STRINGS = {
         "world.creation_remove_world_confirm": "确定删除世界“{name}”吗？其尚未写入存档的设置会一并移除。",
         "world.creation_three_worlds_layout": "套用三世界五分片",
         "world.creation_three_worlds_confirm": (
-            "按三界同行补丁（及旧三合一整合版）的专服要求设置五个世界：\n"
+            "按三界同行补丁的专服要求设置五个世界：\n"
             "Master 森林、Shipwrecked 海难（编号 2）、Porkland 猪镇（编号 3）、"
             "Caves 洞穴（编号 4）、Volcano 火山（编号 5）。\n\n"
             "现有的额外世界会被移除，各从世界的端口和分片编号会重置；海难不生成火山岛（由火山世界代替）。\n\n"
@@ -3125,7 +3125,7 @@ STRINGS = {
         "world.creation_remove_world_confirm": 'Remove the world "{name}"? Its unsaved settings will also be removed.',
         "world.creation_three_worlds_layout": "Apply Three-World 5-Shard Layout",
         "world.creation_three_worlds_confirm": (
-            "Set up the five worlds required by the Three Worlds patch (and the legacy three-in-one mod) for dedicated servers:\n"
+            "Set up the five worlds required by the Three Worlds patch for dedicated servers:\n"
             "Master Forest, Shipwrecked (ID 2), Porkland (ID 3), Caves (ID 4), Volcano (ID 5).\n\n"
             "Existing extra worlds will be removed, and ports and shard IDs of secondary worlds will be reset; "
             "Shipwrecked will not generate a volcano island (the Volcano world replaces it).\n\n"

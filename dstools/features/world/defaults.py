@@ -50,7 +50,7 @@ def default_plan_for_location(location: str) -> WorldShardPlan:
 
 
 def three_worlds_layout() -> list[tuple[str, WorldShardPlan, object]]:
-    """三合一整合版五分片：[(目录名, 世界计划, server.ini 配置)]，分片 ID 按 THREE_WORLDS_SHARD_LAYOUT 固定。"""
+    """三界同行补丁的专服五分片：[(目录名, 世界计划, server.ini 配置)]，分片 ID 按 THREE_WORLDS_SHARD_LAYOUT 固定。"""
     result = []
     for shard_name, location, shard_id, extra_overrides in THREE_WORLDS_SHARD_LAYOUT:
         plan = default_plan_for_location(location)

@@ -668,7 +668,7 @@ class CreationWizardDialog(QDialog):
             self._shard_combo.removeItem(index)
 
     def _apply_three_worlds_layout(self) -> None:
-        """按三合一整合版说明的专服五分片重建世界列表，分片编号固定（世界分组暂停依赖它）。"""
+        """按三界同行补丁的专服五分片重建世界列表，分片编号固定（世界分组暂停依赖它）。"""
         if not dialogs.ask_yes_no(self, t("world.creation_three_worlds_layout"),
                                   t("world.creation_three_worlds_confirm")):
             return

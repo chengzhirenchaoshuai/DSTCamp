@@ -5,7 +5,7 @@
 ``desc`` 为准，不抄 ``tuning_vars``。未登记 key 原样保留在 Lua 中，不在界面伪造。
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from dstools.features.world.location_profiles import (
     CAVE_LOCATION,
@@ -1110,31 +1110,9 @@ MOD_ICON_ATLAS: dict[str, tuple[str, str]] = {
 }
 
 
-# workshop-3811652910 == 三合一测试mod（岛屿冒险核心/海难 + 云霄国度 + 补丁 + 兼容层整合版），
-# 已核对到 1.2.9；作者已下架，改为补丁 3826855460（不注册世界设置，直接用四个原 Mod 的登记表），这里只为老存档保留。integrated_loader.lua 按
-# core→sw→pl→patch→compat 在各自子环境执行原 Mod 入口；注册世界设置的 modservercreationmain.lua /
-# modcustomizeitems.lua 及三张图集与本机独立版 3435352667 1.0.80 / 1467214795 1.0.63 /
-# 3322803908 1.0.50 逐字节相同，patch/compat 不注册
-# 新条目，故直接复用三张登记表。图集被 shared_assets.lua 映射到 Mod 根目录的同名路径。
-# 同名 poison 按 core 先注册生效（AddCustomizeItem 遇已注册 name 直接 return）。
-_THREE_WORLDS_ID = "3811652910"
-THREE_WORLDS_SETTINGS: dict[str, ModWorldSetting] = {}
-for _source_id, _source in (
-    (_IA_CORE_ID, IA_CORE_SETTINGS),
-    (_IA_SHIPWRECKED_ID, IA_SHIPWRECKED_SETTINGS),
-    (_PORKLAND_ID, PORKLAND_SETTINGS),
-):
-    for _key, _info in _source.items():
-        THREE_WORLDS_SETTINGS.setdefault(_key, replace(
-            _info, mod_id=_THREE_WORLDS_ID,
-            icon_atlas=_info.icon_atlas or MOD_ICON_ATLAS[_source_id],
-        ))
-MOD_WORLD_SETTINGS[_THREE_WORLDS_ID] = THREE_WORLDS_SETTINGS
-MOD_LOAD_PRIORITY[_THREE_WORLDS_ID] = 5
-
 # 云霄国度 modcustomizeitems.lua 的 delete_items：把这些 world=nil 的原版项改成 world={"forest"}
 # （events、resources 两组是 "all"，只改其中 world=nil 的项）。启用后它们只在森林做主世界时显示，
-# 洞穴、海难、火山、猪镇做主世界时都没有；三合一的 modules/pl 同一份文件，一样处理。
+# 洞穴、海难、火山、猪镇做主世界时都没有。
 PORKLAND_FOREST_ONLY_KEYS = frozenset({
     "season_start",  # worldgen global
     "specialevent", "autumn", "winter", "spring", "summer", "spawnmode", "beefaloheat",  # global
@@ -1144,22 +1122,21 @@ PORKLAND_FOREST_ONLY_KEYS = frozenset({
     "year_of_the_bunnyman", "year_of_the_dragonfly", "year_of_the_snake", "year_of_the_knight",  # events
     "basicresource_regrowth",  # resources
 })
-for _mod_id in (_PORKLAND_ID, _THREE_WORLDS_ID):
-    MOD_VANILLA_WORLD_PATCHES[_mod_id] = {
-        location: {"hidden": PORKLAND_FOREST_ONLY_KEYS}
-        for location in (CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION)
-    }
+MOD_VANILLA_WORLD_PATCHES[_PORKLAND_ID] = {
+    location: {"hidden": PORKLAND_FOREST_ONLY_KEYS}
+    for location in (CAVE_LOCATION, SHIPWRECKED_LOCATION, VOLCANO_LOCATION, PORKLAND_LOCATION)
+}
 
 # 岛屿冒险核心 modservercreationmain.lua 的 set_world_overrides：海难、火山里这几个原版选项改用海难图集
 # images/hud/customization_shipwrecked.xml 里的图标（前五个同名换图集，树精守卫换成棕榈树精、鱼群换成浅滩）。
-# 图集由海难 Mod 或三合一提供（三合一映射到 Mod 根目录的同名路径）。
+# 图集由海难 Mod 提供。
 IA_VANILLA_ICON_ELEMENTS = {
     "krampus": "krampus.tex", "butterfly": "butterfly.tex", "birds": "birds.tex",
     "berrybush": "berrybush.tex", "grass": "grass.tex",
     "liefs": "palmguard.tex", "fishschools": "shoals.tex",
 }
 IA_VANILLA_ICON_LOCATIONS = (SHIPWRECKED_LOCATION, VOLCANO_LOCATION)
-IA_VANILLA_ICON_ATLAS_MODS = (_IA_SHIPWRECKED_ID, _THREE_WORLDS_ID)
+IA_VANILLA_ICON_ATLAS_MODS = (_IA_SHIPWRECKED_ID,)
 
 
 def location_icon_key(key: str, location: str) -> str | None:
@@ -1177,7 +1154,6 @@ MOD_VERIFIED_VERSIONS: dict[str, str] = {
     _PORKLAND_ID: "1.0.50",
     _BWB_ID: "0.4.16.6",
     _TA_ID: "26.09.19",
-    _THREE_WORLDS_ID: "1.2.9",
 }
 
 
