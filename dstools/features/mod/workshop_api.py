@@ -2092,3 +2092,47 @@ def unsubscribe_workshop_items(
         {"action": "unsubscribe", "ids": ids, "dll_path": str(dll_path) if dll_path else None}
     )
     return {int(key): str(value) for key, value in (payload.get("results") or {}).items()}
+
+
+@dataclass(frozen=True)
+class ResubscribeResult:
+    """重新订阅的结果；文案由调用方按这些字段生成。"""
+
+    unsubscribe_errors: dict[int, str] = field(default_factory=dict)
+    # 等待上限内 Steam 仍把它们报成已订阅：记录没清掉，重新订阅可能不生效
+    still_subscribed: tuple[int, ...] = ()
+    subscribe_errors: dict[int, str] = field(default_factory=dict)
+
+
+def resubscribe_workshop_items(
+    workshop_ids: list[int] | tuple[int, ...],
+    *,
+    wait_seconds: float = 20.0,
+    poll_seconds: float = 2.0,
+    dll_path: Path | None = None,
+    on_wait_start=None,
+) -> ResubscribeResult:
+    """先取消订阅再重新订阅，用于修复"文件在、Steam 清单没登记"的项目。
+
+    Steam 认为这些项目已经订阅，直接再调一次 SubscribeItem 不会让它重新登记，所以要先取消订阅，
+    等订阅位真的清掉（轮询 GetItemState，不是固定等待）再订阅。等待超时也继续订阅并在结果里记下，
+    由调用方提示用户去 Steam 手动处理。本函数只管订阅关系，下载仍由 ``update_workshop_items`` 完成。"""
+    ids = list(dict.fromkeys(int(item) for item in workshop_ids if int(item) > 0))
+    if not ids:
+        return ResubscribeResult()
+    unsubscribe_errors = {
+        wid: error for wid, error in unsubscribe_workshop_items(ids, dll_path=dll_path).items() if error
+    }
+    if on_wait_start is not None:
+        on_wait_start()
+    pending = set(ids)
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while pending and time.monotonic() < deadline:
+        time.sleep(max(0.1, poll_seconds))
+        states, _, _ = get_workshop_item_snapshot(sorted(pending), dll_path=dll_path)
+        pending = {wid for wid in pending
+                   if states.get(wid) is not None and states[wid].subscribed}
+    subscribe_errors = {
+        wid: error for wid, error in subscribe_workshop_items(ids, dll_path=dll_path).items() if error
+    }
+    return ResubscribeResult(unsubscribe_errors, tuple(sorted(pending)), subscribe_errors)

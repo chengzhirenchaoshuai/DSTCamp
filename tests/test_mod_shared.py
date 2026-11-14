@@ -771,6 +771,42 @@ def test_mod_page_uses_preload_snapshot_then_detects_changes():
             assert tab._load_mods_worker(*args)["stamps"] != shown["stamps"]
 
 
+def test_not_registered_when_steam_manifest_misses_installed_files():
+    """文件齐全、Steam 也认为订阅着，但清单没登记：开服时专服静默跳过，必须单独报出来。"""
+    import tempfile
+    from dstools.features.mod.workshop_api import (
+        ITEM_DOWNLOADING,
+        ITEM_LEGACY,
+        ITEM_SUBSCRIBED,
+        WorkshopItemState,
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        content = Path(tmp) / "3671964429"
+        content.mkdir()
+        (content / "modinfo.lua").write_text("name='x'", encoding="utf-8")
+
+        def state_of(flags=ITEM_SUBSCRIBED, **kwargs):
+            return evaluate_workshop_status(WorkshopModEvidence(
+                workshop_id=3671964429, steam_state=WorkshopItemState(flags),
+                discovered_path=content, **kwargs)).state
+
+        unregistered = evaluate_workshop_status(WorkshopModEvidence(
+            workshop_id=3671964429, steam_state=WorkshopItemState(ITEM_SUBSCRIBED),
+            discovered_path=content, acf_installed=False))
+        assert unregistered.state == WorkshopModState.NOT_REGISTERED
+        assert unregistered.needs_action is True
+        # 清单读不到（None）或已登记时都不报这个状态
+        assert state_of(acf_installed=None) != WorkshopModState.NOT_REGISTERED
+        assert state_of(acf_installed=True) != WorkshopModState.NOT_REGISTERED
+        # 下载途中清单还没写条目，不能当成异常
+        assert state_of(ITEM_SUBSCRIBED | ITEM_DOWNLOADING, acf_installed=False) \
+            == WorkshopModState.DOWNLOADING
+        # V1 靠专服 mods 下的副本加载（MODS_ROOT 兜底），不受清单登记影响
+        assert state_of(ITEM_SUBSCRIBED | ITEM_LEGACY, acf_installed=False) \
+            != WorkshopModState.NOT_REGISTERED
+
+
 def test_parse_workshop_ids_from_links():
     from dstools.features.mod.workshop_webapi import parse_workshop_ids
     text = ("https://steamcommunity.com/workshop/filedetails/?l=schinese&id=375850593#comments，"

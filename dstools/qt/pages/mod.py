@@ -1628,7 +1628,7 @@ class ModPage(Page):
             from dstools.features.mod.parser import (
                 find_workshop_content_dirs, find_workshop_dir, find_workshop_residual_dirs,
             )
-            from dstools.features.mod.workshop_acf import read_acf_subscribers
+            from dstools.features.mod.workshop_acf import read_acf_installed_ids, read_acf_subscribers
             from dstools.features.mod.workshop_status import inspect_workshop_items
             discovered_paths = {
                 int(str(wid).removeprefix("workshop-")): path
@@ -1643,7 +1643,8 @@ class ModPage(Page):
                     workshop_content_paths=find_workshop_content_dirs(),
                     legacy_runtime_residual_paths=find_legacy_runtime_residual_dirs(),
                     running_dst_processes=running_dst_processes(),
-                    acf_subscribers=read_acf_subscribers(find_workshop_dir()))
+                    acf_subscribers=read_acf_subscribers(find_workshop_dir()),
+                    acf_installed_ids=read_acf_installed_ids(find_workshop_dir()))
                 return states, "", candidate_ids
             except Exception as exc:
                 return {}, str(exc), []

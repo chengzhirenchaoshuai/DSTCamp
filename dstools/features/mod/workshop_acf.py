@@ -195,6 +195,20 @@ def read_acf_subscribed_ids(content_root: Path | None) -> set[int]:
     return set(read_acf_subscribers(content_root))
 
 
+def read_acf_installed_ids(content_root: Path | None) -> set[int] | None:
+    """清单 ``WorkshopItemsInstalled`` 里登记的 Workshop ID；清单缺失或读不出来返回 ``None``。
+
+    与 :func:`read_acf_installed_sizes` 的区别只在读不到时：那个返回空字典，无法与"清单里真的没有
+    任何条目"区分。判断"文件在但清单没登记"必须区分这两种情况，否则读不到清单就会把所有 Mod 误报成未登记。"""
+    if content_root is None:
+        return None
+    try:
+        acf = read_workshop_acf(workshop_acf_path(content_root))
+    except (OSError, WorkshopAcfError):
+        return None
+    return {int(wid) for wid in acf.items if wid.isdigit()}
+
+
 def _line_span(text: str, node: _Node) -> tuple[int, int]:
     """返回条目所在的完整行区间；条目必须独占这些行。"""
     line_start = text.rfind("\n", 0, node.start) + 1

@@ -42,6 +42,9 @@ class WorkshopModState(str, Enum):
     UPDATE_AVAILABLE = "update_available"
     # V2 Mod 在专服 mods/workshop-<id> 还有一份旧副本，专服会优先加载旧副本
     SHADOWED_BY_V1 = "shadowed_by_v1"
+    # 文件在工坊目录里，但 Steam 清单 appworkshop_322330.acf 没登记：开服时专服静默跳过，
+    # 日志里一个字都不提，而客户端主菜单仍能看到并勾选（见 missing_mods 模块说明）
+    NOT_REGISTERED = "not_registered"
     SUSPECTED_OUTDATED = "suspected_outdated"
     CURRENT = "current"
     UNKNOWN = "unknown"
@@ -72,6 +75,8 @@ class WorkshopModEvidence:
     # 专服 mods/workshop-<id> 里挡住 V2 的旧副本（见 v1_shadow.py）及其版本
     v1_shadow_path: Path | None = None
     v1_shadow_version: LocalModVersion | None = None
+    # Steam 清单 WorkshopItemsInstalled 是否登记了它；None 表示清单读不到，不做判断
+    acf_installed: bool | None = None
     # Steam 清单里有 subscribedby：本机某个 Steam 账号订阅着它（不一定是当前登录账号）
     acf_subscribed: bool = False
     acf_subscriber: str = ""  # 清单记录的订阅者 Steam AccountID，多个账号订阅时以逗号分隔
@@ -100,6 +105,7 @@ class WorkshopModStatus:
             WorkshopModState.SUSPECTED_OUTDATED,
             WorkshopModState.SHADOWED_BY_V1,
             WorkshopModState.LEGACY_DIR_POLLUTED,
+            WorkshopModState.NOT_REGISTERED,
         }
 
     @property
@@ -229,6 +235,24 @@ def evaluate_workshop_status(evidence: WorkshopModEvidence) -> WorkshopModStatus
         from dstools.features.mod.workshop_api import workshop_source_error
 
         source_error = workshop_source_error(evidence.source_details)
+    if (
+        steam is not None
+        and steam.subscribed
+        and not steam.legacy_item
+        and evidence.acf_installed is False
+        and source_path is not None
+        and (source_path / "modinfo.lua").is_file()
+    ):
+        # 订阅着、文件也下载好了，但 Steam 清单没登记：引擎不列出这个目录，开服时整段跳过。
+        # 放在下载中/排队的判断之后，下载途中清单还没写条目，不能当成异常。
+        # V1 由专服 mods 下的副本加载（MODS_ROOT 兜底），不受清单登记影响，故排除 legacy_item。
+        return result(
+            WorkshopModState.NOT_REGISTERED,
+            "文件已在工坊目录，但 Steam 清单（appworkshop_322330.acf）没有登记",
+            "开服时专服不会加载它，日志里也不会提到；客户端主菜单仍能看到并勾选",
+            "重新订阅可让 Steam 重新登记",
+            source_error,
+        )
     if (
         steam is not None
         and not steam.subscribed
@@ -510,6 +534,7 @@ def inspect_workshop_items(
     legacy_runtime_residual_paths: dict[int, tuple[Path, ...]] | None = None,
     running_dst_processes: tuple[str, ...] = (),
     acf_subscribers: dict[int, str] | None = None,
+    acf_installed_ids: set[int] | None = None,
 ) -> dict[int, WorkshopModStatus]:
     """读取一批真实状态并评估；源端详情失败不会抹掉本地物理证据。"""
     ids = list(dict.fromkeys(int(item) for item in workshop_ids if int(item) > 0))
@@ -641,6 +666,7 @@ def inspect_workshop_items(
             running_dst_processes=running_dst_processes,
             v1_shadow_path=shadow_path,
             v1_shadow_version=shadow_version,
+            acf_installed=(None if acf_installed_ids is None else workshop_id in acf_installed_ids),
             acf_subscribed=workshop_id in (acf_subscribers or {}),
             acf_subscriber=(acf_subscribers or {}).get(workshop_id, ""),
         )

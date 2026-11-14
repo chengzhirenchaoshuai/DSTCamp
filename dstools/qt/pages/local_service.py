@@ -104,6 +104,10 @@ _STEAMCMD_MOD_CHECK_TTL = 30 * 60
 _DEDICATED_SERVER_MIN_FREE = 6 * 1024 ** 3
 _STEAMCMD_LOG_HEIGHT = 620  # SteamCMD 日志窗口高度（逻辑像素），超出屏幕时由 fit_to_screen 压缩
 _STEAM_REMOTE_BUILD_TTL = 300.0
+# 修复"文件在、Steam 清单没登记"时取消订阅后等 Steam 清掉订阅记录的上限与轮询间隔（秒）；
+# 超时也继续重新订阅，不把流程卡死
+_UNSUBSCRIBE_WAIT_S = 20.0
+_UNSUBSCRIBE_POLL_S = 2.0
 _PUBLIC_CONNECT_TIMEOUT_S = 18.0
 _NAT_CONNECT_TIMEOUT_S = 28.0
 # 公网/穿透直连代码获取失败或超时后的自动重试间隔（秒），用完即停，可点击该行手动重试
@@ -2621,30 +2625,42 @@ class LocalServicePage(Page):
             dialogs.show_toast(self.window(), t("local.worldgate_off_msg", shards="、".join(shards)), ms=4000)
 
     def _confirm_missing_mods(self, cluster) -> bool:
-        """存档启用、本机却没有文件的 Mod：专服会跳过它们照常启动，世界在缺 Mod 的
-        状态下保存可能永久丢失相关内容，所以启动前拦下，让用户先订阅或明确选择继续。"""
+        """存档启用、专服却加载不了的 Mod：专服会跳过它们照常启动，世界在缺 Mod 的
+        状态下保存可能永久丢失相关内容，所以启动前拦下，让用户先修复或明确选择继续。
+
+        分两类：文件根本不在（订阅后下载），以及文件在但 Steam 清单没登记（重新订阅让 Steam 重新登记，
+        见 missing_mods 模块说明）。崩溃自动重启走 _continue_start_shard，不经过这里，无人值守不会被弹窗挡住。"""
         if cluster.platform != Platform.STEAM:
             return True
         from dstools.features.mod.missing_mods import find_missing_enabled_mods
         from dstools.features.mod.parser import find_shared_ugc_directory
         from dstools.features.mod.sync import get_enabled_mod_ids
+        from dstools.features.mod.workshop_acf import read_acf_installed_ids
         ugc_directory = find_shared_ugc_directory()
+        content_root = Path(ugc_directory) / "content" / "322330" if ugc_directory else None
         missing = find_missing_enabled_mods(
             get_enabled_mod_ids(cluster),
-            ugc_content_root=Path(ugc_directory) / "content" / "322330" if ugc_directory else None,
-            server_mods_root=self._runtime_mods_root())
+            ugc_content_root=content_root,
+            server_mods_root=self._runtime_mods_root(),
+            acf_installed_ids=read_acf_installed_ids(content_root))
         client_only = self._steamcmd_client_only_ids(cluster)
-        if client_only and missing.workshop_ids:
+        if client_only and (missing.workshop_ids or missing.unregistered_ids):
             # 仅客户端 Mod 专服不加载，缺了也不影响存档，不拦启动（依据后台检查拿到的工坊标签）
-            missing = replace(missing, workshop_ids=tuple(w for w in missing.workshop_ids if w not in client_only))
+            missing = replace(
+                missing,
+                workshop_ids=tuple(w for w in missing.workshop_ids if w not in client_only),
+                unregistered_ids=tuple(w for w in missing.unregistered_ids if w not in client_only))
         if not missing:
             return True
+        steamcmd = get_backend() is SteamBackend.STEAMCMD
+        if missing.unregistered_ids and not missing.workshop_ids and not missing.local_names:
+            # 只有未登记这一类时单独说明：处置是重新登记，不是去下载，混在"缺失"里会把用户带错方向
+            return self._confirm_unregistered_mods(list(missing.unregistered_ids), steamcmd)
         names = [f"workshop-{wid}" for wid in missing.workshop_ids] + list(missing.local_names)
         shown = names[:20]
         if len(names) > len(shown):
             shown.append(t("local.missing_mods_more", count=len(names) - len(shown)))
         choices = [(t("dlg.cancel_btn"), "cancel")]
-        steamcmd = get_backend() is SteamBackend.STEAMCMD
         if missing.workshop_ids:
             choices.append((t("local.missing_mods_steamcmd_btn" if steamcmd else "local.missing_mods_subscribe_btn"),
                             "subscribe"))
@@ -2653,18 +2669,51 @@ class LocalServicePage(Page):
             message_key = "local.missing_mods_local_only"
         else:
             message_key = "local.missing_mods_confirm_steamcmd" if steamcmd else "local.missing_mods_confirm"
+        message = t(message_key, count=len(names), mods="\n".join(shown))
+        if missing.unregistered_ids:
+            unregistered_shown = [f"workshop-{wid}" for wid in missing.unregistered_ids[:20]]
+            if len(missing.unregistered_ids) > len(unregistered_shown):
+                unregistered_shown.append(t("local.missing_mods_more",
+                                            count=len(missing.unregistered_ids) - len(unregistered_shown)))
+            message += "\n\n" + t("local.unregistered_mods_section", count=len(missing.unregistered_ids),
+                                  mods="\n".join(unregistered_shown))
         choice = dialogs.ask_choice(
-            self.window(), t("local.missing_mods_title"),
-            t(message_key, count=len(names), mods="\n".join(shown)), choices,
+            self.window(), t("local.missing_mods_title"), message, choices,
             default="subscribe" if missing.workshop_ids else "cancel", danger_values=("start",))
         if choice == "subscribe":
             if steamcmd:
                 # SteamCMD 没有订阅，直接下载到它的工坊目录；完成后由用户重新点启动
                 from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
-                run_steamcmd_mod_update(self.window(), list(missing.workshop_ids),
+                run_steamcmd_mod_update(self.window(),
+                                        list(missing.workshop_ids) + list(missing.unregistered_ids),
                                         on_finished=self.ctx.workshop_mods_changed.emit)
             else:
-                self._subscribe_missing_mods(list(missing.workshop_ids))
+                self._subscribe_missing_mods(list(missing.workshop_ids) + list(missing.unregistered_ids),
+                                             resubscribe_ids=list(missing.unregistered_ids))
+            return False
+        return choice == "start"
+
+    def _confirm_unregistered_mods(self, ids: list[str], steamcmd: bool) -> bool:
+        """文件齐全但 Steam 清单没登记：专服静默跳过，日志里一个字都不提，所以必须在这里讲清楚。"""
+        shown = [f"workshop-{wid}" for wid in ids[:20]]
+        if len(ids) > len(shown):
+            shown.append(t("local.missing_mods_more", count=len(ids) - len(shown)))
+        choices = [(t("dlg.cancel_btn"), "cancel"),
+                   (t("local.missing_mods_steamcmd_btn" if steamcmd else "local.unregistered_mods_fix_btn"), "fix"),
+                   (t("local.missing_mods_start_anyway_btn"), "start")]
+        choice = dialogs.ask_choice(
+            self.window(), t("local.unregistered_mods_title"),
+            t("local.unregistered_mods_confirm_steamcmd" if steamcmd else "local.unregistered_mods_confirm",
+              count=len(ids), mods="\n".join(shown)),
+            choices, default="fix", danger_values=("start",))
+        if choice == "fix":
+            if steamcmd:
+                # SteamCMD 没有订阅，重新下载一遍就会把条目写回清单
+                from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
+                run_steamcmd_mod_update(self.window(), list(ids),
+                                        on_finished=self.ctx.workshop_mods_changed.emit)
+            else:
+                self._subscribe_missing_mods(list(ids), resubscribe_ids=list(ids))
             return False
         return choice == "start"
 
@@ -2745,19 +2794,52 @@ class LocalServicePage(Page):
             return False
         return choice == "start"
 
-    def _subscribe_missing_mods(self, ids: list[str]) -> None:
-        """以当前 Steam 账号订阅缺失的 Mod 并等待下载完成；完成后由用户重新点启动。"""
-        log_dialog = dialogs.LogDialog(self.window(), t("local.missing_mods_title"))
-        log_dialog.append(t("local.missing_mods_subscribing", count=len(ids)))
+    def _subscribe_missing_mods(self, ids: list[str], *, resubscribe_ids: list[str] | None = None) -> None:
+        """以当前 Steam 账号订阅缺失的 Mod 并等待下载完成；完成后由用户重新点启动。
+
+        ``resubscribe_ids`` 是"文件在、Steam 清单没登记"的那批：Steam 认为它们已经订阅，再订阅一次不会
+        重新登记，所以先取消订阅、等 Steam 清掉订阅记录，再走同一套订阅并下载的流程。"""
+        target_ids = {str(wid) for wid in ids}
+        retarget = [str(wid) for wid in (resubscribe_ids or []) if str(wid) in target_ids]
+        title_key = "local.unregistered_mods_title" if retarget and len(retarget) == len(ids) \
+            else "local.missing_mods_title"
+        log_dialog = dialogs.LogDialog(self.window(), t(title_key))
+        log_dialog.append(t("local.unregistered_mods_unsubscribing", count=len(retarget)) if retarget
+                          else t("local.missing_mods_subscribing", count=len(ids)))
         log_dialog.show()
 
         def work(emit):
-            from dstools.features.mod.workshop_api import subscribe_workshop_items, update_workshop_items
-            subscribed = subscribe_workshop_items([int(wid) for wid in ids])
-            ok_ids = [wid for wid, error in subscribed.items() if not error]
-            for wid, error in subscribed.items():
-                if error:
+            from dstools.features.mod.workshop_api import (
+                resubscribe_workshop_items,
+                subscribe_workshop_items,
+                update_workshop_items,
+            )
+            ok_ids: list[int] = []
+            if retarget:
+                # 这批 Steam 认为已订阅，必须先取消订阅、等记录清掉才会重新登记；订阅也由它完成，
+                # 不能再并进后面那次 subscribe，否则会重复订阅并把同一条错误打印两遍
+                repaired = resubscribe_workshop_items(
+                    [int(w) for w in retarget],
+                    wait_seconds=_UNSUBSCRIBE_WAIT_S, poll_seconds=_UNSUBSCRIBE_POLL_S,
+                    on_wait_start=lambda: emit(t("local.unregistered_mods_waiting_release")))
+                for wid, error in repaired.unsubscribe_errors.items():
+                    emit(t("local.unregistered_mods_unsubscribe_failed_line", id=wid, error=error))
+                for wid in repaired.still_subscribed:
+                    emit(t("local.unregistered_mods_wait_timeout", id=wid))
+                for wid, error in repaired.subscribe_errors.items():
                     emit(t("local.missing_mods_subscribe_failed_line", id=wid, error=error))
+                ok_ids += [int(w) for w in retarget if int(w) not in repaired.subscribe_errors]
+                emit(t("local.unregistered_mods_resubscribed", count=len(ok_ids)))
+            rest = [wid for wid in ids if wid not in set(retarget)]
+            if rest:
+                if retarget:
+                    # 没有 retarget 时首行已经写过"正在订阅"，不重复
+                    emit(t("local.missing_mods_subscribing", count=len(rest)))
+                subscribed = subscribe_workshop_items([int(wid) for wid in rest])
+                ok_ids += [wid for wid, error in subscribed.items() if not error]
+                for wid, error in subscribed.items():
+                    if error:
+                        emit(t("local.missing_mods_subscribe_failed_line", id=wid, error=error))
             if not ok_ids:
                 return 0
             emit(t("local.missing_mods_downloading", count=len(ok_ids)))

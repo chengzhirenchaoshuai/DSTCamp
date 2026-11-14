@@ -316,5 +316,30 @@ def test_missing_enabled_mods_follow_server_load_paths():
         assert not unknown
 
 
+def test_unregistered_mods_separated_from_missing_ones():
+    """文件在 content 里、Steam 清单却没登记：专服静默跳过，单列出来而不是算作缺失。"""
+    import tempfile
+    from dstools.features.mod.missing_mods import find_missing_enabled_mods
+
+    with tempfile.TemporaryDirectory() as tmp:
+        content = Path(tmp) / "content" / "322330"
+        mods = Path(tmp) / "server" / "mods"
+        for folder in (content / "1", content / "7", mods / "workshop-8", content / "8"):
+            folder.mkdir(parents=True)
+            (folder / "modinfo.lua").write_text("name='x'", encoding="utf-8")
+        enabled = ["1", "7", "8", "9"]
+        missing = find_missing_enabled_mods(
+            enabled, ugc_content_root=content, server_mods_root=mods,
+            # 7 的文件在但没登记；8 也没登记，但专服 mods 里有副本，走 MODS_ROOT 兜底不受影响
+            acf_installed_ids={1})
+        assert missing.unregistered_ids == ("7",)
+        assert missing.workshop_ids == ("9",)
+        # 读不到清单（None）时不判未登记，否则会把所有 Mod 误报一遍
+        unknown = find_missing_enabled_mods(
+            enabled, ugc_content_root=content, server_mods_root=mods, acf_installed_ids=None)
+        assert unknown.unregistered_ids == ()
+        assert unknown.workshop_ids == ("9",)
+
+
 if __name__ == "__main__":
     run(globals())

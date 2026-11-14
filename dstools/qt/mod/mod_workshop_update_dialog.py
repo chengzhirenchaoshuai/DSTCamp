@@ -26,7 +26,7 @@ from dstools.models import Platform
 from dstools.qt import dialogs
 from dstools.qt.imaging import pil_to_pixmap
 from dstools.qt.theme import theme
-from dstools.qt.threads import run_async
+from dstools.qt.threads import run_async, run_async_with_log
 from dstools.qt.widgets import CachedRowList, Card, PillTabBar, mod_format_tag_colors
 
 _LATEST_LABELS = {
@@ -34,6 +34,7 @@ _LATEST_LABELS = {
     WorkshopModState.UPDATE_AVAILABLE: "mod.update_latest_available",
     WorkshopModState.SUSPECTED_OUTDATED: "mod.update_latest_suspected_outdated",
     WorkshopModState.SHADOWED_BY_V1: "mod.update_latest_v1_shadowed",
+    WorkshopModState.NOT_REGISTERED: "mod.update_latest_not_registered",
     WorkshopModState.MISSING: "mod.update_latest_missing",
     WorkshopModState.SOURCE_UNAVAILABLE: "mod.update_latest_source_unavailable",
     WorkshopModState.INTEGRITY_UNCONFIRMED: "mod.update_latest_integrity_unconfirmed",
@@ -314,7 +315,7 @@ class WorkshopUpdateDialog(QDialog):
             from dstools.features.mod.parser import (
                 find_workshop_content_dirs, find_workshop_dir, find_workshop_residual_dirs,
             )
-            from dstools.features.mod.workshop_acf import read_acf_subscribers
+            from dstools.features.mod.workshop_acf import read_acf_installed_ids, read_acf_subscribers
             from dstools.features.mod.workshop_status import inspect_workshop_items
             discovered_paths = {
                 int(str(wid).removeprefix("workshop-")): path
@@ -326,7 +327,8 @@ class WorkshopUpdateDialog(QDialog):
                 residual_paths=find_workshop_residual_dirs(), workshop_content_paths=find_workshop_content_dirs(),
                 legacy_runtime_residual_paths=find_legacy_runtime_residual_dirs(),
                 running_dst_processes=running_dst_processes(),
-                acf_subscribers=read_acf_subscribers(find_workshop_dir()))
+                acf_subscribers=read_acf_subscribers(find_workshop_dir()),
+                acf_installed_ids=read_acf_installed_ids(find_workshop_dir()))
 
         def done(states) -> None:
             self._loading = False
@@ -560,6 +562,9 @@ class WorkshopUpdateDialog(QDialog):
         if status.state == WorkshopModState.SHADOWED_BY_V1:
             # 更新 V2 解决不了：专服加载的是 mods 里的旧副本，要把它移走
             return t("mod.update_clean_shadow_btn"), self._clean_shadow, wid in self._cleanup_running
+        if status.state == WorkshopModState.NOT_REGISTERED:
+            # 文件已经是最新的，"更新"不会让 Steam 重新登记，只能先取消订阅再订阅
+            return t("mod.update_resubscribe_btn"), self._resubscribe_one, wid in self._cleanup_running
         if status.can_update:
             return t("mod.update_one_btn"), self._update_one, False
         if status.state == WorkshopModState.UNSUBSCRIBED_REFERENCED:
@@ -713,6 +718,50 @@ class WorkshopUpdateDialog(QDialog):
             return
         dialogs.show_toast(self, t("mod.update_clean_shadow_done"), ms=2400)
         self._reload(force=True)
+
+    # ── 重新登记（取消订阅后重新订阅） ───────────────────────────────────
+    def _resubscribe_one(self, wid: str) -> None:
+        """修复"文件在、Steam 清单没登记"：Steam 认为它已订阅，直接更新不会重新登记，
+        必须先取消订阅、等记录清掉再订阅，然后把文件重新下载回来。"""
+        if wid in self._cleanup_running:
+            return
+        if not dialogs.ask_yes_no(self, t("mod.update_resubscribe_title"),
+                                  t("mod.update_resubscribe_confirm", name=self._name_for(wid))):
+            return
+        progress = dialogs.LogDialog(self.page.window(), t("mod.update_resubscribe_title"), closable=True)
+        progress.show()
+        progress.append(t("mod.update_resubscribe_start", name=self._name_for(wid)))
+        self._cleanup_running.add(wid)
+
+        def work(emit):
+            from dstools.features.mod.workshop_api import resubscribe_workshop_items, update_workshop_items
+
+            outcome = resubscribe_workshop_items(
+                [int(wid)], on_wait_start=lambda: emit(t("mod.update_resubscribe_waiting")))
+            if not outcome.subscribe_errors:
+                # 取消订阅时 Steam 会删掉文件，必须重新下载回来才算修复完成
+                emit(t("mod.update_resubscribe_downloading"))
+                update_workshop_items([int(wid)])
+            return outcome
+
+        def done(outcome) -> None:
+            self._cleanup_running.discard(wid)
+            for mod_id, error in {**outcome.unsubscribe_errors, **outcome.subscribe_errors}.items():
+                progress.append(t("mod.update_resubscribe_failed", id=mod_id, error=error))
+            if outcome.still_subscribed:
+                progress.append(t("mod.update_resubscribe_wait_timeout"))
+            if not (outcome.unsubscribe_errors or outcome.subscribe_errors):
+                progress.append(t("mod.update_resubscribe_done"))
+            progress.finish()
+            self._reload(force=True)
+
+        def error(exc: Exception) -> None:
+            self._cleanup_running.discard(wid)
+            progress.append(t("mod.update_resubscribe_error", detail=f"{type(exc).__name__}: {exc}"))
+            progress.finish()
+            self._reload(force=True)
+
+        run_async_with_log(work, progress.append, done, error)
 
     # ── 残留清理 ────────────────────────────────────────────────────────
     def _cleanup_residual(self, wid: str) -> None:
