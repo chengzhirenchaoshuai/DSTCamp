@@ -219,9 +219,10 @@ def diagnose_server_failure(
         )
 
     # 开着 LuaJIT 又报 Mod 文件找不到：先怀疑补丁，不按 Mod 冲突处理。
-    # 注入壳和配套 Mod 任一在就算开着：11-15 的日志启用列表里没有配套 Mod，注入壳却在
+    # 注入壳和配套 Mod 任一在就算开着：11-15 的日志启用列表里没有配套 Mod，注入壳却在。
+    # 两次真实案例都是世界没起来；已就绪、运行中报的文件缺失多半是 Mod 自己的问题，走下面的 Lua 报错归因
     luajit_on = luajit_injected or _LUAJIT_MOD in {str(m).lower() for m in enabled_mods}
-    if luajit_on and _MISSING_FILE_RE.search(lower):
+    if luajit_on and (not world_ready or exit_code not in (None, 0)) and _MISSING_FILE_RE.search(lower):
         # 不填 related_mods：界面会把它标成"疑似相关 Mod"，与"Mod 多半没问题"矛盾；报错路径留在证据里
         missing_lines = [line.strip() for line in lines if _MISSING_FILE_RE.search(line)]
         return DiagnosticReport(

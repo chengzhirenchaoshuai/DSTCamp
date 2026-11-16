@@ -282,6 +282,21 @@ def test_luajit_missing_mod_file() -> None:
     )
     assert report.related_mods == ("workshop-3750536829",)
 
+    # 世界已就绪、进程在跑时报的文件缺失不归给 LuaJIT，按 Lua 报错指向出错的 Mod
+    running = [
+        "[01:20:00]: module 'x' not found:",
+        "[01:20:05]: [string \"../mods/workshop-3662240568/scripts/prefabs/bigbag.lua\"]:1487: "
+        "attempt to index a nil value",
+        "LUA ERROR stack traceback:",
+        "../mods/workshop-3662240568/scripts/prefabs/bigbag.lua:1487 in (field) fn",
+    ]
+    report = diagnose_server_failure(
+        shard_name="Master", exit_code=None, world_ready=True, log_lines=running,
+        enabled_mods=["workshop-3662240568"], luajit_injected=True,
+    )
+    assert report is not None and report.category == "mod_conflict"
+    assert report.related_mods == ("workshop-3662240568",)
+
 
 def test_invalid_token_while_process_alive() -> None:
     """2026-11-02 用户日志：令牌失效后专服进程不退出、frpc 正常，用户以为是穿透问题，换节点也进不去。"""
