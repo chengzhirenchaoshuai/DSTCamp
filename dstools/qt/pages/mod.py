@@ -23,7 +23,7 @@ from dstools.features.local_service.dedicated_server import detect_external_shar
 from dstools.features.mod import chs_translation
 from dstools.features.mod.cache import load_cached_result, save_result
 from dstools.features.mod.config_memory import recall, recall_for, remember
-from dstools.features.mod.duplicates import find_duplicates
+from dstools.features.mod.duplicates import find_duplicates, similar_group_name
 from dstools.features.mod.icons import get_cached_mod_icon_path, get_mod_icon_path, load_mod_icon_image
 from dstools.features.mod.legacy_v1 import find_legacy_packages
 from dstools.features.mod.list_model import (
@@ -48,7 +48,7 @@ from dstools.features.mod.sync import apply_mod_sync, detach_mod_sync_junction, 
 from dstools.features.world.location_profiles import (
     DEPENDENCY_MOD_NAMES, MOD_HARD_DEPENDENCIES, dependency_label, dependent_mod_ids, find_mod_key,
 )
-from dstools.i18n import t
+from dstools.i18n import get_lang, t
 from dstools.models import ModEntry, ModOverrides, Platform, SaveSource
 from dstools.qt import dialogs
 from dstools.qt.mod import client_mods_switch
@@ -1118,7 +1118,7 @@ class ModPage(Page):
             log.append(t("mod.duplicate_similar_header"), "section")
             for group in report.similar:
                 names = " / ".join(label(wid) for wid in group.mod_ids)
-                log.append(f"· {t(f'mod.duplicate_kind_{group.kind}')}: {names}", "detail")
+                log.append(f"· {similar_group_name(group.kind, get_lang())}: {names}", "detail")
         if report.same_name:
             log.append("")
             log.append(t("mod.duplicate_same_name_header"), "section")

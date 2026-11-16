@@ -1,7 +1,7 @@
 """检测同时启用的 Mod 里可能重复的组合（只读，不依赖界面）。
 
 三类信号：
-0. 同类名单：SIMILAR_MOD_GROUPS 里人工登记的功能相同的 Mod（文件结构不同、靠上面两条查不出）。
+0. 同类名单：similar_mods.py 里人工审核登记的功能相同的 Mod（文件结构不同、靠上面两条查不出）。
 1. 同名：modinfo 名称规范化后相同，多半是同一个 Mod 装了两份（工坊版与本地副本、作者重新上传等）。
 2. 同路径脚本：两个 Mod 都在 ``scripts/`` 下带了相对路径相同、内容不同的 ``.lua``。游戏把每个启用 Mod
    的 ``scripts`` 目录依次加到 ``package.path`` 前面（scripts/mods.lua），``require`` 按模块名缓存，
@@ -16,41 +16,25 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from dstools.features.mod import similar_mods
 
-# 功能相同、不该同时启用的 Mod：(文案键后缀, 工坊 ID)。只登记核实过的 ID，不凭印象补充；一个 ID 只放进一组。
-# 大部分取自「常用mod集合」（工坊 2797939615）modmain.lua 里各功能的冲突列表，2026-11-16 经 Steam 公开接口
-# 逐个确认仍在工坊上。没收录的：多功能合集 Lag Remover（3050607025）、标题为“41”看不出用途的 2572244884，
-# 以及去掉这两个后只剩一个 ID 的功能。多格装备栏的 2823530744、木牌传送的 1530801499 来自用户截图，已同步补进常用mod集合。
-SIMILAR_MOD_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    # 前三个见用户截图；其余取自常用mod集合
-    ("global_positions", ("378160973", "3138571948", "3590648641",
-                          "1860955902", "2373375099", "2998725086", "2528036914")),
-    # Insight / Show Me(中文)：Show Me(中文) 检测到 Insight 会自行停止加载（见其 modmain.lua）
-    ("item_info", ("2189004162", "2287303119")),
-    ("dont_drop", ("661253977", "2845410726")),
-    ("no_tree_regrowth", ("3210773634", "1938252586", "3359637342")),
-    ("auto_clean", ("1984703361", "3365509623", "2950657933", "1883003425")),
-    ("batch_trade", ("3046339764", "3098537083", "1780476441")),
-    ("auto_stack", ("2952059327", "2999581232", "1998081438", "3441482195")),
-    # 常用mod集合的“更多物品可堆叠”冲突列表（3007715893、3289112324）已包含在内
-    ("stack_size", ("831523966", "3203848267", "2774093373", "2754982954", "1571581787", "463621557",
-                    "2677672662", "3175756875", "374550642", "2624832309", "3289112324", "3007715893")),
-    ("quick_work", ("1200745268", "2527328931", "2158549297", "501385076", "2791452067", "2921270365")),
-    ("extra_equip_slots", ("3281681895", "1819567085", "2373346252", "3173431824", "2945533555", "2798599672",
-                           "3234180527", "2946486855", "2937603714", "2885978369", "2950481491", "3104797181",
-                           "2754944282", "3045668614", "2823530744")),
-    ("fast_travel", ("2119742489", "2919458307", "3353852416", "3243698152", "3034630375", "1530801499")),
-    ("icebox_fresh", ("2371484058", "1898181913", "2373374485", "1992091838", "1247040097")),
-    ("invincible_structures", ("503795626", "1614253006", "2516739401")),
-    ("range_display", ("3066199391", "2575190872", "3170953574", "3556247959")),
-    ("storm_cellar", ("382177939", "2602484004")),
-    ("trap_enhance", ("1818848085", "2793625433", "2048852282", "3068778455", "2566447922")),
-)
+
+# 同类名单的数据在 similar_mods.py（由 scripts/mod_conflict_tool.py 维护）：(类别键, 工坊 ID)
+SIMILAR_MOD_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = tuple(
+    (group["key"], tuple(group["mods"])) for group in similar_mods.GROUPS)
+
+
+def similar_group_name(kind: str, lang: str) -> str:
+    """类别显示名（zh/en），名称随名单数据一起维护，不在 strings.py 里。"""
+    for group in similar_mods.GROUPS:
+        if group["key"] == kind:
+            return group["en"] if lang == "en" else group["zh"]
+    return kind
 
 
 @dataclass(frozen=True)
 class SimilarGroup:
-    kind: str  # SIMILAR_MOD_GROUPS 的文案键后缀
+    kind: str  # similar_mods.GROUPS 的类别键
     mod_ids: tuple[str, ...]
 
 
