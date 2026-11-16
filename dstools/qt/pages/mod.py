@@ -23,6 +23,7 @@ from dstools.features.local_service.dedicated_server import detect_external_shar
 from dstools.features.mod import chs_translation
 from dstools.features.mod.cache import load_cached_result, save_result
 from dstools.features.mod.config_memory import recall, recall_for, remember
+from dstools.features.mod.duplicates import find_duplicates
 from dstools.features.mod.icons import get_cached_mod_icon_path, get_mod_icon_path, load_mod_icon_image
 from dstools.features.mod.legacy_v1 import find_legacy_packages
 from dstools.features.mod.list_model import (
@@ -69,6 +70,8 @@ from dstools.shared.resource_paths import bundled_runtime_damaged
 from dstools.shared.shard_roles import master_shard_name
 
 _FILTER_DEBOUNCE_MS = 150
+_DUPLICATE_CHECK_DELAY_MS = 400  # 连续切换开关时等停手再查重复 Mod
+_DUPLICATE_SAMPLE_FILES = 3  # 详情里每组列出的示例文件数
 # 工坊更新状态的复用有效期（秒）；更新、清理等操作后会立即作废
 _WORKSHOP_STATUS_TTL = 300.0
 
@@ -101,6 +104,11 @@ class ModPage(Page):
         self._sync_check_gen = 0
         self._filter_timer = QTimer(self, singleShot=True, interval=_FILTER_DEBOUNCE_MS)
         self._filter_timer.timeout.connect(self._render_list)
+        # 已启用 Mod 的重复检测：每次启用集合可能变化时作废旧结果，延迟后在后台重查
+        self._duplicate_report = None
+        self._duplicate_gen = 0
+        self._duplicate_timer = QTimer(self, singleShot=True, interval=_DUPLICATE_CHECK_DELAY_MS)
+        self._duplicate_timer.timeout.connect(self._check_duplicates)
         self._current_shard_name = ""
         self._global_defaults_dialog = None
         # 列表里"禁用客户端 Mod"开关行：当前世界 modoverrides.lua 的状态（含未保存改动），随"保存"写入；
@@ -226,6 +234,10 @@ class ModPage(Page):
         self._runtime_banner.set_clickable(True)
         self._runtime_banner.clicked.connect(lambda: self.window().install_vcredist())
         root.addWidget(self._runtime_banner)
+        self._duplicate_banner = Banner()
+        self._duplicate_banner.set_clickable(True)
+        self._duplicate_banner.clicked.connect(self._show_duplicates)
+        root.addWidget(self._duplicate_banner)
 
         self._list_panel = ModListPanel()
         self._list_panel.toggle_requested.connect(self._on_toggle)
@@ -1063,6 +1075,61 @@ class ModPage(Page):
         if count is None:
             count = sum(1 for mod in self._mod_data.values() if mod.enabled)
         self._enabled_count_label.setText(t("mod.enabled_count", count=count))
+        self._schedule_duplicate_check()  # 加载、切换开关、取消修改都经过这里
+
+    def _schedule_duplicate_check(self) -> None:
+        self._duplicate_gen += 1
+        if self._loading or not self._mod_data:
+            self._duplicate_timer.stop()
+            self._duplicate_report = None
+            self._duplicate_banner.set_text("")
+            return
+        self._duplicate_timer.start()
+
+    def _check_duplicates(self) -> None:
+        """后台比较已启用 Mod 的名称和 scripts 下的文件（只读），结果写进横幅。"""
+        gen = self._duplicate_gen
+        mods = {}
+        for wid, mod in self._mod_data.items():
+            if mod.enabled:
+                info = self._mod_infos.get(wid)
+                mods[wid] = (info.name if info else "", self._mod_paths.get(wid))
+
+        def done(report) -> None:
+            if gen != self._duplicate_gen:
+                return
+            self._duplicate_report = report
+            self._duplicate_banner.set_text(t("mod.duplicate_banner", count=report.group_count) if report else "")
+
+        run_async(lambda: find_duplicates(mods), done, lambda _exc: None)
+
+    def _show_duplicates(self) -> None:
+        report = self._duplicate_report
+        if not report:
+            return
+
+        def label(wid: str) -> str:
+            return f"{self._resolve_mod_display_name(wid)} (ID {str(wid).removeprefix('workshop-')})"
+
+        log = dialogs.LogDialog(self.window(), t("mod.duplicate_title"), closable=True)
+        log.append(t("mod.duplicate_intro"), "note")
+        if report.same_name:
+            log.append("")
+            log.append(t("mod.duplicate_same_name_header"), "section")
+            for group in report.same_name:
+                log.append("· " + " / ".join(label(wid) for wid in group.mod_ids), "detail")
+        if report.file_clashes:
+            log.append("")
+            log.append(t("mod.duplicate_file_header"), "section")
+            for clash in report.file_clashes:
+                log.append("· " + " / ".join(label(wid) for wid in clash.mod_ids), "detail")
+                sample = ", ".join(clash.paths[:_DUPLICATE_SAMPLE_FILES])
+                rest = len(clash.paths) - _DUPLICATE_SAMPLE_FILES
+                more = " " + t("mod.duplicate_more_files", count=rest) if rest > 0 else ""
+                log.append(f"  {t('mod.duplicate_file_count', count=len(clash.paths))} {sample}{more}", "note")
+        log.scroll_to_start()
+        log.finish()
+        log.exec()
 
     def _set_dirty(self, dirty: bool) -> None:
         changed = dirty != self._dirty
