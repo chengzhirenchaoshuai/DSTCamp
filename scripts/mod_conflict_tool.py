@@ -1,8 +1,9 @@
 """维护同类 Mod 名单（dstools/features/mod/similar_mods.py）的开发工具，不随 EXE 打包。
 
 直接运行（或双击 scripts/mod_conflict_tool.bat）会在本机起一个只监听 127.0.0.1 的小服务并打开浏览器：
-勾选类别 →「搜索工坊」→ 逐个选「收录 / 排除」→「保存」，写回名单并按需同步常用mod集合的 modmain.lua。
-上次的搜索结果存在 build/mod_conflict_review/，下次打开可直接「加载上次结果」接着审，不必重新搜索。
+勾选类别 →「搜索工坊」→ 逐个选「收录 / 排除 / 待定」（可按状态、类别筛选后批量设置；已收录的也能移出）
+→「保存改动」，写回名单并按需同步常用mod集合的 modmain.lua。
+页面列出各类别已收录、已排除的 Mod 和上次搜索里还没审的候选（存在 build/mod_conflict_review/），不必重新搜索。
 
 搜索走工坊浏览网页（不需要 API 密钥；官方 QueryFiles 接口无密钥返回 403），解析页面内嵌的
 valve-ssr-data JSON。这不是正式接口，Steam 改版后可能要跟着改 _parse_browse_page。
@@ -212,17 +213,25 @@ def collect_candidates(keys: list[str], pages: int, min_subs: int, log) -> dict[
 # ── 写回与同步 ───────────────────────────────────────────────────────
 
 def apply_decisions(decisions: dict, log) -> None:
-    """decisions 为 {类别键: {"include": {ID: 标题}, "exclude": {ID: 标题}}}。"""
+    """decisions 为 {类别键: {工坊 ID: {"to": "include" | "exclude" | "pending", "title": 标题}}}。
+    include 收录；exclude 移出收录并记为排除（以后搜索不再列出）；pending 从收录和排除里都移出。"""
     groups = load_groups()
-    for key, choice in decisions.items():
+    for key, changes in decisions.items():
         group = find_group(groups, key)
-        for wid, title in (choice.get("include") or {}).items():
+        counts = {"include": 0, "exclude": 0, "pending": 0}
+        for wid, change in changes.items():
+            to, title = change.get("to"), str(change.get("title") or "")
+            if to not in counts or not str(wid).isdigit():
+                raise ValueError(f"无效的选择：{key} {wid} {to}")
+            title = title or group["mods"].get(wid) or group["excluded"].get(wid) or ""
+            group["mods"].pop(wid, None)
             group["excluded"].pop(wid, None)
-            group["mods"][wid] = title
-        for wid, title in (choice.get("exclude") or {}).items():
-            if wid not in group["mods"]:
+            if to == "include":
+                group["mods"][wid] = title
+            elif to == "exclude":
                 group["excluded"][wid] = title
-        log(f"[{group['zh']}] 收录 {len(choice.get('include') or {})}，排除 {len(choice.get('exclude') or {})}")
+            counts[to] += 1
+        log(f"[{group['zh']}] 收录 {counts['include']}，排除 {counts['exclude']}，移出 {counts['pending']}")
     save_groups(groups)
     log(f"已写回 {DATA_PATH.relative_to(ROOT)}")
 
@@ -290,11 +299,49 @@ def _write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def _pending_review() -> dict[str, list[dict]]:
-    """上次搜索结果里还没审核的候选（已收录、已排除的去掉）。"""
+_DETAILS: dict[str, dict] = {}  # 已收录/已排除 Mod 的工坊详情，本次运行内缓存
+_DETAILS_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
+
+
+def _fetch_details(ids: list[str]) -> None:
+    """用 Steam 公开接口批量补齐图标、订阅数等；失败时只显示名单里记的标题。"""
+    for start in range(0, len(ids), 100):
+        batch = ids[start:start + 100]
+        form = {"itemcount": str(len(batch))}
+        form.update({f"publishedfileids[{n}]": wid for n, wid in enumerate(batch)})
+        request = urllib.request.Request(_DETAILS_URL, data=urllib.parse.urlencode(form).encode("ascii"))
+        with urllib.request.urlopen(request, timeout=_TIMEOUT, context=default_ssl_context()) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        for item in payload.get("response", {}).get("publishedfiledetails", []):
+            if item.get("result") == 1:
+                cand = _candidate(item)
+                cand["desc"] = re.sub(r"\[[^\]]*\]", "", str(item.get("file_description") or ""))[:300]
+                _DETAILS[cand["id"]] = cand
+
+
+def review_items(log=print) -> dict[str, list[dict]]:
+    """每个类别的全部条目：已收录、已排除，以及上次搜索结果里还没审核的候选（status 区分）。"""
+    groups = load_groups()
+    need = [wid for g in groups for wid in (*g["mods"], *g["excluded"]) if wid not in _DETAILS]
+    if need:
+        try:
+            _fetch_details(need)
+        except Exception as exc:
+            log(f"查询已收录 Mod 的工坊详情失败（只显示标题）：{exc}")
     last = _read_json(LAST_SEARCH, {})
-    known = _known_ids(load_groups())
-    return {key: [c for c in cands if c["id"] not in known] for key, cands in last.items()}
+    known = _known_ids(groups)
+    out: dict[str, list[dict]] = {}
+    for g in groups:
+        items = []
+        for status, mapping in (("included", g["mods"]), ("excluded", g["excluded"])):
+            for wid, title in mapping.items():
+                item = dict(_DETAILS.get(wid) or {"id": wid, "desc": "", "subs": 0, "updated": "", "preview": "",
+                                                   "tags": []})
+                item.update(title=title or item.get("title", ""), status=status, hit=True)
+                items.append(item)
+        items += [{**c, "status": "candidate"} for c in last.get(g["key"], []) if c["id"] not in known]
+        out[g["key"]] = items
+    return out
 
 
 # ── 本地网页服务 ─────────────────────────────────────────────────────
@@ -367,9 +414,9 @@ class _Handler(BaseHTTPRequestHandler):
             with _JOB.lock:
                 running, log = _JOB.running, list(_JOB.log)
             self._json({"groups": _groups_summary(), "running": running, "log": log,
-                        "has_last": LAST_SEARCH.is_file(), "settings": _read_json(SETTINGS, {})})
+                        "settings": _read_json(SETTINGS, {})})
         elif path == "/api/review":
-            self._json(_pending_review())
+            self._json(review_items(_JOB.add))
         else:
             self._send(404, b"not found", "text/plain")
 
@@ -416,41 +463,53 @@ _PAGE = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>同类 Mod 审核</title>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--text:#1d2129;--muted:#6b7280;--line:#e3e6ea;--accent:#2f6fde;--ok:#1f9d55;--no:#c0392b}
-@media (prefers-color-scheme:dark){:root{--bg:#16181c;--card:#20242a;--text:#e6e8eb;--muted:#9aa1ab;--line:#30353d;--accent:#5b8ff0;--ok:#3cc47c;--no:#e0675a}}
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2129;--muted:#6b7280;--line:#e3e6ea;--accent:#2f6fde;--ok:#1f9d55;--no:#c0392b;--warn:#c47f00}
+@media (prefers-color-scheme:dark){:root{--bg:#16181c;--card:#20242a;--text:#e6e8eb;--muted:#9aa1ab;--line:#30353d;--accent:#5b8ff0;--ok:#3cc47c;--no:#e0675a;--warn:#e0a537}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Microsoft YaHei",system-ui,sans-serif}
-header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 16px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:2px 0}
 header h1{font-size:18px;margin:0 auto 0 0}
-button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:6px;padding:5px 12px;cursor:pointer}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:6px;padding:4px 10px;cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button:disabled{opacity:.5;cursor:default}
-input[type=text],input[type=number]{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+button.small{font-size:12px;padding:2px 8px}
+input[type=text],input[type=number],select{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
 main{max-width:1100px;margin:0 auto;padding:8px 16px 48px}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px}
 .panel h3{margin:0 0 8px;font-size:15px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .chips{display:flex;flex-wrap:wrap;gap:6px 14px}.chips label{white-space:nowrap;cursor:pointer}
 #log{white-space:pre-wrap;font-size:12px;color:var(--muted);max-height:140px;overflow:auto;margin-top:8px}
-section{margin-top:20px}h2{font-size:16px;margin:0 0 4px}.known{color:var(--muted);font-size:12px;margin-bottom:8px}
+section{margin-top:20px}h2{font-size:16px;margin:0}.ghead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .item{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0}
-.item.include{border-color:var(--ok);box-shadow:inset 4px 0 var(--ok)}.item.exclude{opacity:.55;box-shadow:inset 4px 0 var(--no)}
-.item img{width:72px;height:72px;object-fit:cover;border-radius:6px;flex:none;background:var(--line)}
+.item.to-include{box-shadow:inset 4px 0 var(--ok)}.item.to-exclude{box-shadow:inset 4px 0 var(--no)}.item.to-exclude .body{opacity:.6}
+.item.changed{border-color:var(--warn)}
+.item img{width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none;background:var(--line)}
 .body{flex:1;min-width:0}.title a{color:var(--text);font-weight:600;text-decoration:none}.title a:hover{color:var(--accent)}
-.meta{color:var(--muted);font-size:12px}.desc{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
-.choice{display:flex;flex-direction:column;gap:4px;flex:none}.choice label{white-space:nowrap;cursor:pointer}
-.badge{font-size:11px;color:var(--ok);border:1px solid var(--ok);border-radius:4px;padding:0 4px;margin-left:6px}
-body.hitonly .item.nohit{display:none}.empty{color:var(--muted)}.err{color:var(--no)}
+.meta{color:var(--muted);font-size:12px}.desc{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere;max-height:3.2em;overflow:hidden}
+.choice{display:flex;flex-direction:column;gap:2px;flex:none}.choice label{white-space:nowrap;cursor:pointer}
+.tag{font-size:11px;border:1px solid;border-radius:4px;padding:0 4px;margin-left:6px;white-space:nowrap}
+.st-included{color:var(--ok)}.st-excluded{color:var(--no)}.st-candidate{color:var(--accent)}.hit{color:var(--muted)}
+.hidden{display:none!important}.empty{color:var(--muted)}.err{color:var(--no)}
 details summary{cursor:pointer;color:var(--muted)}
-</style></head><body class="hitonly">
-<header><h1>同类 Mod 审核</h1>
-<label><input type="checkbox" id="hitonly" checked> 只看标题含关键词</label>
-<span id="count" class="meta"></span>
-<button id="save" class="primary">保存选择</button><button id="quit">关闭工具</button></header>
+</style></head><body>
+<header>
+  <div class="bar"><h1>同类 Mod 审核</h1><span id="count" class="meta"></span>
+    <button id="save" class="primary">保存改动</button><button id="reset">撤销改动</button><button id="quit">关闭工具</button></div>
+  <div class="bar meta">
+    显示：<label><input type="checkbox" class="stf" value="candidate" checked> 待审候选</label>
+    <label><input type="checkbox" class="stf" value="included" checked> 已收录</label>
+    <label><input type="checkbox" class="stf" value="excluded"> 已排除</label>
+    · <label><input type="checkbox" id="hitonly" checked> 候选只看标题含关键词</label>
+    · 类别 <select id="gfilter"><option value="">全部</option></select>
+    · 当前显示的全部设为：<button class="small" data-bulk="include">收录</button><button class="small" data-bulk="exclude">排除</button><button class="small" data-bulk="pending">待定</button>
+  </div>
+</header>
 <main>
 <div class="panel"><h3>搜索创意工坊</h3>
   <div class="row"><button id="all">全选</button><button id="none">全不选</button></div>
   <div class="chips" id="chips" style="margin-top:8px"></div>
   <div class="row">每个关键词翻 <input type="number" id="pages" value="2" min="1" max="10" style="width:60px"> 页（每页 30 个）
     · 订阅数至少 <input type="number" id="minsubs" value="500" min="0" style="width:90px">
-    <button id="search" class="primary">搜索工坊</button><button id="loadlast">加载上次结果</button></div>
+    <button id="search" class="primary">搜索工坊</button></div>
   <div id="log"></div>
 </div>
 <div class="panel"><h3>保存设置</h3>
@@ -463,11 +522,14 @@ details summary{cursor:pointer;color:var(--muted)}
       <button id="g_add">新建</button></div>
   </details>
 </div>
+<p class="meta">每项默认保持现状：已收录的选「收录」、已排除的选「排除」、候选选「待定」。已收录的改选「待定」即移出名单（以后搜索还会列出），改选「排除」则移出且以后不再列出。</p>
 <div id="results"></div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ORIG = {included: "include", excluded: "exclude", candidate: "pending"};  // 现状对应的默认选项
+const ST_TEXT = {included: "已收录", excluded: "已排除", candidate: "候选"};
 let GROUPS = [], wasRunning = false;
 async function api(path, body) {
   const opt = body === undefined ? {} : {method: "POST", headers: {"X-Tool": "1", "Content-Type": "application/json"}, body: JSON.stringify(body)};
@@ -476,82 +538,121 @@ async function api(path, body) {
   if (!r.ok || data.ok === false) throw new Error(data.error || r.status);
   return data;
 }
-function renderChips() {
+function renderGroups() {
   const checked = new Set([...document.querySelectorAll("#chips input:checked")].map(i => i.value));
   $("chips").innerHTML = GROUPS.map(g => `<label title="${esc(g.search.join(", "))}"><input type="checkbox" value="${esc(g.key)}" ${checked.has(g.key) ? "checked" : ""}> ${esc(g.zh)} <span class="meta">(${Object.keys(g.mods).length})</span></label>`).join("");
+  const sel = $("gfilter"), cur = sel.value;
+  sel.innerHTML = `<option value="">全部</option>` + GROUPS.map(g => `<option value="${esc(g.key)}">${esc(g.zh)}</option>`).join("");
+  sel.value = cur;
 }
 async function refresh(first) {
   const s = await api("/api/state");
-  GROUPS = s.groups; renderChips();
+  GROUPS = s.groups; renderGroups();
   if (first && s.settings.modmain) $("modmain").value = s.settings.modmain;
   $("log").textContent = s.log.join("\n"); $("log").scrollTop = 1e9;
-  $("search").disabled = s.running; $("loadlast").disabled = s.running || !s.has_last;
+  $("search").disabled = s.running;
   if (wasRunning && !s.running) await loadReview();
   wasRunning = s.running;
   if (s.running) setTimeout(refresh, 1000);
+}
+function itemHtml(g, c) {
+  const name = `${g.key}-${c.id}`, orig = ORIG[c.status];
+  const opt = (v, text) => `<label><input type="radio" name="${name}" value="${v}" ${v === orig ? "checked" : ""}> ${text}</label>`;
+  const meta = c.subs ? `订阅 ${c.subs.toLocaleString()} · 更新 ${c.updated} · ${esc(c.tags.join(", "))}` : "";
+  return `<img loading="lazy" src="${esc(c.preview)}" alt="">
+    <div class="body"><div class="title"><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=${c.id}" target="_blank">${esc(c.title)}</a>
+      <span class="tag st-${c.status}">${ST_TEXT[c.status]}</span>${c.status === "candidate" && c.hit ? '<span class="tag hit">标题含关键词</span>' : ""}</div>
+    <div class="meta">ID ${c.id}${meta ? " · " + meta : ""}</div><div class="desc">${esc(c.desc || "")}</div></div>
+    <div class="choice">${opt("include", "收录")}${opt("exclude", "排除")}${opt("pending", c.status === "included" ? "待定（移出）" : "待定")}</div>`;
 }
 async function loadReview() {
   const review = await api("/api/review");
   const box = $("results"); box.innerHTML = "";
   for (const g of GROUPS) {
-    const cands = review[g.key];
-    if (!cands) continue;
-    const hits = cands.filter(c => c.hit).length;
+    const items = review[g.key] || [];
     const sec = document.createElement("section");
-    sec.innerHTML = `<h2>${esc(g.zh)} <span class="meta">候选 ${cands.length}，标题含关键词 ${hits}</span></h2>
-      <div class="known">已收录：${esc(Object.values(g.mods).join("、") || "（暂无）")}</div>` + (cands.length ? "" : `<div class="empty">没有待审核的候选</div>`);
-    for (const c of cands) {
+    sec.dataset.group = g.key;
+    const n = s => items.filter(c => c.status === s).length;
+    sec.innerHTML = `<div class="ghead"><h2>${esc(g.zh)}</h2><span class="meta">已收录 ${n("included")} · 已排除 ${n("excluded")} · 候选 ${n("candidate")}</span>
+      <span class="meta">显示的全部设为</span><button class="small" data-gbulk="include">收录</button><button class="small" data-gbulk="exclude">排除</button><button class="small" data-gbulk="pending">待定</button></div>
+      <div class="empty gempty hidden">当前筛选下没有内容</div>`;
+    for (const c of items) {
       const div = document.createElement("div");
-      div.className = "item " + (c.hit ? "hit" : "nohit");
-      div.dataset.group = g.key; div.dataset.id = c.id; div.dataset.title = c.title;
-      const name = `${g.key}-${c.id}`;
-      div.innerHTML = `<img loading="lazy" src="${esc(c.preview)}" alt="">
-        <div class="body"><div class="title"><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=${c.id}" target="_blank">${esc(c.title)}</a>${c.hit ? '<span class="badge">标题含关键词</span>' : ""}</div>
-        <div class="meta">ID ${c.id} · 订阅 ${c.subs.toLocaleString()} · 更新 ${c.updated} · ${esc(c.tags.join(", "))}</div>
-        <div class="desc">${esc(c.desc)}</div></div>
-        <div class="choice"><label><input type="radio" name="${name}" value="include"> 收录</label>
-        <label><input type="radio" name="${name}" value="exclude"> 排除</label>
-        <label><input type="radio" name="${name}" value="" checked> 待定</label></div>`;
-      div.querySelectorAll("input").forEach(r => r.onchange = () => {
-        div.classList.toggle("include", r.value === "include");
-        div.classList.toggle("exclude", r.value === "exclude");
-        updateCount();
-      });
+      div.className = "item";
+      Object.assign(div.dataset, {group: g.key, id: c.id, title: c.title, status: c.status, hit: c.hit ? "1" : ""});
+      div.innerHTML = itemHtml(g, c);
+      div.querySelectorAll("input").forEach(r => r.onchange = () => { mark(div); updateCount(); });
+      mark(div);
       sec.appendChild(div);
     }
+    sec.querySelectorAll("[data-gbulk]").forEach(b => b.onclick = () => bulk(b.dataset.gbulk, sec));
     box.appendChild(sec);
   }
-  if (!box.innerHTML) box.innerHTML = `<p class="empty">还没有搜索结果</p>`;
+  applyFilter(); updateCount();
+}
+function choiceOf(div) { return div.querySelector("input:checked").value; }
+function mark(div) {
+  const v = choiceOf(div);
+  div.classList.toggle("to-include", v === "include");
+  div.classList.toggle("to-exclude", v === "exclude");
+  div.classList.toggle("changed", v !== ORIG[div.dataset.status]);
+}
+function applyFilter() {
+  const shown = new Set([...document.querySelectorAll(".stf:checked")].map(i => i.value));
+  const hitonly = $("hitonly").checked, gsel = $("gfilter").value;
+  document.querySelectorAll("#results section").forEach(sec => {
+    const gok = !gsel || sec.dataset.group === gsel;
+    let any = false;
+    sec.querySelectorAll(".item").forEach(div => {
+      const d = div.dataset;
+      const ok = gok && shown.has(d.status) && !(d.status === "candidate" && hitonly && !d.hit);
+      div.classList.toggle("hidden", !ok);
+      any = any || ok;
+    });
+    sec.classList.toggle("hidden", !gok);
+    sec.querySelector(".gempty").classList.toggle("hidden", any);
+  });
+}
+function bulk(value, scope) {
+  (scope || $("results")).querySelectorAll(".item:not(.hidden)").forEach(div => {
+    div.querySelector(`input[value="${value}"]`).checked = true; mark(div);
+  });
   updateCount();
 }
-function decisions() {
+function changes() {
   const out = {};
-  document.querySelectorAll(".item").forEach(div => {
-    const v = div.querySelector("input:checked").value;
-    if (!v) return;
-    const g = out[div.dataset.group] ??= {include: {}, exclude: {}};
-    g[v][div.dataset.id] = div.dataset.title;
+  let n = 0;
+  document.querySelectorAll(".item.changed").forEach(div => {
+    (out[div.dataset.group] ??= {})[div.dataset.id] = {to: choiceOf(div), title: div.dataset.title};
+    n++;
   });
-  return out;
+  return [out, n];
 }
 function updateCount() {
-  let inc = 0, exc = 0;
-  for (const g of Object.values(decisions())) { inc += Object.keys(g.include).length; exc += Object.keys(g.exclude).length; }
-  $("count").textContent = `已选 收录 ${inc} · 排除 ${exc}`;
+  const c = {include: 0, exclude: 0, pending: 0};
+  document.querySelectorAll(".item.changed").forEach(div => c[choiceOf(div)]++);
+  $("count").textContent = `未保存改动：收录 ${c.include} · 排除 ${c.exclude} · 待定/移出 ${c.pending}`;
 }
 const say = (text, err) => { $("log").innerHTML = `<span class="${err ? "err" : ""}">${esc(text)}</span>`; };
-$("hitonly").onchange = e => document.body.classList.toggle("hitonly", e.target.checked);
+document.querySelectorAll(".stf").forEach(i => i.onchange = applyFilter);
+$("hitonly").onchange = applyFilter;
+$("gfilter").onchange = applyFilter;
+document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => bulk(b.dataset.bulk));
 $("all").onclick = () => document.querySelectorAll("#chips input").forEach(i => i.checked = true);
 $("none").onclick = () => document.querySelectorAll("#chips input").forEach(i => i.checked = false);
 $("search").onclick = async () => {
   const keys = [...document.querySelectorAll("#chips input:checked")].map(i => i.value);
+  if (changes()[1] && !confirm("有未保存的改动，搜索完成后列表会刷新、改动会丢失。继续吗？")) return;
   try { await api("/api/search", {keys, pages: +$("pages").value, min_subs: +$("minsubs").value}); wasRunning = true; refresh(); }
   catch (e) { say(e.message, true); }
 };
-$("loadlast").onclick = loadReview;
+$("reset").onclick = () => {
+  document.querySelectorAll(".item").forEach(div => { div.querySelector(`input[value="${ORIG[div.dataset.status]}"]`).checked = true; mark(div); });
+  updateCount();
+};
 $("save").onclick = async () => {
-  const d = decisions();
-  if (!Object.keys(d).length) { say("还没有选择任何候选", true); return; }
+  const [d, n] = changes();
+  if (!n) { say("没有改动", true); return; }
   try {
     const r = await api("/api/save", {decisions: d, modmain: $("modmain").value});
     await refresh(); await loadReview(); say(r.log.join("\n"));
@@ -560,11 +661,15 @@ $("save").onclick = async () => {
 $("g_add").onclick = async () => {
   try {
     await api("/api/add-group", {key: $("g_key").value, zh: $("g_zh").value, en: $("g_en").value, search: $("g_search").value, cms_key: $("g_cms").value});
-    say(`已新建类别 ${$("g_zh").value}，勾选它后点「搜索工坊」`); await refresh();
+    say(`已新建类别 ${$("g_zh").value}，勾选它后点「搜索工坊」`); await refresh(); await loadReview();
   } catch (e) { say(e.message, true); }
 };
-$("quit").onclick = async () => { await api("/api/quit", {}); document.body.innerHTML = "<main><p>工具已关闭，可以关掉这个标签页。</p></main>"; };
-refresh(true).then(() => { if (!$("loadlast").disabled) loadReview(); });
+$("quit").onclick = async () => {
+  if (changes()[1] && !confirm("有未保存的改动，确定关闭吗？")) return;
+  await api("/api/quit", {}); document.body.innerHTML = "<main><p>工具已关闭，可以关掉这个标签页。</p></main>";
+};
+window.addEventListener("beforeunload", e => { if (changes()[1]) e.preventDefault(); });
+refresh(true).then(loadReview);
 </script></body></html>
 """
 
