@@ -229,26 +229,9 @@ def test_luajit_boot_crash() -> None:
     ).category == "unknown"
 
 
-def test_luajit_missing_mod_file() -> None:
-    """2026-11-14/15 群友日志：开着 LuaJIT 报 Mod 文件找不到，卸载补丁就能开服，是补丁当时版本的 bug。"""
-    cannot_open = [
-        "[00:00:20]: [string \"scripts/mainfunctions.lua\"]:162: "
-        "cannot open ../mods/workshop-3435352667/main/ia_preparedfoods.lua",
-        "LUA ERROR stack traceback:",
-        "../mods/workshop-3435352667/modmain.lua:40 in (main) chunk",
-    ]
-    report = diagnose_server_failure(
-        shard_name="Master", exit_code=1, world_ready=False, log_lines=cannot_open, luajit_injected=True,
-    )
-    assert report is not None and report.category == "luajit_missing_file"
-    assert report.related_mods == ()
-    assert any("ia_preparedfoods.lua" in line for line in report.evidence)
-    # 没开 LuaJIT 时仍按 Mod 报错处理
-    assert diagnose_server_failure(
-        shard_name="Master", exit_code=1, world_ready=False, log_lines=cannot_open,
-    ).category == "mod_conflict"
-
-    # 11-15：启用列表里没有配套 Mod，只有注入壳；运行库替别人 require 时报错，不能把它列成嫌疑
+def test_library_mod_not_blamed_for_relayed_error() -> None:
+    """2026-11-15 群友日志：运行库替别的 Mod require 时报 module not found，两次被误列为嫌疑。
+    同时报文件缺失时也不再归给 LuaJIT（当时是补丁的 bug，已修复，配套 Mod 强制更新）。"""
     module_missing = [
         "[00:00:30]: [string \"../mods/workshop-3750536829/scripts/require_hook.lua\"]:21: "
         "module 'components/wsrv2_lunarmarks' not found:",
@@ -261,15 +244,6 @@ def test_luajit_missing_mod_file() -> None:
         shard_name="Caves", exit_code=1, world_ready=False, log_lines=module_missing,
         enabled_mods=enabled, luajit_injected=True,
     )
-    assert report is not None and report.category == "luajit_missing_file"
-    # 只看启用列表也算开着（离线日志没有注入壳信息）
-    assert diagnose_server_failure(
-        shard_name="Caves", exit_code=1, world_ready=False, log_lines=module_missing,
-        enabled_mods=enabled + ["workshop-3444078585"],
-    ).category == "luajit_missing_file"
-    report = diagnose_server_failure(
-        shard_name="Caves", exit_code=1, world_ready=False, log_lines=module_missing, enabled_mods=enabled,
-    )
     assert report.category == "mod_conflict" and report.related_mods == ("workshop-3349143694",)
     # 根错误就出在运行库自己的代码里时照常列出
     own_error = [
@@ -281,21 +255,6 @@ def test_luajit_missing_mod_file() -> None:
         shard_name="Master", exit_code=1, world_ready=False, log_lines=own_error, enabled_mods=enabled,
     )
     assert report.related_mods == ("workshop-3750536829",)
-
-    # 世界已就绪、进程在跑时报的文件缺失不归给 LuaJIT，按 Lua 报错指向出错的 Mod
-    running = [
-        "[01:20:00]: module 'x' not found:",
-        "[01:20:05]: [string \"../mods/workshop-3662240568/scripts/prefabs/bigbag.lua\"]:1487: "
-        "attempt to index a nil value",
-        "LUA ERROR stack traceback:",
-        "../mods/workshop-3662240568/scripts/prefabs/bigbag.lua:1487 in (field) fn",
-    ]
-    report = diagnose_server_failure(
-        shard_name="Master", exit_code=None, world_ready=True, log_lines=running,
-        enabled_mods=["workshop-3662240568"], luajit_injected=True,
-    )
-    assert report is not None and report.category == "mod_conflict"
-    assert report.related_mods == ("workshop-3662240568",)
 
 
 def test_luajit_reload_loop() -> None:
