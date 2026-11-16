@@ -35,6 +35,18 @@ _STARTUP_FAILURE_MARKERS = (
 # 启动早期的最后一行；注入器在这之后、挂载数据包之前崩溃时日志就停在这里
 _BOOT_STALL_MARKER = "curlrequestmanager::clientthread::main()"
 _BOOT_PROGRESS_MARKER = "mounting file system"
+# Lua 读不到 Mod 文件的两种报错。开着 LuaJIT 时先怀疑补丁：2026-11-14 报 cannot open
+# ../mods/workshop-3435352667/main/ia_preparedfoods.lua、11-15 报 module 'components/wsrv2_lunarmarks'
+# not found，两次都是卸载 LuaJIT 就能开服，补丁作者确认是当时版本读文件的 bug，Mod 文件本身是好的
+_MISSING_FILE_RE = re.compile(r"cannot open \S+?\.lua|module '[^']+' not found", re.IGNORECASE)
+# LuaJIT 配套 Mod（DontStarveLuaJit2），与 luajit_injector.WORKSHOP_MOD_KEY 相同；
+# 本模块要原样复制给 QQ 机器人插件用，不能导入 luajit_injector
+_LUAJIT_MOD = "workshop-3444078585"
+# 运行库/依赖库类 Mod：替别的 Mod 加载文件、包装 require，别的 Mod 出错时堆栈中间常经过它。
+# 只在根错误就出在它自己文件里时才列为嫌疑（11-15 两次误让人禁用模组运行库，作者不认可）
+_LIBRARY_MODS = frozenset({
+    "workshop-3750536829",  # 模组运行库
+})
 
 
 @dataclass(frozen=True)
@@ -127,10 +139,14 @@ def _mods(lines: list[str], enabled: Iterable[str], loaded: Iterable[str]) -> tu
             stack_mods.update(ids)
         if any(index >= marker and index <= marker + 80 for marker in traceback_indexes):
             if "../mods/" in lower and re.search(r"../mods/workshop-\d+[/\\].*:\d+", lower):
-                stack_mods.update(ids)
+                # 堆栈中间帧经过运行库不代表是它的问题
+                stack_mods.update(ids - {m for m in ids if m.lower() in _LIBRARY_MODS})
         # Lua 堆栈前一行常用 [string "../mods/.../modmain.lua"] 写出根错误。
         if any(index < marker and marker - index <= 6 for marker in traceback_indexes):
             if "[string \"../mods/" in lower and re.search(r"../mods/workshop-\d+[/\\].*:\d+", lower):
+                # 运行库替别人 require 时报的"找不到文件"也写在它自己的文件名下，同样不算它的
+                if _MISSING_FILE_RE.search(line):
+                    ids = {m for m in ids if m.lower() not in _LIBRARY_MODS}
                 stack_mods.update(ids)
     # Lua 堆栈里出现的 Mod 路径是最有价值的归因证据；有堆栈证据时不把
     # 整个启用列表都显示成“疑似相关”，避免用户误以为每个 Mod 都有问题。
@@ -173,7 +189,8 @@ def diagnose_server_failure(
     """根据一次世界启动或运行日志生成保守诊断，``None`` 表示无需提醒（正常停止不生成）。
 
     令牌注册冲突不会让进程退出，可能发生在世界就绪后，所以要在"进程仍在运行"的快速返回之前判断。
-    ``luajit_injected`` 表示启动目录里有 LuaJIT 注入壳，用于识别注入器启动即崩。
+    ``luajit_injected`` 表示开着 LuaJIT（启动目录里有注入壳，离线日志按启用了配套 Mod 推断），
+    用于识别注入器启动即崩和补丁读不到 Mod 文件。
     """
     lines = [str(line) for line in log_lines]
     if intentional_stop:
@@ -199,6 +216,18 @@ def diagnose_server_failure(
             "token_invalid", t("diag.token_invalid.title"),
             t("diag.token_invalid.summary", shard=shard_name), _tips("token_invalid"),
             _evidence(lines, _TOKEN_INVALID_MARKERS + ("your server will not start",)), (),
+        )
+
+    # 开着 LuaJIT 又报 Mod 文件找不到：先怀疑补丁，不按 Mod 冲突处理。
+    # 注入壳和配套 Mod 任一在就算开着：11-15 的日志启用列表里没有配套 Mod，注入壳却在
+    luajit_on = luajit_injected or _LUAJIT_MOD in {str(m).lower() for m in enabled_mods}
+    if luajit_on and _MISSING_FILE_RE.search(lower):
+        # 不填 related_mods：界面会把它标成"疑似相关 Mod"，与"Mod 多半没问题"矛盾；报错路径留在证据里
+        missing_lines = [line.strip() for line in lines if _MISSING_FILE_RE.search(line)]
+        return DiagnosticReport(
+            "luajit_missing_file", t("diag.luajit_missing_file.title"),
+            t("diag.luajit_missing_file.summary", shard=shard_name), _tips("luajit_missing_file"),
+            tuple(dict.fromkeys(missing_lines))[:3], (),
         )
 
     # 已就绪且仍存活的世界通常不属于“启动/退出诊断”，但 Lua 错误可能只

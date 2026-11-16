@@ -744,3 +744,34 @@ def regenerate(bin64_dir: Path, on_log=None) -> InstallResult:
         result.errors.append(t("local.luajit_error_operation_failed", detail=detail))
         log(result.errors[-1])
     return result
+
+
+def log_bundle_line(install_dir: Path | None) -> str:
+    """日志包信息里的一行：开服目录是否装了注入壳、配套 Mod 版本。
+
+    补丁作者修过"读不到 Mod 文件"等 bug，排查时要靠版本号区分修复前后。
+    独立专服的副本记着生成时的配套 Mod 版本，与当前订阅的不同时一并写出；游戏专服没有副本标记，
+    只能比对注入壳与 Mod 目录里那份是否一致。"""
+    if install_dir is None:
+        return "LuaJIT 补丁：未知（没找到开服程序）"
+    from dstools.features.local_service.dedicated_server import find_bin64_dir
+
+    install_dir = Path(install_dir)
+    version = current_injector_version() or "未知"
+    launch_dir = resolve_launch_bin64_dir(install_dir) or find_bin64_dir(install_dir)
+    trigger = _game_trigger_file(launch_dir) if launch_dir is not None else None
+    if trigger is None:
+        if _runtime_ready(install_dir) and not uses_game_bin64(install_dir):
+            state = "已关闭（隔离副本还在，开服不注入）"
+        else:
+            state = "未安装"
+        return f"LuaJIT 补丁：{state}，配套 Mod {WORKSHOP_MOD_KEY} 版本 {version}"
+    notes = []
+    marker = None if uses_game_bin64(install_dir) else read_marker(get_luajit_dir(install_dir))
+    if marker is not None and marker.luajit_version != version:
+        notes.append(f"副本按 {marker.luajit_version} 生成")
+    source = _trigger_source_file()
+    if source is not None and _file_sha256(source) != _file_sha256(trigger):
+        notes.append("注入壳与配套 Mod 里的不一致")
+    extra = f"（{'；'.join(notes)}）" if notes else ""
+    return f"LuaJIT 补丁：已安装，配套 Mod {WORKSHOP_MOD_KEY} 版本 {version}{extra}"

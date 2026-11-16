@@ -244,6 +244,17 @@ def _nat_summary(shard_names, nat_owners) -> list[str]:
     return [f"内网穿透：{nat}", f"大厅加速：{'已开启' if get_lobby_accel_enabled() else '未开启'}"]
 
 
+def _luajit_summary() -> str:
+    """LuaJIT 补丁是否装在当前开服程序上及其版本；读不出来不影响打包。"""
+    from dstools.features.local_service import luajit_injector, server_runtime
+
+    try:
+        runtime = server_runtime.current_runtime()
+        return luajit_injector.log_bundle_line(runtime.install_dir if runtime else None)
+    except Exception as exc:  # noqa: BLE001 打包是排查用的，单项信息失败不能让整个日志包生成失败
+        return f"LuaJIT 补丁：读取失败（{type(exc).__name__}）"
+
+
 def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | None = None,
                       nat_owners: dict[str, str | None] | None = None) -> Path:
     """打包一个服务器存档的当前日志、近期错误日志、frpc 输出和安全配置文件。"""
@@ -280,6 +291,7 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
         f"存档目录：{cluster_path}",
         f"世界：{'、'.join(shard_names) or '未识别'}",
         *_nat_summary(shard_names, nat_owners),
+        _luajit_summary(),
         "说明：已跳过 cluster_token、管理员列表等敏感文件；SteamCMD 日志已去掉账号与 SteamID，不含登录凭据；"
         "frpc 日志已去掉樱花 Token；客户端日志不含聊天记录。",
         "",

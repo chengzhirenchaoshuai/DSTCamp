@@ -229,6 +229,60 @@ def test_luajit_boot_crash() -> None:
     ).category == "unknown"
 
 
+def test_luajit_missing_mod_file() -> None:
+    """2026-11-14/15 群友日志：开着 LuaJIT 报 Mod 文件找不到，卸载补丁就能开服，是补丁当时版本的 bug。"""
+    cannot_open = [
+        "[00:00:20]: [string \"scripts/mainfunctions.lua\"]:162: "
+        "cannot open ../mods/workshop-3435352667/main/ia_preparedfoods.lua",
+        "LUA ERROR stack traceback:",
+        "../mods/workshop-3435352667/modmain.lua:40 in (main) chunk",
+    ]
+    report = diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, log_lines=cannot_open, luajit_injected=True,
+    )
+    assert report is not None and report.category == "luajit_missing_file"
+    assert report.related_mods == ()
+    assert any("ia_preparedfoods.lua" in line for line in report.evidence)
+    # 没开 LuaJIT 时仍按 Mod 报错处理
+    assert diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, log_lines=cannot_open,
+    ).category == "mod_conflict"
+
+    # 11-15：启用列表里没有配套 Mod，只有注入壳；运行库替别人 require 时报错，不能把它列成嫌疑
+    module_missing = [
+        "[00:00:30]: [string \"../mods/workshop-3750536829/scripts/require_hook.lua\"]:21: "
+        "module 'components/wsrv2_lunarmarks' not found:",
+        "LUA ERROR stack traceback:",
+        "../mods/workshop-3750536829/scripts/require_hook.lua:21 in (global) require",
+        "../mods/workshop-3349143694/modmain.lua:8 in (main) chunk",
+    ]
+    enabled = ["workshop-3750536829", "workshop-3349143694"]
+    report = diagnose_server_failure(
+        shard_name="Caves", exit_code=1, world_ready=False, log_lines=module_missing,
+        enabled_mods=enabled, luajit_injected=True,
+    )
+    assert report is not None and report.category == "luajit_missing_file"
+    # 只看启用列表也算开着（离线日志没有注入壳信息）
+    assert diagnose_server_failure(
+        shard_name="Caves", exit_code=1, world_ready=False, log_lines=module_missing,
+        enabled_mods=enabled + ["workshop-3444078585"],
+    ).category == "luajit_missing_file"
+    report = diagnose_server_failure(
+        shard_name="Caves", exit_code=1, world_ready=False, log_lines=module_missing, enabled_mods=enabled,
+    )
+    assert report.category == "mod_conflict" and report.related_mods == ("workshop-3349143694",)
+    # 根错误就出在运行库自己的代码里时照常列出
+    own_error = [
+        "[string \"../mods/workshop-3750536829/scripts/core.lua\"]:5: attempt to index a nil value",
+        "LUA ERROR stack traceback:",
+        "../mods/workshop-3750536829/scripts/core.lua:5 in (local) fn",
+    ]
+    report = diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, log_lines=own_error, enabled_mods=enabled,
+    )
+    assert report.related_mods == ("workshop-3750536829",)
+
+
 def test_invalid_token_while_process_alive() -> None:
     """2026-11-02 用户日志：令牌失效后专服进程不退出、frpc 正常，用户以为是穿透问题，换节点也进不去。"""
     lines = [
