@@ -45,5 +45,18 @@ def test_same_name_copy_reported_once_not_again_as_file_clash():
         assert report.group_count == 1
 
 
+def test_similar_list_matches_workshop_keys_and_absorbs_file_clash():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        gp = _mod(root, "gp", {"components/globalposition.lua": "A"})
+        cs = _mod(root, "cs", {"components/globalposition.lua": "B"})
+        report = find_duplicates({"workshop-378160973": ("Global Positions", gp),
+                                  "workshop-3138571948": ("全图定位(完全同步)", cs),
+                                  "workshop-2189004162": ("Insight", None)})
+        assert [(g.kind, g.mod_ids) for g in report.similar] == [
+            ("global_positions", ("workshop-378160973", "workshop-3138571948"))]
+        assert not report.file_clashes and report.group_count == 1
+
+
 if __name__ == "__main__":
     run(globals())

@@ -1113,6 +1113,12 @@ class ModPage(Page):
 
         log = dialogs.LogDialog(self.window(), t("mod.duplicate_title"), closable=True)
         log.append(t("mod.duplicate_intro"), "note")
+        if report.similar:
+            log.append("")
+            log.append(t("mod.duplicate_similar_header"), "section")
+            for group in report.similar:
+                names = " / ".join(label(wid) for wid in group.mod_ids)
+                log.append(f"· {t(f'mod.duplicate_kind_{group.kind}')}: {names}", "detail")
         if report.same_name:
             log.append("")
             log.append(t("mod.duplicate_same_name_header"), "section")
