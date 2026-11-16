@@ -190,6 +190,7 @@ class GlobalDefaultsDialog(dialogs.Dialog):
         dialogs.fit_to_screen(self, 980, 780)
         self.page = page
         self._infos: dict = {}
+        self._folders: dict = {}
         self._rows: dict[str, _ModRow] = {}
         self._scanned = False
         self._scanning = False
@@ -289,6 +290,7 @@ class GlobalDefaultsDialog(dialogs.Dialog):
             self._scanning = False
             self._scanned = True
             self._infos = result["infos"]
+            self._folders = result["folders"]
             self._render(result["icons"])
             targets = [(wid, self._infos[wid], result["folders"][wid]) for wid in result["icon_todo"]]
             if targets:
@@ -449,6 +451,17 @@ class GlobalDefaultsDialog(dialogs.Dialog):
         if info is None or not dialogs.ask_yes_no(self, t("mod.default_config_reset"),
                                                   t("mod.default_config_reset_confirm", name=info.name or key)):
             return
-        defaults = {opt.name: opt.default for opt in info.config_options
-                    if not opt.is_header and opt.name and opt.default is not None}
-        self.page._save_default_config(key, defaults)
+        folder = self._folders.get(key)
+        if folder is None:
+            self.page._save_default_config(key, {})
+            return
+
+        def work() -> dict:
+            # 列表里是静态解析结果，默认值不可信：按沙箱求值（命中缓存时很快）；解析不了就清空记录，
+            # 游戏对没写的选项自己按 modinfo 取默认值
+            from dstools.features.mod.client_mod_bridge import full_mod_info
+            from dstools.features.mod.sandbox_apply import trusted_defaults
+            return trusted_defaults(full_mod_info(key, folder))
+
+        run_async(work, lambda defaults: self.page._save_default_config(key, defaults),
+                  lambda exc: dialogs.show_error(self, t("mod.default_config_reset"), str(exc)))

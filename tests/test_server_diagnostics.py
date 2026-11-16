@@ -298,6 +298,22 @@ def test_luajit_missing_mod_file() -> None:
     assert report.related_mods == ("workshop-3662240568",)
 
 
+def test_luajit_reload_loop() -> None:
+    # 11-16：LuaVmType 存成字符串 "luavmtype.jit"，每次加载都 c_reset()，进程一直在跑
+    cycle = [
+        "[00:00:03]: [luajit]\tcurrent vm type: \tjit\ttarget vm type: \tluavmtype.jit\t",
+        "[00:00:03]: [luajit]\tneed restart\t",
+        "[00:00:13]: Received world rollback request: count=0\t",
+    ]
+    # 正常切换虚拟机只重置一次，不报
+    assert diagnose_server_failure(shard_name="Master", exit_code=None, world_ready=True, log_lines=cycle) is None
+    report = diagnose_server_failure(shard_name="Master", exit_code=None, world_ready=True, log_lines=cycle * 2)
+    assert report is not None and report.category == "luajit_reload_loop", report
+    # 控制台日志窗口装不下两轮时，按累计次数判断
+    assert diagnose_server_failure(shard_name="Caves", exit_code=None, world_ready=True, log_lines=cycle,
+                                   luajit_restarts=2).category == "luajit_reload_loop"
+
+
 def test_invalid_token_while_process_alive() -> None:
     """2026-11-02 用户日志：令牌失效后专服进程不退出、frpc 正常，用户以为是穿透问题，换节点也进不去。"""
     lines = [

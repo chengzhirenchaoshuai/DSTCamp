@@ -41,7 +41,7 @@ from dstools.features.mod.parser import (
     resolve_wegame_client_mods_dir,
 )
 from dstools.features.mod.preload import modinfo_stamp, resolve_readable_mod_folder
-from dstools.features.mod.sandbox_apply import apply_full_sandbox_result
+from dstools.features.mod.sandbox_apply import apply_full_sandbox_result, trusted_defaults
 from dstools.features.mod.shardindex import ShardIndexError, load_shardindex_mods, save_shardindex_mods, shardindex_path
 from dstools.features.mod.sync import apply_mod_sync, detach_mod_sync_junction, get_enabled_mod_ids, plan_mod_sync
 from dstools.features.world.location_profiles import (
@@ -1390,11 +1390,8 @@ class ModPage(Page):
                 overrides.mods[wid].enabled = mod.enabled
                 overrides.mods[wid].configuration_options = dict(mod.configuration_options)
             elif mod.enabled or mod.configuration_options:
-                config = dict(mod.configuration_options)
-                if not config:
-                    info = self._mod_infos.get(wid)
-                    if info:
-                        config = {opt.name: opt.default for opt in info.config_options if not opt.is_header}
+                # 新启用且没配过：只补沙箱求值过的默认值，否则留空让游戏自己按 modinfo 取默认值
+                config = dict(mod.configuration_options) or trusted_defaults(self._mod_infos.get(wid))
                 overrides.mods[wid] = ModEntry(workshop_id=wid, enabled=mod.enabled, configuration_options=config)
 
     def _save_local_mods(self, cluster, index_path: Path) -> None:

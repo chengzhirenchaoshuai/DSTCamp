@@ -491,6 +491,7 @@ def test_modinfo_reader():
             description = "A test mod for parsing."
             icon = "modicon.tex"
             icon_atlas = "modicon.xml"
+            local vmtype = { jit = 'jit', game = 'game' }
 
             configuration_options = {
                 {
@@ -502,6 +503,22 @@ def test_modinfo_reader():
                         {description = "Hard", data = "hard"},
                     },
                     default = "easy",
+                },
+                {
+                    name = "vm",
+                    options = {
+                        {description = "JIT", data = vmtype.jit},
+                        {description = "Game", data = vmtype.game},
+                    },
+                    default = vmtype.jit,
+                },
+                {
+                    name = "spawn",
+                    options = {
+                        {description = "1x", data = 26},
+                        {description = "2x", data = 26 * 2},
+                    },
+                    default = is_zh and 26 or 30,
                 },
             }
             """,
@@ -517,10 +534,16 @@ def test_modinfo_reader():
         )
         assert info.workshop_id == "workshop-123456"
 
-        assert len(info.config_options) == 1
+        assert len(info.config_options) == 3
         opt = info.config_options[0]
         assert opt.name == "difficulty" and opt.label == "Difficulty"
         assert [c["data"] for c in opt.choices] == ["easy", "hard"]
+        # 本地表引用要解成实际值：原文 "vmtype.jit" 写进 modoverrides 会让 LuaJIT 无限重载世界
+        vm = info.config_options[1]
+        assert vm.default == "jit" and [c["data"] for c in vm.choices] == ["jit", "game"], vm
+        # 求不出值的表达式：默认值未知，取值列表交给沙箱，不能把原文当字符串
+        spawn = info.config_options[2]
+        assert spawn.default is None and spawn.choices == [] and spawn.is_dynamic, spawn
 
         # 不存在 modinfo.lua 的文件夹：明确返回 None，不抛异常。
         assert parse_modinfo(Path(tmp) / "does_not_exist") is None

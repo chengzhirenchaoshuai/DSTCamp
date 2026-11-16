@@ -39,6 +39,11 @@ _BOOT_PROGRESS_MARKER = "mounting file system"
 # ../mods/workshop-3435352667/main/ia_preparedfoods.lua、11-15 报 module 'components/wsrv2_lunarmarks'
 # not found，两次都是卸载 LuaJIT 就能开服，补丁作者确认是当时版本读文件的 bug，Mod 文件本身是好的
 _MISSING_FILE_RE = re.compile(r"cannot open \S+?\.lua|module '[^']+' not found", re.IGNORECASE)
+# DontStarveLuaJit2 发现当前虚拟机与配置的 LuaVmType 不同时打印这一行并 c_reset()。正常切换一次就好；
+# 同一进程出现两次以上说明配置值无效：2026-11-16 modoverrides 里写成了字符串 "luavmtype.jit"，每次加载都
+# 判定要切换，主世界约 10 秒重载一次（Received world rollback request: count=0），玩家进服即被断开
+_LUAJIT_RESTART_RE = re.compile(r"\[luajit\]\s*need restart", re.IGNORECASE)
+LUAJIT_RELOAD_LOOP_THRESHOLD = 2
 # LuaJIT 配套 Mod（DontStarveLuaJit2），与 luajit_injector.WORKSHOP_MOD_KEY 相同；
 # 本模块要原样复制给 QQ 机器人插件用，不能导入 luajit_injector
 _LUAJIT_MOD = "workshop-3444078585"
@@ -185,12 +190,15 @@ def diagnose_server_failure(
     intentional_stop: bool = False,
     ignore_token_conflict: bool = False,
     luajit_injected: bool = False,
+    luajit_restarts: int = 0,
 ) -> DiagnosticReport | None:
     """根据一次世界启动或运行日志生成保守诊断，``None`` 表示无需提醒（正常停止不生成）。
 
     令牌注册冲突不会让进程退出，可能发生在世界就绪后，所以要在"进程仍在运行"的快速返回之前判断。
     ``luajit_injected`` 表示开着 LuaJIT（启动目录里有注入壳，离线日志按启用了配套 Mod 推断），
     用于识别注入器启动即崩和补丁读不到 Mod 文件。
+    ``luajit_restarts`` 是控制台从进程启动起累计的 LuaJIT 重置次数：一轮重载有几千行，
+    传进来的日志窗口装不下两轮，离线分析整份日志时则直接从日志里数。
     """
     lines = [str(line) for line in log_lines]
     if intentional_stop:
@@ -216,6 +224,14 @@ def diagnose_server_failure(
             "token_invalid", t("diag.token_invalid.title"),
             t("diag.token_invalid.summary", shard=shard_name), _tips("token_invalid"),
             _evidence(lines, _TOKEN_INVALID_MARKERS + ("your server will not start",)), (),
+        )
+
+    # 进程不退出、世界也算就绪过，所以要在"仍在运行"的快速返回之前判断
+    if max(luajit_restarts, count_luajit_restarts(lines)) >= LUAJIT_RELOAD_LOOP_THRESHOLD:
+        return DiagnosticReport(
+            "luajit_reload_loop", t("diag.luajit_reload_loop.title"),
+            t("diag.luajit_reload_loop.summary", shard=shard_name), _tips("luajit_reload_loop"),
+            _evidence(lines, ("target vm type", "need restart", "world rollback request")), (),
         )
 
     # 开着 LuaJIT 又报 Mod 文件找不到：先怀疑补丁，不按 Mod 冲突处理。
@@ -298,6 +314,11 @@ def contains_startup_failure(lines: Iterable[str]) -> bool:
     """日志是否已明确进入启动失败状态（某些错误打印后进程仍存活，不能只靠 poll()）。"""
     text = "\n".join(str(line) for line in lines).lower()
     return any(marker in text for marker in _STARTUP_FAILURE_MARKERS)
+
+
+def count_luajit_restarts(lines: Iterable[str]) -> int:
+    """这批日志里 LuaJIT 因虚拟机类型不符而重置世界的次数。"""
+    return sum(1 for line in lines if _LUAJIT_RESTART_RE.search(str(line)))
 
 
 def contains_token_conflict(lines: Iterable[str]) -> bool:

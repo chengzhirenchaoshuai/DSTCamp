@@ -39,7 +39,7 @@ from dstools.features.mod.local_version import (
 )
 from dstools.features.mod.manager import load_mod_overrides, save_mod_overrides
 from dstools.features.mod.parser import ModInfo, parse_modinfo, resolve_full_modinfo
-from dstools.features.mod.sandbox_apply import apply_full_sandbox_result
+from dstools.features.mod.sandbox_apply import apply_full_sandbox_result, trusted_defaults
 from dstools.shared.lua_parser import parse_lua_file
 
 logger = logging.getLogger(__name__)
@@ -101,10 +101,11 @@ def build_entry(mod_key: str, folder: Path, previous: dict | None = None) -> dic
     kept = config_memory.sanitize_values(previous_config, info, for_save=False) \
         if isinstance(previous_config, dict) else {}
     config: dict[str, Any] = {}
+    defaults = trusted_defaults(info)  # 沙箱没解析成功时为空：不写静态默认值，游戏自己取 modinfo 默认值
     for opt in info.config_options:
         if opt.is_header or not opt.name:
             continue
-        value = kept[opt.name] if opt.name in kept else saved.get(opt.name, opt.default)
+        value = kept[opt.name] if opt.name in kept else saved.get(opt.name, defaults.get(opt.name))
         if value is not None:  # Lua 里 nil 值等于没有这个键
             config[opt.name] = value
     return {"version": version, "config": config}

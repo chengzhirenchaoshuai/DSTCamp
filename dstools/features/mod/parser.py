@@ -170,6 +170,9 @@ class ModInfo:
     # 本次会话是否已经为这个 mod 尝试过 resolve_full_modinfo()（不管成
     # 败都会设置），避免弹窗反复打开时重复跑一遍较慢的沙箱解析。
     full_sandbox_tried: bool = False
+    # 沙箱是否真的给出了 configuration_options（config_options 已换成求值结果）。只有为真时默认值才可信，
+    # 才能拿来补进配置；静态解析的默认值可能取错分支或是没求值的表达式
+    sandbox_resolved: bool = False
     # client_only_mod = true：只影响客户端，不经 modoverrides.lua 同步。
     # 坑：server_only_mod / all_clients_require_mod 任一为真时要盖过 client_only_mod
     # （引擎不读，是给开服工具的约定，DontStarveLuaJIT2 作者确认）
@@ -1053,7 +1056,8 @@ def _parse_single_option(
     # default 可能是表（如 {["1"] = 8}），要按括号/引号深度提取，不能截到第一个逗号
     default_raw = _extract_field_raw(block, "default")
     if default_raw is not None:
-        opt.default = _coerce_lua_value(default_raw)
+        # 解不出来（如没有定义的变量、算式）就当未知值，不能把表达式原文当字符串写进 modoverrides
+        opt.default = _static_lua_value(default_raw, local_tables, None)
 
     opt.client = bool(re.search(r"\bclient\s*=\s*true\b", block))
     opt.is_set_config = bool(re.search(r"\bis_set_config\s*=\s*true\b", block))
@@ -1178,12 +1182,35 @@ def _extract_choices(block: str, local_tables: dict | None = None) -> list[dict]
             continue
         desc = _unescape_lua_string(desc_raw)
         data_raw = _extract_field_raw(choice_block, "data")
-        data = _coerce_lua_value(data_raw) if data_raw is not None else None
+        data = _static_lua_value(data_raw, local_tables, _UNRESOLVED) if data_raw is not None else None
+        if data is _UNRESOLVED:
+            # 有一项取值解不出来，整份列表都不可信：返回空，让调用方标成动态选项交给沙箱求值
+            return []
         hover_raw = _extract_quoted(choice_block, "hover")
         hover = _unescape_lua_string(hover_raw) if hover_raw is not None else ""
         choices.append({"description": desc, "data": data, "hover": hover})
 
     return choices
+
+
+_UNRESOLVED = object()  # 静态解析求不出值的标记
+
+
+def _static_lua_value(raw: str, local_tables: dict | None, fallback: Any) -> Any:
+    """静态求一个选项字段（default/data）的值：Lua 字面量直接解析；本地表的单层引用
+    （如 ``luavmtype.jit``，表里是 ``jit = 'jit'``）先解引用再解析；其余表达式返回 fallback。
+
+    坑：DontStarveLuaJit2 的 ``default = luavmtype.jit`` 原样当字符串写进 modoverrides 后，
+    Mod 比较虚拟机类型永远不相等，每次加载都 c_reset()，世界无限重载、玩家进不了服。
+    """
+    text = raw.strip()
+    resolved = _resolve_dotted_ref(text, local_tables)
+    if resolved is not None:
+        text = resolved.strip()
+    try:
+        return parse_lua_value(text)
+    except Exception:
+        return fallback
 
 
 def _coerce_lua_value(val_str: str) -> Any:

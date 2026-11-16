@@ -18,6 +18,7 @@ from dstools.features.local_service.dedicated_server import ServerStatus, advanc
 from dstools.features.local_service.server_diagnostics import (
     analyze_mod_loading, contains_runtime_lua_error, contains_server_registration_success,
     contains_startup_failure, contains_token_conflict, diagnose_server_failure,
+    LUAJIT_RELOAD_LOOP_THRESHOLD, count_luajit_restarts,
 )
 from dstools.features.local_service.shard_helpers import (
     STATUS_TEXT_KEYS, find_process_mod_folders, mod_display_names, mod_names,
@@ -396,6 +397,7 @@ class ConsolePane(QWidget):
         self._mod_check_ready_seen = False
         self._diagnostic_reported = False
         self._registration_reported = False
+        self._luajit_restarts = 0  # 本次进程累计的 LuaJIT 重置次数（一轮重载几千行，只能边读边数）
         self._diagnostic_detail = ""
         self._diagnostic_detail_title = ""
         self._detail_dialog: _DiagnosticDetailDialog | None = None
@@ -806,6 +808,7 @@ class ConsolePane(QWidget):
         self._mod_check_ready_seen = False
         self._diagnostic_reported = False
         self._registration_reported = False
+        self._luajit_restarts = 0
         self._diagnostic_label.setVisible(False)
         self._diagnostic_detail = ""
         self._diagnostic_detail_title = ""
@@ -848,6 +851,9 @@ class ConsolePane(QWidget):
                                   and not self._diagnostic_reported and contains_runtime_lua_error(lines))
         startup_failed_now = (not expected_shutdown and not self.proc.world_ready
                                and not self._diagnostic_reported and contains_startup_failure(lines))
+        self._luajit_restarts += count_luajit_restarts(lines)
+        reload_loop_now = (not expected_shutdown and not self._diagnostic_reported
+                           and self._luajit_restarts >= LUAJIT_RELOAD_LOOP_THRESHOLD)
         exit_code = self.proc.sync_expected_exit()
         status = self.proc.status
         crashed_now = False
@@ -855,8 +861,8 @@ class ConsolePane(QWidget):
             self.proc.status = ServerStatus.CRASHED
             status = ServerStatus.CRASHED
             crashed_now = True
-        first_report = (crashed_now or startup_failed_now or token_conflict_now or runtime_lua_error_now) \
-            and not self._diagnostic_reported
+        first_report = (crashed_now or startup_failed_now or token_conflict_now or runtime_lua_error_now
+                        or reload_loop_now) and not self._diagnostic_reported
         # 令牌冲突不会让进程退出，之后真崩溃时横幅要改成崩溃原因；失败回调（令牌等待、自动重启）仍只触发一次
         crash_after_conflict = crashed_now and self._diagnostic_category == "token_conflict"
         if first_report or crash_after_conflict:
@@ -867,7 +873,8 @@ class ConsolePane(QWidget):
                 log_lines=self._diagnostic_log_lines(),
                 enabled_mods=self.proc.mods_enabled, loaded_mods=self.proc.mods_loaded,
                 ignore_token_conflict=crash_after_conflict,
-                luajit_injected=getattr(self.proc, "luajit_injected", False))
+                luajit_injected=getattr(self.proc, "luajit_injected", False),
+                luajit_restarts=self._luajit_restarts)
             if report is not None:
                 if first_report and self._on_failure is not None:
                     self._on_failure(self.proc, report)
