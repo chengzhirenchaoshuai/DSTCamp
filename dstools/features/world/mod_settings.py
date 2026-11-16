@@ -1149,8 +1149,8 @@ def location_icon_key(key: str, location: str) -> str | None:
 # Mod 更新后用 reference/dev_scripts/audit_world_settings.py 核对差异，改完登记表再更新这里。
 MOD_VERIFIED_VERSIONS: dict[str, str] = {
     _CHERRY_FOREST_ID: "1.6.107",
-    _IA_CORE_ID: "1.0.80",
-    _IA_SHIPWRECKED_ID: "1.0.63",
+    _IA_CORE_ID: "1.0.81",
+    _IA_SHIPWRECKED_ID: "1.0.64",
     _PORKLAND_ID: "1.0.50",
     _BWB_ID: "0.4.16.6",
     _TA_ID: "26.09.19",
