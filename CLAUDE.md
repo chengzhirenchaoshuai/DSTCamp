@@ -95,7 +95,7 @@ python scripts/build_exe.py
 - LuaJIT 补丁依赖的 VC++ 2015-2022 x64 运行库版本会随微软更新而变，不进 `tool_store`：安装补丁前按配套 DLL 的链接器版本检测，缺失时从微软官网下载，校验内嵌的微软 Authenticode 签名后安装（`features/local_service/luajit_runtime.py`）。
 - 内置 SteamCMD（`tools/steamcmd/`，原样附 Valve 许可协议，不得修改程序）首次使用时释放到缓存目录；它不能在非 ASCII 路径下运行，联网自更新由它自己完成。
 - WeGame 不支持一键启动专服，不实现绕过方案。
-- 同类 Mod 名单 `features/mod/similar_mods.py` 由 `scripts/mod_conflict_tool.py` 整份生成（search 搜工坊出审核网页 → apply 写回），不手改；它是唯一来源，`apply`/`sync --modmain` 只改写常用mod集合 `modmain.lua` 里 `cms_key` 对应的 `safeImport` 冲突列表。只收录人工审核过的工坊 ID。
+- 同类 Mod 名单 `features/mod/similar_mods.py` 由 `scripts/mod_conflict_tool.py`（双击同名 `.bat`，在本地网页里搜工坊、审核、保存）整份生成，不手改；它是唯一来源，保存或 `sync --modmain` 时只改写常用mod集合 `modmain.lua` 里 `cms_key` 对应的 `safeImport` 冲突列表。只收录人工审核过的工坊 ID。
 - 动态 Mod 名称、版本、图标和配置以受限 Lua 5.1 沙箱结果为准；缓存校验包含内容哈希、来源路径、`folder_name` 和协议版本。
 - V1 Legacy 包必须校验 ZIP/CRC/路径与链接，临时解压后原子替换并支持回滚；保留客户端 `mods` junction，V2 流程独立。
 - 新令牌在 Klei 端释放前不能重复注册：崩溃/冲突后的令牌写入等待记录（`retry_at`/`failures`），选令牌只排除仍在等待期内的。
