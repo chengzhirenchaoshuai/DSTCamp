@@ -26,6 +26,8 @@ GROUPS = [
             '2373375099': '全图定位（幽冥汉化版）',
             '2998725086': '😶\u200d🌫️全图定位 Global Positions',
             '2528036914': 'Global Positions - Sinicized Settings',
+            '2536583497': '8全图定位',
+            '2902364746': 'Global Positions -Remapped',
         },
         'excluded': {
         },
