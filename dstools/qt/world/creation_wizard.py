@@ -34,7 +34,7 @@ from dstools.features.mod.parser import (
     split_installed_mod_counts,
 )
 from dstools.features.save_browser.cluster_copy import suggest_new_cluster_name
-from dstools.features.world import creation, defaults, user_presets
+from dstools.features.world import builtin_presets, creation, defaults, user_presets
 from dstools.features.world.location_profiles import (
     CAVES_SHARD, DEPENDENCY_MOD_NAMES, MASTER_SHARD, MOD_HARD_DEPENDENCIES, dependency_label,
     dependent_mod_ids, find_mod_key, get_location_definition, resolve_world_location_profile,
@@ -812,7 +812,11 @@ class CreationWizardDialog(QDialog):
             active_mod_ids=frozenset(info.mod_id for info in self._mod_settings.values()))
         changed = [key for key, value in values.items() if plan.overrides.get(key) != value]
         plan.overrides.update(values)
-        if changed:
+        # 预设名随之改成这个自定义预设，与游戏选预设后保存的一致（见 user_presets.preset_fields）
+        fields = user_presets.preset_fields(dialog.selected)
+        renamed = builtin_presets.fields_differ(plan.level_data, fields)
+        builtin_presets.apply_preset_fields(plan.level_data, fields)
+        if changed or renamed:
             self._dirty = True
         self._render_world()
         message = t("world.preset_applied_creation", name=dialog.selected.name, count=len(changed))
