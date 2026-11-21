@@ -177,18 +177,14 @@ class ApplyPresetDialog(dialogs.Dialog):
         self._list.setMinimumHeight(220)
         self.body.addWidget(self._list, 1)
         self._refill()
-        # 底部按钮行："删除"在左、"应用"在右；不放"取消"，关闭窗口即可取消。
-        row = QHBoxLayout()
+        # 底部按钮行："返回""删除"在左、"应用"在右（与世界设置的套用预设一致）
         delete_btn = dialogs.style_button(QPushButton(t("preset.delete_btn")), "danger")
+        delete_btn.setAutoDefault(False)
         delete_btn.clicked.connect(self._delete)
         apply_btn = QPushButton(t("preset.apply_btn"))
         apply_btn.clicked.connect(self.accept_if_valid)
         apply_btn.setDefault(True)
-        row.addWidget(delete_btn)
-        row.addStretch()
-        row.addWidget(apply_btn)
-        self.body.addSpacing(8)
-        self.body.addLayout(row)
+        self.add_footer([self.back_button(), delete_btn], [apply_btn])
 
     def _refill(self) -> None:
         self._list.clear()

@@ -505,6 +505,13 @@ class Dialog(QDialog):
         self.add_footer([cancel], [confirm])
         return confirm
 
+    def back_button(self) -> QPushButton:
+        """「返回」按钮：浅色描边，放在底部左侧最前（与 Mod 配置窗口一致），点击等同关闭窗口。"""
+        back = style_button(QPushButton(t("dlg.back_btn")), "secondary")
+        back.setAutoDefault(False)
+        back.clicked.connect(self.reject)
+        return back
+
 
     def heading_label(self, text: str) -> QLabel:
         """对话框内的小标题：统一 FONT_SIZE_MD 加粗。"""

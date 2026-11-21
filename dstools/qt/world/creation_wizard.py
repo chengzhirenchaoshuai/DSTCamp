@@ -198,13 +198,14 @@ class _LoadPresetDialog(dialogs.Dialog):
         if self._presets:
             self._list.setCurrentRow(0)
         self.body.addWidget(self._list, 1)
-        row = QHBoxLayout()
+        # 与 Mod 页载入配置集一致：返回、删除靠左，载入靠右，同一行
         delete_btn = dialogs.style_button(QPushButton(t("preset.delete_btn")), "danger")
+        delete_btn.setAutoDefault(False)
         delete_btn.clicked.connect(self._delete)
-        row.addWidget(delete_btn)
-        row.addStretch()
-        self.body.addLayout(row)
-        self.add_buttons()
+        apply_btn = QPushButton(t("preset.apply_btn"))
+        apply_btn.clicked.connect(self.accept_if_valid)
+        apply_btn.setDefault(True)
+        self.add_footer([self.back_button(), delete_btn], [apply_btn])
 
     def _delete(self) -> None:
         row = self._list.currentRow()

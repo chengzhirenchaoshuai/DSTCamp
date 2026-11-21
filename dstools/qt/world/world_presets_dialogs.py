@@ -74,14 +74,14 @@ class ApplyWorldPresetDialog(dialogs.Dialog):
         self.body.addWidget(self._empty)
         self._errors = self.error_label()
         self.body.addWidget(self._errors)
-        # 底部只留一行：删除靠左、套用靠右，不要取消按钮（关窗口即取消）
+        # 底部只留一行：返回、删除靠左，套用靠右（与 Mod 页载入配置集一致）
         self._delete_btn = dialogs.style_button(QPushButton(t("world.preset_delete_btn")), "danger")
         self._delete_btn.setAutoDefault(False)
         self._delete_btn.clicked.connect(self._delete)
         self._confirm = QPushButton(t("world.preset_apply_confirm"))
         self._confirm.setDefault(True)
         self._confirm.clicked.connect(self.accept_if_valid)
-        self.add_footer([self._delete_btn], [self._confirm])
+        self.add_footer([self.back_button(), self._delete_btn], [self._confirm])
         self._reload()
 
     def _reload(self) -> None:
