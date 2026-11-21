@@ -7,11 +7,18 @@ from dstools.i18n import get_lang
 # (section, key) -> {"zh": (显示名, 说明), "en": (label, description)}
 CLUSTER_FIELD_INFO: dict[tuple[str, str], dict[str, tuple[str, str]]] = {
     ("GAMEPLAY", "game_mode"): {
-        "zh": ("游戏模式", "决定死亡后的重生方式：survival(生存，变成鬼魂后可在祭坛复活)、"
-               "endless(无尽，扣除部分血量后原地重生)、wilderness(荒野，死亡即永久删除角色，无法复活)。"),
-        "en": ("Game Mode", "Determines respawn behavior after death: survival (become a ghost, "
-               "revivable at an altar), endless (respawn on the spot with a health penalty), "
-               "wilderness (permadeath, no revival)."),
+        # 游戏源码 shardindex.lua 的 SetServerShardData 与 savefileupgrades.lua 的 ApplyPlaystyleOverridesForGameMode
+        "zh": ("游戏模式", "旧版兼容字段，建议保持 survival(生存)。现在的游戏风格（生存、轻松、无尽、荒野等）由主世界的"
+               "世界设置决定，请在「世界设置」页用「内置选项预设」切换。专服每次启动时，endless(无尽)会强制"
+               "「在绚丽之门复活」「基础资源」为 always，「鬼魂理智值惩罚」「死亡重置倒计时」为 none；"
+               "wilderness(荒野)会强制「出生模式」为 scatter，「基础资源」为 always，「冒险家死亡」「鬼魂理智值惩罚」"
+               "「死亡重置倒计时」为 none，覆盖世界设置里的这几项。"),
+        "en": ("Game Mode", "Legacy compatibility field; keep it at survival. The playstyle (Survival, Relaxed, "
+               "Endless, Wilderness, ...) now comes from the main world's settings; switch it with \"Built-in "
+               "Presets\" on the World Settings page. On every dedicated server start, endless forces "
+               "\"Resurrection at Portal\" and \"Basic Resources\" to always and \"Ghost Sanity Drain\" and \"Reset "
+               "Time\" to none; wilderness forces \"Spawn Mode\" to scatter, \"Basic Resources\" to always, and "
+               "\"Player Death\", \"Ghost Sanity Drain\" and \"Reset Time\" to none, overriding those world settings."),
     },
     ("GAMEPLAY", "max_players"): {
         "zh": ("最大玩家数", "服务器允许同时在线的玩家数量上限，范围通常为 1-64。"),
