@@ -180,9 +180,11 @@ def test_ini_parser():
             "game_mode = survival\n"
             "max_players = 6\n\n"
             "[NETWORK]\n"
-            "cluster_name = 100%rdx的世界\n\n"
+            "cluster_name = 100%rdx的世界\n"
+            "cluster_description = 1e3\n\n"
             "[SHARD]\n"
-            "shard_enabled = true\n",
+            "shard_enabled = true\n"
+            "cluster_key = 0123\n",
             encoding="utf-8",
         )
         config = parse_cluster_ini(cluster_ini)
@@ -190,6 +192,9 @@ def test_ini_parser():
         assert config.gameplay["max_players"] == 6
         assert config.network["cluster_name"] == "100%rdx的世界"
         assert config.shard["shard_enabled"] is True
+        # 自由文本字段按原文保留，不能转成数字后写回变样
+        assert config.network["cluster_description"] == "1e3"
+        assert config.shard["cluster_key"] == "0123"
 
         roundtrip = root / "cluster-roundtrip.ini"
         write_cluster_ini(config, roundtrip)

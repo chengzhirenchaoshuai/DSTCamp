@@ -229,9 +229,16 @@ ALWAYS_READONLY_FIELDS: set[tuple[str, str]] = {
     ("NETWORK", "cluster_cloud_id"),
 }
 
-# 这些字段始终按字符串处理，不做类型推断：密码 "0" 转成 int 后会被 `if password:` 误判为没有密码
+# 这些自由文本字段始终按字符串处理，不做类型推断：密码 "0" 转成 int 后会被 `if password:` 误判为没有密码；
+# 房间名 "007"、"1e3"、"Yes" 等转类型后再保存会被改写成 "7"、"1000.0"、"true"，cluster_key 被改会让多个世界连不上
 NO_TYPE_COERCE_FIELDS: set[tuple[str, str]] = {
     ("NETWORK", "cluster_password"),
+    ("NETWORK", "cluster_name"),
+    ("NETWORK", "cluster_description"),
+    ("NETWORK", "cluster_language"),
+    ("NETWORK", "cluster_cloud_id"),
+    ("SHARD", "cluster_key"),
+    ("SHARD", "name"),
 }
 
 
