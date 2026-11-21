@@ -58,5 +58,25 @@ def test_similar_list_matches_workshop_keys_and_absorbs_file_clash():
         assert not report.file_clashes and report.group_count == 1
 
 
+def test_clash_between_mods_linked_by_dependencies_is_intentional():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        core = _mod(root, "100", {"a.lua": "core", "b.lua": "core"})
+        dlc = _mod(root, "200", {"a.lua": "dlc"})
+        pack = _mod(root, "300", {"b.lua": "pack"})
+        other = _mod(root, "my-mod", {"a.lua": "other"})
+        (dlc / "modinfo.lua").write_text(
+            'mod_dependencies = {}\nif gitlab then mod_dependencies = {{ ["ia-core"] = true }}\n'
+            'else mod_dependencies = {{ workshop = "workshop-100" }} end\n', encoding="utf-8")
+        # 只依赖扩展包，经传递与本体连在一起；注释里的依赖不算
+        (pack / "modinfo.lua").write_text(
+            '-- mod_dependencies = {{ workshop = "workshop-999" }}\n'
+            'mod_dependencies = {\n  { workshop = "workshop-200" },\n}\n', encoding="utf-8")
+        report = find_duplicates({"workshop-100": ("Core", core), "workshop-200": ("DLC", dlc),
+                                  "workshop-300": ("Pack", pack), "my-mod": ("Mine", other)})
+        assert [(c.mod_ids, c.paths) for c in report.file_clashes] == [
+            (("my-mod", "workshop-100", "workshop-200"), ("a.lua",))]
+
+
 if __name__ == "__main__":
     run(globals())

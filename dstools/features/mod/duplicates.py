@@ -6,17 +6,21 @@
 2. 同路径脚本：两个 Mod 都在 ``scripts/`` 下带了相对路径相同、内容不同的 ``.lua``。游戏把每个启用 Mod
    的 ``scripts`` 目录依次加到 ``package.path`` 前面（scripts/mods.lua），``require`` 按模块名缓存，
    同名模块只会有一份生效，另一份等于被覆盖；内容相同的只是一起带的公共库，不提示。
+   在 modinfo 的 ``mod_dependencies`` 里直接或间接依赖对方的（扩展包依赖本体，如岛屿冒险海难依赖核心），
+   覆盖是作者有意为之，也不提示。
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from dstools.features.mod import similar_mods
+from dstools.features.mod.parser import _strip_lua_comments
 
 
 # 同类名单的数据在 similar_mods.py（由 scripts/mod_conflict_tool.py 维护）：(类别键, 工坊 ID)
@@ -90,6 +94,59 @@ def _file_digest(path: Path) -> str | None:
         return None
 
 
+_DEPENDENCIES_START = re.compile(r"(?<![\w.])mod_dependencies\s*=\s*\{")
+# 依赖项的两种写法：{ workshop = "workshop-123" } 与按目录名/Mod 名的 { ["名称"] = true }
+_DEPENDENCY_ITEM = re.compile(r"""workshop\s*=\s*["']([^"']+)["']|\[\s*["']([^"']+)["']\s*\]\s*=\s*true\b""")
+
+
+def _declared_dependencies(mod_folder: Path) -> set[str]:
+    """modinfo.lua 里各处 mod_dependencies 表声明的依赖（条件分支里的几份取并集），小写。
+
+    只做文本匹配，不执行 Lua：用于消除误报，漏认只会多提示一条，不会影响加载。"""
+    try:
+        text = (mod_folder / "modinfo.lua").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+    text = _strip_lua_comments(text)
+    result: set[str] = set()
+    for match in _DEPENDENCIES_START.finditer(text):
+        depth, end = 1, match.end()
+        while end < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[end], 0)
+            end += 1
+        for item in _DEPENDENCY_ITEM.finditer(text, match.end(), end):
+            result.add((item.group(1) or item.group(2)).strip().casefold())
+    return result
+
+
+def _dependency_components(mods: dict[str, tuple[str, Path | None]]) -> dict[str, str]:
+    """按 mod_dependencies 把已启用 Mod 连成组（不分方向、可传递），返回 {Mod 键: 组代表}。"""
+    parent = {mod_id: mod_id for mod_id in mods}
+
+    def find(mod_id: str) -> str:
+        while parent[mod_id] != mod_id:
+            parent[mod_id] = parent[parent[mod_id]]
+            mod_id = parent[mod_id]
+        return mod_id
+
+    # 依赖可写工坊键、目录名或 Mod 名，三者都映射回 Mod 键
+    alias: dict[str, str] = {}
+    for mod_id, (name, folder) in mods.items():
+        alias[str(mod_id).casefold()] = mod_id
+        if folder is not None:
+            alias.setdefault(folder.name.casefold(), mod_id)
+        if name:
+            alias.setdefault(name.strip().casefold(), mod_id)
+    for mod_id, (_name, folder) in mods.items():
+        if folder is None:
+            continue
+        for dep in _declared_dependencies(folder):
+            target = alias.get(dep)
+            if target is not None:
+                parent[find(mod_id)] = find(target)
+    return {mod_id: find(mod_id) for mod_id in mods}
+
+
 def find_duplicates(mods: dict[str, tuple[str, Path | None]]) -> DuplicateReport:
     """mods 为 {Mod 键: (modinfo 名称, Mod 目录)}，只传同时启用的 Mod；目录缺失的只参与同名比较。"""
     report = DuplicateReport()
@@ -120,9 +177,13 @@ def find_duplicates(mods: dict[str, tuple[str, Path | None]]) -> DuplicateReport
         for rel, full in _script_files(folder).items():
             owners[rel][mod_id] = full
 
+    component_of = _dependency_components(mods)
     clash_paths: dict[tuple[str, ...], list[str]] = defaultdict(list)
     for rel, files in owners.items():
         if len(files) < 2:
+            continue
+        # 全部由依赖关系连在一起的（扩展包覆盖本体的文件），是有意覆盖
+        if len({component_of[mod_id] for mod_id in files}) < 2:
             continue
         digests = {mod_id: _file_digest(path) for mod_id, path in files.items()}
         if len(set(digests.values())) < 2:
