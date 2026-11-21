@@ -78,7 +78,8 @@ def _resolve_mod_config(page, workshop_id: str, mod_info) -> bool:
                                                   translation["configuration_options"])
 
     # 配置文本里有游戏手柄按键字符时，先从游戏字体提取字形（首次要跑 ktech，之后读缓存）
-    if any(controller_glyphs.has_glyphs(text) for text in _option_texts(mod_info.config_options)):
+    texts = _option_texts(mod_info.config_options) + [str(mod_info.description or "")]
+    if any(controller_glyphs.has_glyphs(text) for text in texts):
         controller_glyphs.prepare()
     return changed
 
@@ -225,6 +226,13 @@ class ModConfigDialog(QDialog):
         area.setWidget(body)
         root.addWidget(area, 1)
 
+        # Mod 简介（游戏 Mod 页右侧那段说明）放在列表最前，默认收起；搜索时隐藏
+        self._desc_card: QWidget | None = None
+        description = str(mod_info.description or "").strip()
+        if description:
+            self._desc_card = self._render_mod_description(description)
+            self._body_layout.addWidget(self._desc_card)
+
         real_options = 0
         shown = mod_info.config_options if default_mode or show_all_options \
             else visible_config_options(mod_info.config_options)
@@ -365,19 +373,53 @@ class ModConfigDialog(QDialog):
                 break
         combo.setCurrentIndex(initial)
 
-        # 未展开时鼠标悬停到下拉框本体，显示当前选中项的注释。
-        def update_tooltip(_index=None) -> None:
-            idx = combo.currentIndex()
-            combo.setToolTip(self._tooltip_text(hovers[idx]) if 0 <= idx < len(hovers) else "")
-
-        combo.currentIndexChanged.connect(update_tooltip)
-        update_tooltip()
         self.vars[opt.name] = combo
         top.addWidget(combo)
         layout.addLayout(top)
         if opt.hover:
             layout.addWidget(self._desc_label(opt.hover))
+
+        # 当前选中值的说明：与游戏配置界面一致，显示在配置项说明下方并随选项切换
+        # （此前只能悬停下拉框才看得到，有的 Mod 把按键用法全写在这里）。
+        # 与配置项说明或选项名重复时不显示，免得同一句话出现两遍。
+        value_font = theme.font("FONT_SIZE_XS")
+        value_label = QLabel()
+        value_label.setFont(value_font)
+        value_label.setWordWrap(True)
+        value_label.setStyleSheet(f"color: {theme.hex('ACCENT')};")
+        layout.addWidget(value_label)
+        option_hover = str(opt.hover or "").strip()
+
+        def update_value_desc(_index=None) -> None:
+            idx = combo.currentIndex()
+            text = hovers[idx].strip() if 0 <= idx < len(hovers) else ""
+            if text in (option_hover, items[idx][0] if 0 <= idx < len(items) else ""):
+                text = ""
+            self._set_rich_text(value_label, text, value_font)
+            value_label.setVisible(bool(text))
+
+        combo.currentIndexChanged.connect(update_value_desc)
+        update_value_desc()
         return row
+
+    def _render_mod_description(self, text: str) -> QWidget:
+        """可折叠的 Mod 简介卡片，默认收起。"""
+        card, layout = self._option_card()
+        toggle = dialogs.style_button(QPushButton(t("mod.description_show")), "secondary")
+        body = self._rich_label(text, theme.font("FONT_SIZE_SM"))
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        body.setVisible(False)
+
+        def flip() -> None:
+            shown = not body.isVisible()
+            body.setVisible(shown)
+            toggle.setText(t("mod.description_hide") if shown else t("mod.description_show"))
+
+        toggle.clicked.connect(flip)
+        layout.addWidget(toggle, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(body)
+        return card
 
     def _desc_label(self, text: str) -> QLabel:
         label = self._rich_label(text, theme.font("FONT_SIZE_XS"))
@@ -390,12 +432,16 @@ class ModConfigDialog(QDialog):
         """含手柄按键字符时用富文本嵌入按键图片，否则与原来一样显示纯文本。"""
         label = QLabel()
         label.setFont(font)
+        self._set_rich_text(label, text, font)
+        return label
+
+    def _set_rich_text(self, label: QLabel, text: str, font: QFont) -> None:
         if controller_glyphs.has_glyphs(text):
             label.setTextFormat(Qt.TextFormat.RichText)
             label.setText(self._glyph_html(text, font))
         else:
+            label.setTextFormat(Qt.TextFormat.AutoText)
             label.setText(text)
-        return label
 
     def _tooltip_text(self, text: str) -> str:
         text = (text or "").strip()
@@ -438,6 +484,8 @@ class ModConfigDialog(QDialog):
         """按搜索框内容过滤配置列表：匹配标题或注释的选项显示、其余隐藏；
         分组标题只要下面还有匹配项就显示。空搜索恢复全部。"""
         needle = text.strip().casefold()
+        if self._desc_card is not None:
+            self._desc_card.setVisible(not needle)
         items = self._search_items
         n = len(items)
         # 第一遍：计算每个选项是否匹配并设置其可见性。
