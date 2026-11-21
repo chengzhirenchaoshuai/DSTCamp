@@ -1127,6 +1127,12 @@ STRINGS = {
         "world.preset_applied": "已套用预设「{name}」，改了 {count} 项。确认无误后点「保存世界设置」写入。",
         "world.preset_applied_skipped": "\n\n有 {count} 项这个世界不支持或无法在这里修改，已跳过：{keys}",
         "world.preset_read_errors": "以下预设文件读取失败，已跳过：\n{errors}",
+        "world.builtin_preset_btn": "内置选项预设",
+        "world.builtin_preset_tip": "套用游戏自带的选项预设（生存、轻松、无尽、荒野等），服务器列表显示的游戏风格随主世界的设置改变",
+        "world.builtin_preset_hint": "选择要套用的{location}选项预设。和游戏里选「选项预设」一样：这个世界的原版世界设置先恢复默认，"
+                                     "再改成预设的取值；世界生成和 Mod 设置不变，不需要重新生成世界。",
+        "world.builtin_preset_none": "{location}没有游戏自带的选项预设。",
+        "world.builtin_preset_applied": "已套用选项预设「{name}」，改了 {count} 项。确认无误后点「保存世界设置」写入，重启服务器后生效。",
         "world.generation_reset_banner": (
             "世界生成设置只在生成新世界时生效。修改保存后，需要在「本地服务器」页的主世界控制台点击"
             "「重置世界」才会按新设置重新生成，重置会清空当前地图、建筑和物品。"
@@ -3101,6 +3107,15 @@ STRINGS = {
         "world.preset_applied": "Applied preset \"{name}\" ({count} changes). Review, then click \"Save World Settings\" to write it.",
         "world.preset_applied_skipped": "\n\n{count} settings are not supported by this world or can't be changed here and were skipped: {keys}",
         "world.preset_read_errors": "These preset files could not be read and were skipped:\n{errors}",
+        "world.builtin_preset_btn": "Built-in Presets",
+        "world.builtin_preset_tip": "Apply one of the game's built-in settings presets (Survival, Relaxed, Endless, Wilderness, ...); "
+                                    "the playstyle shown in the server list follows the main world's settings",
+        "world.builtin_preset_hint": "Choose a {location} settings preset. Same as picking a settings preset in game: this world's "
+                                     "vanilla settings are reset to default and then set to the preset's values; world generation "
+                                     "and mod settings are unchanged, so no regeneration is needed.",
+        "world.builtin_preset_none": "The game has no built-in settings presets for {location}.",
+        "world.builtin_preset_applied": "Applied settings preset \"{name}\" ({count} changes). Review, then click \"Save World "
+                                        "Settings\" to write it; it takes effect after the server restarts.",
         "world.generation_reset_banner": (
             "World generation settings only apply when a new world is generated. After saving, click "
             "\"Reset World\" in the Master console on the Local Server page to regenerate with the new "

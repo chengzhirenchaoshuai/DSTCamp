@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from dstools.features.local_service.backup_manager import create_backup
 from dstools.features.local_service.server_runtime import current_runtime
 from dstools.features.local_service.steam_backend import SteamBackend, get_backend
-from dstools.features.world import page_data, shard_management, user_presets
+from dstools.features.world import builtin_presets, page_data, shard_management, user_presets
 from dstools.features.world.location_profiles import FOREST_LOCATION, get_location_definition
 from dstools.features.mod.shardindex import (
     LOCAL_SAVE_HOSTED, LOCAL_SAVE_OPEN, LOCAL_SAVE_RUNNING, ShardIndexError,
@@ -30,7 +30,9 @@ from dstools.qt.threads import run_async
 from dstools.qt.widgets import Banner, Card, PillTabBar, ShardCombo
 from dstools.qt.world.world_manage import ManageWorldsDialog
 from dstools.qt.world.world_panel import WorldPanel
-from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
+from dstools.qt.world.world_presets_dialogs import (
+    ApplyWorldPresetDialog, BuiltinSettingsPresetDialog, SaveWorldPresetDialog,
+)
 
 FLASH_MS = 200  # 被点的箭头短暂画成"按下"效果，模仿游戏 UI 的点击反馈
 
@@ -163,6 +165,9 @@ class WorldSettingsPage(Page):
         self._save_preset_button = QPushButton()
         self._save_preset_button.setEnabled(False)
         self._save_preset_button.clicked.connect(self._on_save_preset)
+        self._builtin_preset_button = QPushButton()
+        self._builtin_preset_button.setEnabled(False)
+        self._builtin_preset_button.clicked.connect(self._on_apply_builtin_preset)
         self._save_button = QPushButton()
         self._save_button.setEnabled(False)
         self._save_button.clicked.connect(self._on_save)
@@ -174,6 +179,7 @@ class WorldSettingsPage(Page):
         left_group = QHBoxLayout()
         left_group.addWidget(self._save_preset_button)
         left_group.addWidget(self._apply_preset_button)
+        left_group.addWidget(self._builtin_preset_button)
         left_group.addStretch()
         button_row.addLayout(left_group, 1)
         button_row.addWidget(self._discard_button)
@@ -212,6 +218,8 @@ class WorldSettingsPage(Page):
         self._apply_preset_button.setToolTip(t("world.preset_apply_tip"))
         self._save_preset_button.setText(t("world.preset_save_btn"))
         self._save_preset_button.setToolTip(t("world.preset_save_tip"))
+        self._builtin_preset_button.setText(t("world.builtin_preset_btn"))
+        self._builtin_preset_button.setToolTip(t("world.builtin_preset_tip"))
         self._update_tab_labels()
         self._update_banner()
 
@@ -377,6 +385,7 @@ class WorldSettingsPage(Page):
         self._set_dirty(False)
         self._apply_preset_button.setEnabled(False)
         self._save_preset_button.setEnabled(False)
+        self._builtin_preset_button.setEnabled(False)
         self._rules.clear()
         self._generation_panel.clear()
         self._update_banner()
@@ -406,6 +415,8 @@ class WorldSettingsPage(Page):
                                                 data.location, data.mod_settings, data.mod_icons)
                 self._save_preset_button.setEnabled(True)
                 self._apply_preset_button.setEnabled(data.can_save)
+                self._builtin_preset_button.setEnabled(
+                    data.can_save and bool(builtin_presets.presets_for_location(data.location)))
                 if data.unverified_mods:
                     mods = "、".join(t("world.mod_unverified_item", name=name, installed=installed, verified=verified)
                                     for name, installed, verified in data.unverified_mods)
@@ -571,6 +582,28 @@ class WorldSettingsPage(Page):
             if any(key in preset.worldgen for key in changed):
                 self._generation_changed = True
         message = t("world.preset_applied", name=preset.name, count=len(changed))
+        if skipped:
+            message += t("world.preset_applied_skipped", count=len(skipped), keys="、".join(skipped))
+        dialogs.show_info(self.window(), title, message)
+
+    def _on_apply_builtin_preset(self) -> None:
+        data = self._data
+        title = t("world.builtin_preset_btn")
+        if data is None or not data.can_save:
+            return
+        dialog = BuiltinSettingsPresetDialog(self.window(), data.location, data.location_label)
+        if dialog.exec() != dialogs.Dialog.DialogCode.Accepted or dialog.selected is None or data is not self._data:
+            return
+        preset = dialog.selected
+        changed, skipped = page_data.apply_builtin_settings_preset(data, preset)
+        self._rules.set_data(data.rule_categories, data.rules_by_category, data.location,
+                             data.mod_settings, data.mod_icons)
+        self._generation_panel.set_data(data.generation_categories, data.generation_by_category,
+                                        data.location, data.mod_settings, data.mod_icons)
+        self._update_tab_labels()
+        if changed:
+            self._set_dirty(True)
+        message = t("world.builtin_preset_applied", name=preset.name, count=len(changed))
         if skipped:
             message += t("world.preset_applied_skipped", count=len(skipped), keys="、".join(skipped))
         dialogs.show_info(self.window(), title, message)

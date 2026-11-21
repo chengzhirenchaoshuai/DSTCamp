@@ -245,6 +245,26 @@ def apply_preset_values(data: WorldPageData, overrides: dict) -> tuple[list[str]
     return changed, sorted(skipped)
 
 
+def apply_builtin_settings_preset(data: WorldPageData, preset) -> tuple[list[str], list[str]]:
+    """套用游戏自带的选项预设（builtin_presets.BuiltinSettingsPreset），与游戏一致：这个世界显示的原版
+    世界设置先回到默认值，再套预设取值；世界生成项和 Mod 设置项不动。返回值同 apply_preset_values，
+    跳过的只报预设本身写了的项，回默认值时这个世界不显示的项不提示。"""
+    from dstools.features.world.builtin_presets import vanilla_setting_default
+    from dstools.features.world.user_presets import applicable_overrides
+
+    resets = {}
+    for override in data.preset.overrides:
+        if override.key in data.mod_settings:
+            continue
+        _, is_rule, _ = get_setting_info(override.key, data.location, data.mod_settings, data.is_master_world)
+        if is_rule:
+            resets[override.key] = vanilla_setting_default(override.key)
+    resets, _ = applicable_overrides(resets, data.location, data.mod_settings,
+                                     is_master_world=data.is_master_world, active_mod_ids=data.active_mod_ids)
+    changed, skipped = apply_preset_values(data, {**resets, **preset.overrides})
+    return changed, [key for key in skipped if key in preset.overrides]
+
+
 def rebuild_view(data: WorldPageData) -> None:
     """按当前取值重新生成分类列表（显示哪些项取决于取值时调用，如海难的火山岛开关）。"""
     view_model = build_world_view_model(

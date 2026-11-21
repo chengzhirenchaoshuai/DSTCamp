@@ -1,4 +1,5 @@
-"""世界设置页的"保存为预设"与"套用预设"弹窗：读写游戏自己的自定义世界预设（features/world/user_presets.py）。"""
+"""世界设置页的"保存为预设"与"套用预设"弹窗：读写游戏自己的自定义世界预设（features/world/user_presets.py）；
+以及套用游戏自带选项预设的弹窗（features/world/builtin_presets.py）。"""
 
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QLineEdit, QListWidget, QListWidgetItem, QPushButton
 
-from dstools.features.world import user_presets
+from dstools.features.world import builtin_presets, user_presets
 from dstools.i18n import t
 from dstools.qt import dialogs
 from dstools.qt.theme import theme
@@ -124,4 +125,44 @@ class ApplyWorldPresetDialog(dialogs.Dialog):
     def accept_if_valid(self) -> None:
         self.selected = self._current()
         if self.selected is not None:
+            self.accept()
+
+
+class BuiltinSettingsPresetDialog(dialogs.Dialog):
+    """列出当前世界类型的游戏自带选项预设，下方显示选中项的说明；确认后 selected 为选中的预设。"""
+
+    def __init__(self, parent, location: str, location_label: str):
+        super().__init__(parent, t("world.builtin_preset_btn"), "md", confirm_text=t("world.preset_apply_confirm"))
+        self.selected: builtin_presets.BuiltinSettingsPreset | None = None
+        self._presets = builtin_presets.presets_for_location(location)
+        self.body.addWidget(self.text_label(t("world.builtin_preset_hint", location=location_label)))
+        self._list = QListWidget()
+        self._list.setMinimumHeight(220)
+        self.body.addWidget(self._list, 1)
+        self._desc = self.text_label("", muted=True)
+        self.body.addWidget(self._desc)
+        if not self._presets:
+            self._desc.setText(t("world.builtin_preset_none", location=location_label))
+        # 行高显式给出，原因见 ApplyWorldPresetDialog._reload
+        metrics = QFontMetrics(self._list.font())
+        row_height = metrics.height() + 2 * _ITEM_PAD_Y + _ITEM_EXTRA
+        for preset in self._presets:
+            item = QListWidgetItem(preset.name)
+            item.setSizeHint(QSize(metrics.horizontalAdvance(preset.name) + 2 * _ITEM_PAD_X + _ITEM_EXTRA, row_height))
+            self._list.addItem(item)
+        self._list.setVisible(bool(self._presets))
+        self._list.currentRowChanged.connect(self._show_description)
+        self._list.itemDoubleClicked.connect(lambda _item: self.accept_if_valid())
+        self.add_buttons()
+        if self._presets:
+            self._list.setCurrentRow(0)
+
+    def _show_description(self, row: int) -> None:
+        if 0 <= row < len(self._presets):
+            self._desc.setText(self._presets[row].description)
+
+    def accept_if_valid(self) -> None:
+        row = self._list.currentRow()
+        if 0 <= row < len(self._presets):
+            self.selected = self._presets[row]
             self.accept()

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dstools.features.world import page_data, user_presets  # noqa: E402
+from dstools.features.world import builtin_presets, page_data, user_presets  # noqa: E402
 from dstools.features.world.reader import WorldOverride, WorldPreset  # noqa: E402
 from tests._harness import run  # noqa: E402
 
@@ -56,6 +56,21 @@ def test_apply_skips_unknown_and_retyping_values():
     assert {o.key: o.value for o in preset.overrides}["world_size"] == "small"
     assert any(row.key == "world_size" and row.value == "small"
                for rows in data.generation_by_category.values() for row in rows)
+
+
+def test_builtin_settings_preset_resets_other_settings():
+    # 轻松风格的主世界套用「无尽」：预设没写的原版设置回默认，世界生成项不动
+    relaxed = next(p for p in builtin_presets.BUILTIN_SETTINGS_PRESETS if p.preset_id == "RELAXED")
+    endless = next(p for p in builtin_presets.BUILTIN_SETTINGS_PRESETS if p.preset_id == "ENDLESS")
+    overrides = [WorldOverride(k, v) for k, v in relaxed.overrides.items()] + [WorldOverride("world_size", "small")]
+    preset = WorldPreset(location="forest", overrides=overrides)
+    data = page_data.WorldPageData(page_data.STATUS_OK, is_server=True, shard_name="Master",
+                                   preset=preset, location="forest", is_master_world=True)
+    page_data.apply_builtin_settings_preset(data, endless)
+    values = {o.key: o.value for o in preset.overrides}
+    assert values["healthpenalty"] == "always" and values["hunger"] == "default"
+    assert values["portalresurection"] == "always" and values["basicresource_regrowth"] == "always"
+    assert values["world_size"] == "small"
 
 
 if __name__ == "__main__":
