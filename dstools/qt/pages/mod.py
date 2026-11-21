@@ -53,7 +53,10 @@ from dstools.models import ModEntry, ModOverrides, Platform, SaveSource
 from dstools.qt import dialogs
 from dstools.qt.mod import client_mods_switch
 from dstools.qt.mod.mod_config_dialog import open_mod_config
+from dstools.qt.mod.mod_config_sync import add_listener as add_config_sync_listener
+from dstools.qt.mod.mod_config_sync import pending_count as config_pending_count
 from dstools.qt.mod.mod_config_sync import start_sync as start_config_sync
+from dstools.qt.mod.mod_config_sync import sync_available as config_sync_available
 from dstools.qt.mod.mod_panel import ModListPanel
 from dstools.qt.mod.mod_preload import cancel as cancel_mod_preload
 from dstools.qt.mod.mod_preload import take_snapshot as take_mod_preload_snapshot
@@ -238,6 +241,12 @@ class ModPage(Page):
         self._duplicate_banner.set_clickable(True)
         self._duplicate_banner.clicked.connect(self._show_duplicates)
         root.addWidget(self._duplicate_banner)
+        # 游戏运行中改了默认配置、还没写入游戏时提示（点击打开全局默认设置看是哪些）
+        self._config_pending_banner = Banner()
+        self._config_pending_banner.set_clickable(True)
+        self._config_pending_banner.clicked.connect(self._open_global_defaults)
+        root.addWidget(self._config_pending_banner)
+        add_config_sync_listener(self._on_config_sync_done)
 
         self._list_panel = ModListPanel()
         self._list_panel.toggle_requested.connect(self._on_toggle)
@@ -1311,7 +1320,8 @@ class ModPage(Page):
 
     def _start_config_sync(self, notify: bool = False) -> bool:
         """发起同步；全局默认配置弹窗开着时显示"同步中"并在结束后展示结果。返回同步是否已启动或排队。"""
-        started = start_config_sync(self.ctx, self if notify else None, on_done=self._on_config_sync_done)
+        # 结束后的刷新走同步监听（_on_config_sync_done），启动时、游戏关闭后自动写入等其它来源的同步也会通知
+        started = start_config_sync(self.ctx, self if notify else None)
         dialog = self._global_defaults_dialog
         if started and dialog is not None and dialog.isVisible():
             dialog.set_syncing()
@@ -1321,6 +1331,12 @@ class ModPage(Page):
         # 不判断可见性：同步中途关掉弹窗，也要复位它的"同步中"状态
         if self._global_defaults_dialog is not None:
             self._global_defaults_dialog.on_sync_done(report)
+        self.refresh_config_pending_banner()
+
+    def refresh_config_pending_banner(self) -> None:
+        """按最近一次同步结果显示"待写入"横幅；同步不可用（如刚关掉同步开关）时隐藏。"""
+        count = config_pending_count() if config_sync_available(self.ctx) else 0
+        self._config_pending_banner.set_text(t("mod.config_pending_banner", count=count) if count else "")
 
     def _refresh_global_defaults(self) -> None:
         if self._global_defaults_dialog is not None and self._global_defaults_dialog.isVisible():

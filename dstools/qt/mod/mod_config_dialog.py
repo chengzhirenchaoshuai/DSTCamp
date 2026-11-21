@@ -146,6 +146,18 @@ def open_mod_config(page, workshop_id: str, mod, mod_info, read_only: bool, read
     run_async(lambda: _resolve_mod_config(page, workshop_id, mod_info), done, error)
 
 
+def _sync_waits_for_game(page) -> bool:
+    """默认配置与游戏同步已开启但游戏正在运行：应用后不会马上写入游戏。进程快照只需几毫秒，打开弹窗时查一次。"""
+    from dstools.features.mod.legacy_v1 import is_dst_client_running
+    from dstools.qt.mod.mod_config_sync import sync_available
+
+    ctx = getattr(page, "ctx", None)
+    try:
+        return ctx is not None and sync_available(ctx) and is_dst_client_running()
+    except Exception:
+        return False
+
+
 def _clear_active_dialog(_result: int = 0) -> None:
     global _active_dialog
     _active_dialog = None
@@ -191,6 +203,8 @@ class ModConfigDialog(QDialog):
             root.addWidget(self._banner(t(banner_key), "#607d8b"))
         elif default_mode:
             root.addWidget(self._banner(t("mod.default_config_banner"), "#607d8b"))
+            if _sync_waits_for_game(page):
+                root.addWidget(self._banner(t("mod.default_config_game_running"), theme.hex("ACCENT")))
         if banner_text:
             root.addWidget(self._banner(banner_text, "#607d8b"))
         if mod_info.unsupported_schema:

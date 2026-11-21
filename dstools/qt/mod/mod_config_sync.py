@@ -1,11 +1,14 @@
 """Mod 默认配置与游戏全局配置（主菜单"模组"）的同步入口。
 
 启动、打开 Mod 页、保存默认配置后触发，在后台执行；同一时间只跑一个，运行中再次触发则结束后补跑一次。
+游戏运行时只拉取，要写入的记为待写入；此时定时检测游戏进程，游戏一关闭就自动再同步一次把它们写进去。
 只用 Steam 账号目录（WeGame 客户端进程名未核实，无法确认游戏已关闭），本机有多个账号时跟随存档栏选中的账号。
 不弹模态框，结果写 sync.log 并轻提示。
 """
 
 from pathlib import Path
+
+from PySide6.QtCore import QTimer
 
 from dstools.features.mod.config_memory import append_log, sync_with_game
 from dstools.features.mod.legacy_v1 import is_dst_client_running
@@ -14,7 +17,14 @@ from dstools.qt import dialogs
 from dstools.qt.threads import run_async
 from dstools.shared import app_settings
 
+# 有待写入项时检测游戏是否已关闭的间隔
+_WATCH_INTERVAL_MS = 5000
+
 _state = {"running": False, "rerun": False, "parent": None, "callbacks": [], "account": ""}
+# 等游戏关闭的检测：ctx 为发起同步时的上下文，window 为写入完成后显示轻提示的窗口
+_watch = {"timer": None, "ctx": None, "window": None, "checking": False}
+# 每次同步结束（不论由谁触发）都回调，参数为 report（失败时为 None）；供 Mod 页刷新待写入横幅
+_listeners: list = []
 # 最近一次同步得到的各 Mod 状态（mod_key -> synced/pending/error），供默认配置列表显示
 last_states: dict[str, str] = {}
 
@@ -96,10 +106,18 @@ def start_sync(ctx, parent=None, on_done=None) -> bool:
                 _notify(parent, report)
         for callback in run_callbacks:
             callback(report)
+        if not _state["rerun"]:
+            # 要补跑时不通知中间结果，等补跑那一轮结束再通知
+            for listener in list(_listeners):
+                listener(report)
         if _state["rerun"]:
             rerun_parent = _state["parent"]
             _state["rerun"], _state["parent"] = False, None
             start_sync(ctx, rerun_parent)
+        elif report is not None and report.pending:
+            _start_watch(ctx)
+        else:
+            _stop_watch()
 
     def fail(exc: Exception) -> None:
         _state["last_error"] = str(exc) or type(exc).__name__
@@ -114,6 +132,68 @@ def sync_if_account_changed(ctx) -> None:
     account = game_account(ctx)
     if account is not None and _state["account"] and account[1] != _state["account"]:
         start_sync(ctx)
+
+
+def add_listener(callback) -> None:
+    """登记同步结束回调（任何来源的同步都会通知），参数为 report，失败时为 None。"""
+    if callback not in _listeners:
+        _listeners.append(callback)
+
+
+def set_notify_window(window) -> None:
+    """游戏关闭后自动写入完成时，在这个窗口上显示轻提示（主窗口启动时登记）。"""
+    _watch["window"] = window
+
+
+def pending_count() -> int:
+    """最近一次同步中等游戏关闭后才写入的 Mod 数。"""
+    return sum(1 for state in last_states.values() if state == "pending")
+
+
+def _start_watch(ctx) -> None:
+    _watch["ctx"] = ctx
+    timer = _watch["timer"]
+    if timer is None:
+        timer = _watch["timer"] = QTimer()
+        timer.setInterval(_WATCH_INTERVAL_MS)
+        timer.timeout.connect(_check_game_closed)
+    if not timer.isActive():
+        timer.start()
+
+
+def _stop_watch() -> None:
+    if _watch["timer"] is not None:
+        _watch["timer"].stop()
+
+
+def _check_game_closed() -> None:
+    """定时检测：游戏已关闭就停止检测并同步一次，把待写入的配置写进游戏。"""
+    if _watch["checking"] or _state["running"]:
+        return
+    ctx = _watch["ctx"]
+    if ctx is None or not sync_available(ctx):
+        # 同步被关掉或账号目录没了：待写入不会再发生，不用继续检测
+        _stop_watch()
+        return
+    _watch["checking"] = True
+
+    def done(running: bool) -> None:
+        _watch["checking"] = False
+        if not running:
+            _stop_watch()
+            start_sync(ctx, on_done=_on_written_after_close)
+
+    def fail(_exc: Exception) -> None:
+        _watch["checking"] = False
+
+    run_async(is_dst_client_running, done, fail)
+
+
+def _on_written_after_close(report) -> None:
+    window = _watch["window"]
+    if report is None or not report.pushed or window is None:
+        return
+    dialogs.show_toast(window, t("mod.config_sync_written_after_close", count=len(report.pushed)), ms=4000)
 
 
 def last_error() -> str:

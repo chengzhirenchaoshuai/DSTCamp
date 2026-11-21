@@ -330,6 +330,7 @@ class GlobalDefaultsDialog(dialogs.Dialog):
         set_mod_config_sync_enabled(checked)
         self._refresh_sync_line()
         self.refresh_states()
+        self.page.refresh_config_pending_banner()
         if checked:
             self.page._start_config_sync(notify=False)  # 刚开启就同步一次，不用再点「立即同步」
 

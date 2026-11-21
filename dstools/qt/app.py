@@ -81,7 +81,8 @@ def main() -> int:
     # 延迟到主窗口渲染稳定后再弹开服场景选择、缓存目录警告，避免弹窗抢在窗口还没显示完整前出现
     QTimer.singleShot(500, window.run_startup_checks)
     # Mod 配置记忆与游戏客户端同步：启动时静默跑一次（结果写 sync.log），打开 Mod 页时再跑并提示
-    from dstools.qt.mod.mod_config_sync import start_sync, sync_if_account_changed
+    from dstools.qt.mod.mod_config_sync import set_notify_window, start_sync, sync_if_account_changed
+    set_notify_window(window)  # 游戏关闭后自动写入待写入配置时在主窗口轻提示
     QTimer.singleShot(2000, lambda: start_sync(window.ctx))
     # 后台预热 Mod 缓存（图标、版本），新用户首次打开 Mod 页不再等几十秒；排在缓存目录检查和配置同步之后。
     # 轻量模式不预热：云服务器多半只开服，预热要起沙箱子进程，正好跟开服抢 CPU 和磁盘；打开 Mod 页时照常加载
