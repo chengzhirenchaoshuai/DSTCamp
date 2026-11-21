@@ -5,16 +5,19 @@
 耗时的沙箱解析（整份文件/动态选项/汉化叠加）在后台进行，数据就绪后一次性构建对话框。
 """
 
+import html
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QToolTip, QVBoxLayout, QWidget,
 )
 
 from dstools.features.mod import chs_translation
 from dstools.features.mod import client_mod_bridge
+from dstools.features.mod import controller_glyphs
 from dstools.features.mod.cache import load_cached_result, save_result
 from dstools.features.mod.config_memory import recall_for, same_value
 from dstools.features.mod.parser import (
@@ -73,7 +76,21 @@ def _resolve_mod_config(page, workshop_id: str, mod_info) -> bool:
             if translation and translation.get("configuration_options"):
                 chs_translation.apply_translation(mod_info.config_options,
                                                   translation["configuration_options"])
+
+    # 配置文本里有游戏手柄按键字符时，先从游戏字体提取字形（首次要跑 ktech，之后读缓存）
+    if any(controller_glyphs.has_glyphs(text) for text in _option_texts(mod_info.config_options)):
+        controller_glyphs.prepare()
     return changed
+
+
+def _option_texts(options) -> list[str]:
+    """配置项里会显示出来的全部文本：标题、说明、各选项值的描述与说明。"""
+    texts = []
+    for opt in options:
+        texts += [str(opt.label or ""), str(opt.hover or "")]
+        for c in opt.choices:
+            texts += [str(c.get("description", "") or ""), str(c.get("hover", "") or "")]
+    return texts
 
 
 # 同一时间只开一个配置窗口：多个窗口各自"应用"会互相覆盖，窗口开着时切换存档还会把配置写进旧存档的数据。
@@ -226,8 +243,7 @@ class ModConfigDialog(QDialog):
                 hbox.setSpacing(8)
                 if label_text:
                     hbox.addSpacing(6)
-                    header = QLabel(label_text)
-                    header.setFont(theme.font("FONT_SIZE_LG", bold=True))
+                    header = self._rich_label(label_text, theme.font("FONT_SIZE_LG", bold=True))
                     header.setStyleSheet(f"color: {theme.hex('PRIMARY_DARK')};")
                     hbox.addWidget(header)
                     line = QFrame()
@@ -299,8 +315,7 @@ class ModConfigDialog(QDialog):
         row, layout = self._option_card()
         top = QHBoxLayout()
         label_full = opt.label or opt.name
-        name_label = QLabel(label_full)
-        name_label.setFont(theme.font("FONT_SIZE_MD", bold=True))
+        name_label = self._rich_label(label_full, theme.font("FONT_SIZE_MD", bold=True))
         top.addWidget(name_label, 1)
 
         current_value = self.mod.configuration_options.get(opt.name, opt.default)
@@ -335,10 +350,11 @@ class ModConfigDialog(QDialog):
         combo.setMinimumWidth(260)
         combo.setEnabled(not self.read_only)
         for i, (desc, _data) in enumerate(items):
-            combo.addItem(desc)
+            # 下拉项只能显示纯文本，手柄按键字符换成 [LB] 这类记号
+            combo.addItem(controller_glyphs.to_plain(desc))
             # 每个下拉项自己的说明用 item 的 ToolTipRole 提供——展开下拉框
             # 后鼠标悬停到某一项上时显示该项注释（strip 掉对齐空格，空则不显示）。
-            hover_text = hovers[i].strip()
+            hover_text = self._tooltip_text(hovers[i])
             if hover_text:
                 combo.setItemData(i, hover_text, Qt.ItemDataRole.ToolTipRole)
         # 按已保存的 data 值定位初始项，不能用 findText（显示文本可能重复，只会命中第一个）
@@ -352,7 +368,7 @@ class ModConfigDialog(QDialog):
         # 未展开时鼠标悬停到下拉框本体，显示当前选中项的注释。
         def update_tooltip(_index=None) -> None:
             idx = combo.currentIndex()
-            combo.setToolTip(hovers[idx].strip() if 0 <= idx < len(hovers) else "")
+            combo.setToolTip(self._tooltip_text(hovers[idx]) if 0 <= idx < len(hovers) else "")
 
         combo.currentIndexChanged.connect(update_tooltip)
         update_tooltip()
@@ -363,13 +379,48 @@ class ModConfigDialog(QDialog):
             layout.addWidget(self._desc_label(opt.hover))
         return row
 
-    @staticmethod
-    def _desc_label(text: str) -> QLabel:
-        label = QLabel(text)
+    def _desc_label(self, text: str) -> QLabel:
+        label = self._rich_label(text, theme.font("FONT_SIZE_XS"))
         label.setWordWrap(True)
         label.setStyleSheet(f"color: {theme.hex('TEXT_MUTED')};")
-        label.setFont(theme.font("FONT_SIZE_XS"))
         return label
+
+    # ── 手柄按键字符（游戏字体私用区）显示为游戏里的按键图标 ──────────────
+    def _rich_label(self, text: str, font: QFont) -> QLabel:
+        """含手柄按键字符时用富文本嵌入按键图片，否则与原来一样显示纯文本。"""
+        label = QLabel()
+        label.setFont(font)
+        if controller_glyphs.has_glyphs(text):
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setText(self._glyph_html(text, font))
+        else:
+            label.setText(text)
+        return label
+
+    def _tooltip_text(self, text: str) -> str:
+        text = (text or "").strip()
+        if not controller_glyphs.has_glyphs(text):
+            return text
+        return f"<qt>{self._glyph_html(text, QToolTip.font())}</qt>"
+
+    def _glyph_html(self, text: str, font: QFont) -> str:
+        """文本转富文本：按键字符换成按物理像素缩放好的字形图片（高度约一行字），取不到字形的显示 [LB] 这类记号。"""
+        dpr = self.devicePixelRatioF() or 1.0
+        physical = max(1, round(QFontMetrics(font).height() * dpr))
+        out = []
+        for part in controller_glyphs.split_glyphs(text):
+            if isinstance(part, str):
+                out.append(html.escape(part).replace("\n", "<br>"))
+                continue
+            path = controller_glyphs.scaled_path(part, physical)
+            size = controller_glyphs.image_size(path) if path else None
+            if size is None:
+                out.append(html.escape(controller_glyphs.fallback_name(part)))
+                continue
+            src = html.escape(QUrl.fromLocalFile(str(path)).toString(), quote=True)
+            out.append(f'<img src="{src}" width="{size[0] / dpr:.2f}" height="{size[1] / dpr:.2f}" '
+                       f'style="vertical-align: middle">')
+        return "".join(out)
 
     @staticmethod
     def _opt_search_text(opt) -> str:
@@ -379,7 +430,9 @@ class ModConfigDialog(QDialog):
         for c in opt.choices:
             parts.append(str(c.get("description", "") or ""))
             parts.append(str(c.get("hover", "") or ""))
-        return " ".join(parts).casefold()
+        # 按键字符另附文字记号，搜 "RB" 也能找到写成按键图标的项
+        text = " ".join(parts)
+        return f"{text} {controller_glyphs.to_plain(text)}".casefold()
 
     def _apply_search(self, text: str) -> None:
         """按搜索框内容过滤配置列表：匹配标题或注释的选项显示、其余隐藏；
@@ -478,8 +531,7 @@ class ModConfigDialog(QDialog):
     # ── Configs Extended 风格的集合/数组/字典/文本编辑器 ────────────────
     def _render_raw_value_editor(self, opt, current_value) -> QWidget:
         row, layout = self._option_card()
-        header = QLabel(opt.label or opt.name)
-        header.setFont(theme.font("FONT_SIZE_MD", bold=True))
+        header = self._rich_label(opt.label or opt.name, theme.font("FONT_SIZE_MD", bold=True))
         layout.addWidget(header)
         if opt.hover:
             layout.addWidget(self._desc_label(opt.hover))
@@ -699,8 +751,8 @@ class ModConfigDialog(QDialog):
         if not changes:
             dialogs.show_info(self, t("mod.import_memory_btn"), t("mod.import_memory_none"))
             return
-        lines = [f"{opt.label or opt.name}: {self._describe(opt, current[opt.name])} → "
-                 f"{self._describe(opt, memory[opt.name])}" for opt in changes[:15]]
+        lines = [controller_glyphs.to_plain(f"{opt.label or opt.name}: {self._describe(opt, current[opt.name])} → "
+                                            f"{self._describe(opt, memory[opt.name])}") for opt in changes[:15]]
         if len(changes) > 15:
             lines.append(t("mod.import_memory_more", count=len(changes) - 15))
         if not dialogs.ask_yes_no(self, t("mod.import_memory_btn"),

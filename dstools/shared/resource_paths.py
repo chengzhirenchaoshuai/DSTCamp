@@ -10,6 +10,7 @@
     cache/          可随时清空、按需重建（可在设置中改位置，须为纯 ASCII 路径）
         mod_full_resolve、modinfo_static、mod_versions、mod_chs_translation  Mod 解析结果
         mod_icons/<平台>、world_mod_icons、character_icons                  转换好的图标
+        controller_glyphs                                                   游戏字体里的手柄按键字形
         legacy_v1_read                                                      V1 Mod 包临时解压
         connection_log                                                      专服日志连接记录
         frpc_log                                                            frpc 输出（日志包会收录）
