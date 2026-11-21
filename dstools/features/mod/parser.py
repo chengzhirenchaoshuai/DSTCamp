@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from dstools.shared.lua_parser import parse_lua_value
+from dstools.shared.lua_parser import parse_lua_value, unescape_lua_string
 from dstools.shared.steam_discovery import find_all_steam_libraries
 from dstools.models import Platform
 
@@ -28,8 +28,6 @@ def _contains_cjk(s: str) -> bool:
     面量是不是中文，见 _extract_quoted 的三元双语名处理。"""
     return any("一" <= ch <= "鿿" for ch in s)
 
-
-_LUA_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'"}
 
 # 一整个带引号的字符串（任一风格），供 _replace_idents_outside_strings 整
 # 段跳过字符串内容用，避免误匹配到字符串内部一个长得像标识符的子串。
@@ -115,8 +113,8 @@ def _strip_lua_comments(text: str) -> str:
 
 
 def _unescape_lua_string(s: str) -> str:
-    """解码 Lua 字符串转义（\\n、\\t 等），正则捕获的字符串里转义原样保留。"""
-    return re.sub(r"\\(.)", lambda m: _LUA_ESCAPES.get(m.group(1), m.group(0)), s)
+    """解码正则捕获的 Lua 字符串里的转义（\\n、\\232 等十进制字节转义）。"""
+    return unescape_lua_string(s)
 
 
 @dataclass

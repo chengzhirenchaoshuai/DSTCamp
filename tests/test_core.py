@@ -668,6 +668,21 @@ def test_modinfo_reader():
         ]
 
 
+def test_lua_decimal_byte_escapes_decode_as_utf8():
+    """中文 Mod 名常写成 \\232\\138\\177 这样的 UTF-8 字节转义，要整体解码成中文，不能原样显示或逐字节变乱码。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        mod_folder = Path(tmp) / "workshop-1"
+        mod_folder.mkdir()
+        (mod_folder / "modinfo.lua").write_text(
+            r'name = "\232\138\177\232\138\177\228\184\147\231\148\168"' "\n"
+            r'version = "v\051\046\048\046\050"' "\n",
+            encoding="utf-8",
+        )
+        info = parse_modinfo(mod_folder)
+        assert (info.name, info.version) == ("花花专用", "v3.0.2")
+    assert parse_lua_table(r'return { n = "\232\138\177" }') == {"n": "花"}
+
+
 def test_mod_config_choice_keeps_unlisted_value():
     """下拉项里没有当前值（万界之门 worlds 表由 DSTCamp 写入）时，不动它直接"应用"要原样保留。"""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

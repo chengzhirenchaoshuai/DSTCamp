@@ -13,6 +13,7 @@ from pathlib import Path
 
 from dstools.features.mod import parser
 from dstools.features.mod.parser import ModConfigOption, ModInfo, parse_modinfo
+from dstools.shared.lua_parser import unescape_lua_string
 from dstools.shared.resource_paths import cache_dir
 
 _CACHE_DIR = cache_dir("modinfo_static")
@@ -27,6 +28,8 @@ def _parser_fingerprint() -> str:
         if isinstance(value, types.FunctionType) and value.__module__ == parser.__name__:
             digest.update(name.encode("utf-8"))
             digest.update(marshal.dumps(value.__code__))
+    # 字符串转义解码在 lua_parser 里，改它同样会改变解析结果
+    digest.update(marshal.dumps(unescape_lua_string.__code__))
     for cls in (ModInfo, ModConfigOption):
         digest.update(",".join(f.name for f in fields(cls)).encode("utf-8"))
     return digest.hexdigest()

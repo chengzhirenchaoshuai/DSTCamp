@@ -17,7 +17,7 @@ _CACHE_DIR = cache_dir("mod_full_resolve")
 
 # 修改 ModConfigOption 字段、选项判定规则（如标题识别）或缓存结构时递增：缓存只按 modinfo
 # 内容判断，不会随解析器代码自动失效。
-_CACHE_FORMAT_VERSION = 4
+_CACHE_FORMAT_VERSION = 5  # 5：Lua 十进制字节转义（\232 等）改为按 UTF-8 解码
 
 
 def _cache_path(workshop_id: str) -> Path:

@@ -24,6 +24,41 @@ class LuaStringKey(str):
     """
 
 
+# ── 字符串转义 ──────────────────────────────────────────────────────────
+
+_SIMPLE_ESCAPES = {
+    "n": "\n", "r": "\r", "t": "\t", "\\": "\\", '"': '"', "'": "'",
+    "a": "\a", "b": "\b", "f": "\f", "v": "\v", "\n": "\n",
+}
+_ESCAPE_RE = re.compile(r"\\([0-9]{1,3}|x[0-9a-fA-F]{2}|.|\n)")
+
+
+def unescape_lua_string(body: str) -> str:
+    """按 Lua 5.1 规则解码引号字符串的内容（不含两侧引号）。
+
+    坑：``\\ddd``（以及 LuaJIT 的 ``\\xNN``）表示的是字节而不是字符，中文 Mod 名常写成 ``\\232\\138\\177`` 这样的
+    UTF-8 字节序列，必须攒成字节串再整体按 UTF-8 解码；逐个 chr() 会变成乱码。认不出的转义原样保留。
+    """
+    if "\\" not in body:
+        return body
+    out = bytearray()
+    pos = 0
+    for m in _ESCAPE_RE.finditer(body):
+        out += body[pos:m.start()].encode("utf-8", "surrogatepass")
+        pos = m.end()
+        code = m.group(1)
+        if code[0].isdigit() and int(code) <= 255:
+            out.append(int(code))
+        elif code[0] == "x" and len(code) == 3:
+            out.append(int(code[1:], 16))
+        elif code in _SIMPLE_ESCAPES:
+            out += _SIMPLE_ESCAPES[code].encode("utf-8")
+        else:
+            out += m.group(0).encode("utf-8", "surrogatepass")
+    out += body[pos:].encode("utf-8", "surrogatepass")
+    return out.decode("utf-8", errors="replace")
+
+
 # ── 词法分析器 ──────────────────────────────────────────────────────────
 
 class TokenType(Enum):
@@ -203,62 +238,25 @@ class LuaTokenizer:
         start_line, start_col = self.line, self.col
         self.pos += 1
         self.col += 1
-        chars = []
+        start = self.pos
         while self.pos < len(self.text):
             c = self.text[self.pos]
             if c == '\\' and self.pos + 1 < len(self.text):
-                # 转义序列
-                next_c = self.text[self.pos + 1]
-                escape_map = {
-                    'n': '\n', 'r': '\r', 't': '\t', '\\': '\\',
-                    '"': '"', "'": "'", 'a': '\a', 'b': '\b',
-                    'f': '\f', 'v': '\v',
-                }
-                if next_c in escape_map:
-                    chars.append(escape_map[next_c])
-                elif next_c == '\n':
+                # 转义序列先原样跳过，读完整个字符串后统一解码
+                if self.text[self.pos + 1] == '\n':
                     # 反斜杠+换行的续行写法
                     self.line += 1
                     self.col = 0
-                elif next_c == 'x' and self.pos + 3 < len(self.text):
-                    # \xNN 十六进制转义
-                    hex_str = self.text[self.pos + 2:self.pos + 4]
-                    try:
-                        chars.append(chr(int(hex_str, 16)))
-                        self.pos += 2
-                        self.col += 2
-                    except ValueError:
-                        chars.append('\\')
-                        chars.append('x')
-                        chars.append(hex_str)
-                        self.pos += 2
-                        self.col += 2
-                elif next_c.isdigit():
-                    # \d{1,3} 十进制转义（简化实现）
-                    num_str = ''
-                    for i in range(1, 4):
-                        if self.pos + i < len(self.text) and self.text[self.pos + i].isdigit():
-                            num_str += self.text[self.pos + i]
-                    try:
-                        chars.append(chr(int(num_str)))
-                        self.pos += len(num_str) - 1
-                        self.col += len(num_str) - 1
-                    except ValueError:
-                        chars.append('\\')
-                        chars.append(next_c)
-                else:
-                    chars.append('\\')
-                    chars.append(next_c)
                 self.pos += 2
                 self.col += 2
             elif c == quote:
+                body = self.text[start:self.pos]
                 self.pos += 1
                 self.col += 1
-                return Token(TokenType.STRING, ''.join(chars), start_line, start_col)
+                return Token(TokenType.STRING, unescape_lua_string(body), start_line, start_col)
             elif c == '\n':
                 raise LuaParseError("Unterminated string", start_line, start_col)
             else:
-                chars.append(c)
                 self.pos += 1
                 self.col += 1
 
