@@ -147,7 +147,8 @@ def open_mod_config(page, workshop_id: str, mod, mod_info, read_only: bool, read
 
 
 def _sync_waits_for_game(page) -> bool:
-    """默认配置与游戏同步已开启但游戏正在运行：应用后不会马上写入游戏。进程快照只需几毫秒，打开弹窗时查一次。"""
+    """默认配置与游戏同步已开启且游戏正在运行（应用后要退回主菜单/进世界或等游戏关闭才生效）。
+    进程快照只需几毫秒，打开弹窗时查一次。"""
     from dstools.features.mod.legacy_v1 import is_dst_client_running
     from dstools.qt.mod.mod_config_sync import sync_available
 
@@ -204,7 +205,9 @@ class ModConfigDialog(QDialog):
         elif default_mode:
             root.addWidget(self._banner(t("mod.default_config_banner"), "#607d8b"))
             if _sync_waits_for_game(page):
-                root.addWidget(self._banner(t("mod.default_config_game_running"), theme.hex("ACCENT")))
+                # 纯客户端 Mod 运行中照常写入（config_memory.sync_with_game），其它 Mod 等游戏关闭
+                key = "mod.default_config_game_running_live" if mod_info.client_only else "mod.default_config_game_running"
+                root.addWidget(self._banner(t(key), theme.hex("ACCENT")))
         if banner_text:
             root.addWidget(self._banner(banner_text, "#607d8b"))
         if mod_info.unsupported_schema:

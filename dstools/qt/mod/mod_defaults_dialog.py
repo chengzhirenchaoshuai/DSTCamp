@@ -375,9 +375,11 @@ class GlobalDefaultsDialog(dialogs.Dialog):
         if report is None:
             self._set_result(t("mod.global_defaults_sync_failed", time=stamp, error=last_error() or "?"), "ERROR")
             return
-        parts = []
-        for items, key in ((report.pulled, "mod.config_sync_pulled"), (report.pushed, "mod.config_sync_pushed"),
-                           (report.pending, "mod.config_sync_pending"), (report.conflicts, "mod.global_defaults_conflicts"),
+        from dstools.qt.mod.mod_config_sync import pushed_parts
+
+        parts = [t("mod.config_sync_pulled", count=len(report.pulled))] if report.pulled else []
+        parts += pushed_parts(report)
+        for items, key in ((report.pending, "mod.config_sync_pending"), (report.conflicts, "mod.global_defaults_conflicts"),
                            (report.errors, "mod.global_defaults_errors")):
             if items:
                 parts.append(t(key, count=len(items)))

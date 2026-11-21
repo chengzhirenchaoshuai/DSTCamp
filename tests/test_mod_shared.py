@@ -717,6 +717,14 @@ def test_mod_config_memory_two_way_sync():
         report = sync()
         assert report.conflicts == [(game_file.name, "game")] and cm.recall("workshop-9", path=mem)["a"] == 4
 
+        # 游戏运行时 client_only Mod（无后缀文件）照常写入并记为 pushed_live，普通 Mod 仍等游戏关闭
+        cm.remember("workshop-7", {"b": 1}, path=mem)
+        cm.remember("workshop-9", {"a": 5}, path=mem)
+        live_file = g.mod_config_dir(user) / g.file_name("workshop-7", False)
+        report = cm.sync_with_game(user, "123", {"workshop-7"}, can_write=False, memory_path=mem, backup_dir=bak)
+        assert report.pushed_live == [live_file.name] and g.read_values(live_file) == {"b": 1}
+        assert report.pending == [game_file.name] and g.read_values(game_file)["a"] == 4
+
 
 def test_modinfo_cache_invalidates_on_edit_and_skips_lossy_results():
     import dstools.features.mod.modinfo_cache as modinfo_cache

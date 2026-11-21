@@ -139,6 +139,8 @@ class SyncReport:
     pulled: list[str] = field(default_factory=list)
     pushed: list[str] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)
+    # pushed 中游戏运行时写入的（client_only Mod）：退回主菜单或进一次世界后生效
+    pushed_live: list[str] = field(default_factory=list)
     conflicts: list[tuple[str, str]] = field(default_factory=list)  # (文件名, "game"/"dstcamp" 胜出方)
     errors: list[tuple[str, str]] = field(default_factory=list)
     # mod_key -> "synced"（与游戏一致）/"pending"（等游戏关闭后写入）/"error"
@@ -178,7 +180,9 @@ def _backup(path: Path, backup_dir: Path) -> None:
 def sync_with_game(user_dir: Path, account: str, client_only_keys: set[str], *, can_write: bool,
                    memory_path: Path | None = None, backup_dir: Path | None = None) -> SyncReport:
     """与 user_dir 下游戏的全局配置双向同步。client_only_keys 为本机已安装的 client_only Mod，决定对应哪个文件；
-    未安装（无法判断）的 Mod 只认 _CLIENT 文件。can_write=False（游戏运行中）时只拉取，需要推送的记为 pending。"""
+    未安装（无法判断）的 Mod 只认 _CLIENT 文件。can_write=False（游戏运行中）时只拉取，需要推送的记为 pending；
+    client_only Mod 例外，照常写入并记入 pushed_live：游戏只在自己的配置界面"应用"时写它的文件，每次加载 Mod
+    （进世界、退回主菜单）都从磁盘重读（2026-11 真机实测）。其它 Mod 运行中写入的情形没有实测，仍等游戏关闭。"""
     report = SyncReport()
     config_dir = game_mod_config.mod_config_dir(user_dir)
     # 按账号分目录：多个账号的同名配置文件备份不能互相覆盖
@@ -233,7 +237,7 @@ def sync_with_game(user_dir: Path, account: str, client_only_keys: set[str], *, 
                 report.pulled.append(name)
                 report.states[key] = "synced"
                 dirty = True
-            elif not can_write:
+            elif not can_write and key not in client_only_keys:
                 report.pending.append(name)
                 report.states[key] = "pending"
             else:
@@ -247,6 +251,8 @@ def sync_with_game(user_dir: Path, account: str, client_only_keys: set[str], *, 
                     continue
                 synced[account] = dict(mine)
                 report.pushed.append(name)
+                if not can_write:
+                    report.pushed_live.append(name)
                 report.states[key] = "synced"
                 dirty = True
         if dirty:

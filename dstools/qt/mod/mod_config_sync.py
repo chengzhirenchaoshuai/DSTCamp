@@ -1,7 +1,8 @@
 """Mod 默认配置与游戏全局配置（主菜单"模组"）的同步入口。
 
 启动、打开 Mod 页、保存默认配置后触发，在后台执行；同一时间只跑一个，运行中再次触发则结束后补跑一次。
-游戏运行时只拉取，要写入的记为待写入；此时定时检测游戏进程，游戏一关闭就自动再同步一次把它们写进去。
+游戏运行时纯客户端 Mod 照常写入（退回主菜单或进世界后生效），其它要写入的记为待写入；
+有待写入时定时检测游戏进程，游戏一关闭就自动再同步一次把它们写进去。
 只用 Steam 账号目录（WeGame 客户端进程名未核实，无法确认游戏已关闭），本机有多个账号时跟随存档栏选中的账号。
 不弹模态框，结果写 sync.log 并轻提示。
 """
@@ -201,12 +202,22 @@ def last_error() -> str:
     return _state.get("last_error", "")
 
 
+def pushed_parts(report) -> list[str]:
+    """写入游戏的摘要：游戏运行时写入的（纯客户端 Mod）单列一条，说明退回主菜单或进一次世界后生效。"""
+    parts = []
+    closed = len(report.pushed) - len(report.pushed_live)
+    if closed:
+        parts.append(t("mod.config_sync_pushed", count=closed))
+    if report.pushed_live:
+        parts.append(t("mod.config_sync_pushed_live", count=len(report.pushed_live)))
+    return parts
+
+
 def _notify(parent, report) -> None:
     parts = []
     if report.pulled:
         parts.append(t("mod.config_sync_pulled", count=len(report.pulled)))
-    if report.pushed:
-        parts.append(t("mod.config_sync_pushed", count=len(report.pushed)))
+    parts += pushed_parts(report)
     if report.pending:
         parts.append(t("mod.config_sync_pending", count=len(report.pending)))
     if parts:
