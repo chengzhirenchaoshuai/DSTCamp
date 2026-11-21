@@ -201,6 +201,28 @@ def fields_differ(target: dict, fields: dict) -> bool:
     return updated != target
 
 
+def preset_values(preset: BuiltinSettingsPreset, current_keys, location: str, mod_settings: dict | None = None,
+                  is_master_world: bool = True, active_mod_ids=None) -> tuple[dict, list[str]]:
+    """套用内置选项预设要写的取值，与游戏一致：``current_keys``（世界当前已有取值的项）中这个世界显示的原版
+    世界设置先回默认值，再叠加预设取值；世界生成项和 Mod 设置项不动。返回 (取值, 预设里这个世界不支持的项)，
+    回默认值时这个世界不显示的项不算跳过。"""
+    from dstools.features.world.categories import get_setting_info
+    from dstools.features.world.user_presets import applicable_overrides
+
+    mod_settings = mod_settings or {}
+    resets = {}
+    for key in current_keys:
+        if key in mod_settings:
+            continue
+        _, is_rule, _ = get_setting_info(key, location, mod_settings, is_master_world)
+        if is_rule:
+            resets[key] = vanilla_setting_default(key)
+    options = {"is_master_world": is_master_world, "active_mod_ids": active_mod_ids}
+    resets, _ = applicable_overrides(resets, location, mod_settings, **options)
+    values, skipped = applicable_overrides(preset.overrides, location, mod_settings, **options)
+    return {**resets, **values}, skipped
+
+
 def vanilla_setting_default(key: str) -> str:
     """原版世界设置项在 customize.lua 中的默认值。"""
     return SETTINGS_NON_DEFAULT_VALUES.get(key, "default")

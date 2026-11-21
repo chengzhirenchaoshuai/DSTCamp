@@ -68,7 +68,9 @@ from dstools.shared.steam_discovery import read_steam_persona_name
 from dstools.qt.threads import run_async
 from dstools.qt.widgets import PillTabBar, ShardCombo, TitleButton, resize_border_result
 from dstools.qt.world.world_panel import WorldPanel
-from dstools.qt.world.world_presets_dialogs import ApplyWorldPresetDialog, SaveWorldPresetDialog
+from dstools.qt.world.world_presets_dialogs import (
+    ApplyWorldPresetDialog, BuiltinSettingsPresetDialog, SaveWorldPresetDialog,
+)
 
 FLASH_MS = 200
 
@@ -509,6 +511,10 @@ class CreationWizardDialog(QDialog):
         apply_preset_btn.setToolTip(t("world.creation_apply_world_preset_tip"))
         apply_preset_btn.clicked.connect(self._apply_world_preset)
         preset_row.addWidget(apply_preset_btn)
+        builtin_preset_btn = QPushButton(t("world.builtin_preset_btn"))
+        builtin_preset_btn.setToolTip(t("world.builtin_preset_tip"))
+        builtin_preset_btn.clicked.connect(self._apply_builtin_preset)
+        preset_row.addWidget(builtin_preset_btn)
         preset_row.addStretch()
         layout.addLayout(preset_row)
 
@@ -820,6 +826,32 @@ class CreationWizardDialog(QDialog):
             self._dirty = True
         self._render_world()
         message = t("world.preset_applied_creation", name=dialog.selected.name, count=len(changed))
+        if skipped:
+            message += t("world.preset_applied_skipped", count=len(skipped), keys="、".join(skipped))
+        dialogs.show_info(self, title, message)
+
+    def _apply_builtin_preset(self) -> None:
+        plan = self._active_preset()
+        if not plan:
+            return
+        title = t("world.builtin_preset_btn")
+        dialog = BuiltinSettingsPresetDialog(self, plan.location, get_location_definition(plan.location).name_zh)
+        if dialog.exec() != dialogs.Dialog.DialogCode.Accepted or dialog.selected is None:
+            return
+        preset = dialog.selected
+        values, skipped = builtin_presets.preset_values(
+            preset, list(plan.overrides), plan.location, self._active_mod_settings,
+            is_master_world=self._shard_combo.shard_name() == MASTER_SHARD,
+            active_mod_ids=frozenset(info.mod_id for info in self._mod_settings.values()))
+        changed = [key for key, value in values.items() if plan.overrides.get(key) != value]
+        plan.overrides.update(values)
+        fields = builtin_presets.preset_fields(preset)
+        renamed = builtin_presets.fields_differ(plan.level_data, fields)
+        builtin_presets.apply_preset_fields(plan.level_data, fields)
+        if changed or renamed:
+            self._dirty = True
+        self._render_world()
+        message = t("world.preset_applied_creation", name=preset.name, count=len(changed))
         if skipped:
             message += t("world.preset_applied_skipped", count=len(skipped), keys="、".join(skipped))
         dialogs.show_info(self, title, message)
