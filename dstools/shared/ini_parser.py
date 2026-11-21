@@ -16,7 +16,14 @@ _REPLACE_ATTEMPTS = 5
 
 
 class _CaseSensitiveConfigParser(ConfigParser):
-    """保留 key 大小写的 ConfigParser 子类。"""
+    """保留 key 大小写的 ConfigParser 子类。
+
+    关闭插值：游戏按原文读值，房间名、密码里的 ``%`` 不能被当成插值语法而报错。
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs.setdefault("interpolation", None)
+        super().__init__(*args, **kwargs)
 
     def optionxform(self, optionstr: str) -> str:
         return optionstr
