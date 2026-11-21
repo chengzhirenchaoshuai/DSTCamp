@@ -78,5 +78,38 @@ def test_clash_between_mods_linked_by_dependencies_is_intentional():
             (("my-mod", "workshop-100", "workshop-200"), ("a.lua",))]
 
 
+def test_scripts_loaded_only_by_modimport_do_not_clash():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        files = {"languages/strings_chinese.lua": "", "lib/util.lua": "", "components/foo.lua": ""}
+        mods = {}
+        for key, main in (
+            ("a", 'modimport("scripts/languages/strings_chinese.lua")\nmodimport "scripts/lib/util"\n'
+                  'modimport("scripts/components/foo.lua")\n'),
+            # 拼接的文件名按一级通配；自己又 require 了 lib.util，这个文件仍会经 package.path 互相顶掉
+            ("b", 'local lang = "chinese"\nmodimport("scripts/languages/strings_" .. lang .. ".lua")\n'
+                  'modimport("scripts/lib/util.lua")\nlocal u = GLOBAL.require("lib.util")\n'
+                  '-- modimport("scripts/components/foo.lua")\nmodimport("scripts/components/foo.lua")\n'),
+        ):
+            folder = _mod(root, key, {rel: key for rel in files})
+            (folder / "modmain.lua").write_text(main, encoding="utf-8")
+            mods[key] = (key.upper(), folder)
+        report = find_duplicates(mods)
+        # components/ 由游戏按名字 require，不按 modimport 排除
+        assert [c.paths for c in report.file_clashes] == [("components/foo.lua", "lib/util.lua")]
+
+
+def test_modimport_in_comment_or_without_scripts_prefix_is_not_evidence():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        a = _mod(root, "a", {"strings.lua": "A"})
+        b = _mod(root, "b", {"strings.lua": "B"})
+        (a / "modmain.lua").write_text('--[[ modimport("scripts/strings.lua") ]]\n', encoding="utf-8")
+        (b / "modmain.lua").write_text('modimport("strings.lua")\nmodimport("scripts/" .. x)\n',
+                                       encoding="utf-8")
+        report = find_duplicates({"a": ("A", a), "b": ("B", b)})
+        assert [c.paths for c in report.file_clashes] == [("strings.lua",)]
+
+
 if __name__ == "__main__":
     run(globals())

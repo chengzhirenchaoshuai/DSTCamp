@@ -8,6 +8,8 @@
    同名模块只会有一份生效，另一份等于被覆盖；内容相同的只是一起带的公共库，不提示。
    在 modinfo 的 ``mod_dependencies`` 里直接或间接依赖对方的（扩展包依赖本体，如岛屿冒险海难依赖核心），
    覆盖是作者有意为之，也不提示。
+   ``modimport`` 按 Mod 自己的根目录加载（scripts/mods.lua 里 ``kleiloadlua(env.MODROOT..modulename)``），
+   不走 ``package.path``；每个带该文件的 Mod 都只用 modimport 加载、没有 require/loadfile 到它时，也不提示。
 """
 
 from __future__ import annotations
@@ -20,7 +22,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dstools.features.mod import similar_mods
-from dstools.features.mod.parser import _strip_lua_comments
 
 
 # 同类名单的数据在 similar_mods.py（由 scripts/mod_conflict_tool.py 维护）：(类别键, 工坊 ID)
@@ -107,7 +108,7 @@ def _declared_dependencies(mod_folder: Path) -> set[str]:
         text = (mod_folder / "modinfo.lua").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return set()
-    text = _strip_lua_comments(text)
+    text = _strip_comments_fast(text)
     result: set[str] = set()
     for match in _DEPENDENCIES_START.finditer(text):
         depth, end = 1, match.end()
@@ -147,6 +148,134 @@ def _dependency_components(mods: dict[str, tuple[str, Path | None]]) -> dict[str
     return {mod_id: find(mod_id) for mod_id in mods}
 
 
+# 游戏自己按名字 require 的目录（AddComponent、PrefabFiles、SetStateGraph），Mod 文本里看不到，不按 modimport 排除
+_GAME_REQUIRED_DIRS = ("components/", "prefabs/", "stategraphs/")
+_LOADER_CALL = re.compile(r"\b(modimport|require|loadfile)\b\s*")
+_LUA_STRING = re.compile(r""""((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'""")
+# 一次扫过字符串与注释：字符串原样保留（里面的 "--" 不是注释），注释换成空格
+_LUA_STRING_OR_COMMENT = re.compile(
+    r"""(?P<str>"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\[(?P<eq>=*)\[.*?\](?P=eq)\])"""
+    r"""|--\[(?P<ceq>=*)\[.*?\](?P=ceq)\]|--[^\n]*""",
+    re.DOTALL)
+
+
+def _strip_comments_fast(text: str) -> str:
+    """去掉 Lua 注释（不保留字符位置，比 parser._strip_lua_comments 快一个数量级）。"""
+    return _LUA_STRING_OR_COMMENT.sub(lambda m: m.group("str") or " ", text)
+
+
+def _call_argument(text: str, pos: int) -> str | None:
+    """pos 处若是 ``(表达式)`` 返回括号内文本，若是单个字符串字面量（Lua 的 f"x" 调用写法）返回它，否则 None。"""
+    if pos < len(text) and text[pos] in "\"'":
+        match = _LUA_STRING.match(text, pos)
+        return match.group(0) if match else None
+    if pos >= len(text) or text[pos] != "(":
+        return None
+    depth, i = 0, pos
+    while i < len(text):
+        char = text[i]
+        if char in "\"'":
+            match = _LUA_STRING.match(text, i)
+            if match is None:
+                return None
+            i = match.end()
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return text[pos + 1:i]
+        i += 1
+    return None
+
+
+def _argument_parts(expr: str) -> list[str | None]:
+    """把参数表达式拆成字符串字面量（小写、反斜杠转正斜杠）与非字面量（None），相邻非字面量合并。"""
+    parts: list[str | None] = []
+    last = 0
+    for match in _LUA_STRING.finditer(expr):
+        gap = expr[last:match.start()].replace("..", "")
+        if gap.strip() and (not parts or parts[-1] is not None):
+            parts.append(None)
+        literal = match.group(1) if match.group(1) is not None else match.group(2)
+        parts.append(literal.replace("\\\\", "/").replace("\\", "/").casefold())
+        last = match.end()
+    if expr[last:].replace("..", "").strip() and (not parts or parts[-1] is not None):
+        parts.append(None)
+    return parts
+
+
+def _loader_patterns(kind: str, parts: list[str | None]) -> re.Pattern | None:
+    """把一次加载调用换成匹配「相对 scripts/ 的小写路径」的正则；认不出或完全动态的返回 None。"""
+    literals = "".join(part for part in parts if part is not None)
+    if kind == "modimport":
+        # 相对 Mod 根目录，只关心 scripts/ 下的；拼接部分只当一级路径，且要有 scripts/ 之外的字面量
+        if not parts or parts[0] is None or not parts[0].startswith("scripts/"):
+            return None
+        if len(literals.removesuffix(".lua")) <= len("scripts/"):
+            return None
+        parts = [parts[0][len("scripts/"):], *parts[1:]]
+        wildcard = "[^/]*"
+    else:
+        if not literals:
+            return None  # 完全动态（如 require(v)）认不出加载了什么，忽略
+        if kind == "require":
+            parts = [None if p is None else p.replace(".", "/") for p in parts]  # 游戏把模块名的 . 换成 /
+        else:  # 游戏改写的 loadfile 去掉 .lua 与 scripts/ 后按模块名查找（scripts/main.lua）
+            parts = [None if p is None else p.replace(".lua", "").replace("scripts/", "") for p in parts]
+        wildcard = ".*"
+    body = "".join(wildcard if part is None else re.escape(part) for part in parts)
+    return re.compile(rf"{body}(?:\.lua)?")
+
+
+def _loader_refs(mod_folder: Path, kinds: tuple[str, ...]) -> list[re.Pattern]:
+    """扫描 Mod 全部 .lua 里 kinds 这几种加载调用，返回路径正则。
+
+    先按原文是否含调用名过滤文件：modimport 只出现在少数文件里，require 则几乎处处都有，
+    所以调用方先查 modimport、确有需要才查 require/loadfile。"""
+    patterns: list[re.Pattern] = []
+    for dirpath, _dirnames, filenames in os.walk(mod_folder):
+        for filename in filenames:
+            if not filename.lower().endswith(".lua"):
+                continue
+            try:
+                text = (Path(dirpath) / filename).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if not any(kind in text for kind in kinds):
+                continue
+            text = _strip_comments_fast(text)
+            for match in _LOADER_CALL.finditer(text):
+                if match.group(1) not in kinds:
+                    continue
+                expr = _call_argument(text, match.end())
+                if expr is None:
+                    continue
+                pattern = _loader_patterns(match.group(1), _argument_parts(expr))
+                if pattern is not None:
+                    patterns.append(pattern)
+    return patterns
+
+
+def _only_modimported(rel: str, ids: tuple[str, ...], mods: dict[str, tuple[str, Path | None]],
+                      cache: dict[tuple[str, str], list[re.Pattern]]) -> bool:
+    """rel 在每个 Mod 里都由 modimport 加载、且没有 require/loadfile 到它（不会经 package.path 互相顶掉）。"""
+    if rel.startswith(_GAME_REQUIRED_DIRS):
+        return False
+
+    def refs(mod_id: str, kind: str) -> list[re.Pattern]:
+        key = (mod_id, kind)
+        if key not in cache:
+            kinds = ("modimport",) if kind == "import" else ("require", "loadfile")
+            cache[key] = _loader_refs(mods[mod_id][1], kinds)
+        return cache[key]
+
+    if not all(any(p.fullmatch(rel) for p in refs(mod_id, "import")) for mod_id in ids):
+        return False
+    return not any(p.fullmatch(rel) for mod_id in ids for p in refs(mod_id, "load"))
+
+
 def find_duplicates(mods: dict[str, tuple[str, Path | None]]) -> DuplicateReport:
     """mods 为 {Mod 键: (modinfo 名称, Mod 目录)}，只传同时启用的 Mod；目录缺失的只参与同名比较。"""
     report = DuplicateReport()
@@ -178,6 +307,7 @@ def find_duplicates(mods: dict[str, tuple[str, Path | None]]) -> DuplicateReport
             owners[rel][mod_id] = full
 
     component_of = _dependency_components(mods)
+    loader_refs: dict[tuple[str, str], list[re.Pattern]] = {}  # 按需扫描，只扫有冲突候选的 Mod
     clash_paths: dict[tuple[str, ...], list[str]] = defaultdict(list)
     for rel, files in owners.items():
         if len(files) < 2:
@@ -194,6 +324,8 @@ def find_duplicates(mods: dict[str, tuple[str, Path | None]]) -> DuplicateReport
             continue
         # 全部属于同一组同类名单的，已在同类里提示
         if len({similar_of.get(mod_id, mod_id) for mod_id in ids}) < 2:
+            continue
+        if _only_modimported(rel, ids, mods, loader_refs):
             continue
         clash_paths[ids].append(rel)
     for ids, paths in sorted(clash_paths.items(), key=lambda kv: (-len(kv[1]), kv[0])):
