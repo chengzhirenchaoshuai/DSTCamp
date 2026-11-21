@@ -53,6 +53,8 @@ class WorldPageData:
     local_index_error: str = ""
     # 本机版本与登记表核对版本不同的 Mod：[(显示名, 本机版本, 已核对版本)]
     unverified_mods: list = field(default_factory=list)
+    # 套用内置选项预设后、保存时一并写入的预设信息（builtin_presets.preset_fields），没有套用时为空
+    preset_fields: dict = field(default_factory=dict)
 
     @property
     def can_save(self) -> bool:
@@ -249,7 +251,7 @@ def apply_builtin_settings_preset(data: WorldPageData, preset) -> tuple[list[str
     """套用游戏自带的选项预设（builtin_presets.BuiltinSettingsPreset），与游戏一致：这个世界显示的原版
     世界设置先回到默认值，再套预设取值；世界生成项和 Mod 设置项不动。返回值同 apply_preset_values，
     跳过的只报预设本身写了的项，回默认值时这个世界不显示的项不提示。"""
-    from dstools.features.world.builtin_presets import vanilla_setting_default
+    from dstools.features.world.builtin_presets import preset_fields, vanilla_setting_default
     from dstools.features.world.user_presets import applicable_overrides
 
     resets = {}
@@ -262,6 +264,7 @@ def apply_builtin_settings_preset(data: WorldPageData, preset) -> tuple[list[str
     resets, _ = applicable_overrides(resets, data.location, data.mod_settings,
                                      is_master_world=data.is_master_world, active_mod_ids=data.active_mod_ids)
     changed, skipped = apply_preset_values(data, {**resets, **preset.overrides})
+    data.preset_fields = preset_fields(preset)
     return changed, [key for key in skipped if key in preset.overrides]
 
 
@@ -280,9 +283,13 @@ def save_world_page(data: WorldPageData) -> None:
     save/shardindex，再同步写 leveldataoverride.lua 保持一致。本地存档须在游戏关闭时调用。"""
     if not data.can_save or data.path is None:
         raise ValueError(data.local_index_error or "当前世界无法保存")
+    from dstools.features.world.builtin_presets import apply_preset_fields
+
     value_sets = lua_value_types(data)
+    fields = dict(data.preset_fields)
+    edit = (lambda table: apply_preset_fields(table, fields)) if fields else None
     if not data.is_server:
         shard_dir = data.path.parent
         merged = merge_overrides(load_local_overrides(shard_dir), data.preset.overrides, value_sets)
-        save_local_overrides(shard_dir, merged)
-    save_leveldata(data.preset, data.path, value_sets)
+        save_local_overrides(shard_dir, merged, edit)
+    save_leveldata(data.preset, data.path, value_sets, edit)

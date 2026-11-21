@@ -33,6 +33,8 @@ class BuiltinSettingsPreset:
     names: dict                  # {"zh": ..., "en": ...}
     descriptions: dict
     overrides: dict = field(default_factory=dict)
+    # 预设自带的 playstyle 字段（forest.lua 中 TERRARIA 等写的 PLAYSTYLE_DEFAULT 即 "survival"；洞穴预设没有）
+    playstyle: str | None = None
 
     @property
     def name(self) -> str:
@@ -48,6 +50,7 @@ BUILTIN_SETTINGS_PRESETS = (
         "SURVIVAL_TOGETHER", FOREST_LOCATION,
         {"zh": "生存", "en": "Survival"},
         {"zh": "标准《饥荒》体验。", "en": "The standard Don't Starve experience."},
+        playstyle="survival",
     ),
     BuiltinSettingsPreset(
         "RELAXED", FOREST_LOCATION,
@@ -63,6 +66,7 @@ BUILTIN_SETTINGS_PRESETS = (
             "healthpenalty": "none", "wildfires": "never", "hounds": "rare",
             "resettime": "none", "shadowcreatures": "rare", "brightmarecreatures": "rare",
         },
+        playstyle="relaxed",
     ),
     BuiltinSettingsPreset(
         "ENDLESS", FOREST_LOCATION,
@@ -71,6 +75,7 @@ BUILTIN_SETTINGS_PRESETS = (
          "en": "A never-ending Don't Starve sandbox. Resurrection is always available via the Florid Postern."},
         {"portalresurection": "always", "basicresource_regrowth": "always", "resettime": "none",
          "ghostsanitydrain": "none"},
+        playstyle="endless",
     ),
     BuiltinSettingsPreset(
         "WILDERNESS", FOREST_LOCATION,
@@ -80,6 +85,7 @@ BUILTIN_SETTINGS_PRESETS = (
                "When you die: pick a new survivor and try, try again."},
         {"spawnmode": "scatter", "basicresource_regrowth": "always", "ghostenabled": "none",
          "ghostsanitydrain": "none", "resettime": "none"},
+        playstyle="wilderness",
     ),
     BuiltinSettingsPreset(
         "LIGHTS_OUT", FOREST_LOCATION,
@@ -87,6 +93,7 @@ BUILTIN_SETTINGS_PRESETS = (
         {"zh": "在标准《饥荒》体验的基础上添加黑暗基调。",
          "en": "A dark twist on the standard Don't Starve experience."},
         {"day": "onlynight"},
+        playstyle="lightsout",
     ),
     BuiltinSettingsPreset(
         "TERRARIA", FOREST_LOCATION,
@@ -99,11 +106,13 @@ BUILTIN_SETTINGS_PRESETS = (
             "bees_setting": "never", "birds": "often", "rabbits_setting": "often", "bats_setting": "never",
             "wasps": "always", "sharks": "many", "lureplants": "often",
         },
+        playstyle="survival",
     ),
     BuiltinSettingsPreset(
         "SURVIVAL_DEFAULT_PLUS", FOREST_LOCATION,
         {"zh": "丰富森林", "en": "Forest Plus"},
         {"zh": "在一个更艰难的世界中快速上手。", "en": "A quicker start in a harsher world."},
+        playstyle="survival",
     ),
     BuiltinSettingsPreset(
         "DST_CAVE", CAVE_LOCATION,
@@ -133,6 +142,24 @@ BUILTIN_SETTINGS_PRESETS = (
 def presets_for_location(location: str) -> list[BuiltinSettingsPreset]:
     """当前世界类型可用的内置选项预设；Mod 世界类型（海难、猪镇等）没有，返回空表。"""
     return [p for p in BUILTIN_SETTINGS_PRESETS if p.location == location]
+
+
+def preset_fields(preset: BuiltinSettingsPreset) -> dict:
+    """套用后要写进 leveldataoverride / shardindex world.options 的预设信息，与游戏选预设后保存的一致：
+    settings_id/name/desc 标明当前选项预设（游戏世界设置界面据此显示预设名、按它统计"已修改"项数），
+    名称与说明按当前界面语言写（游戏同样存当时语言的文字）。worldgen_* 与顶层 id/name/desc 不动。"""
+    fields = {"settings_id": preset.preset_id, "settings_name": preset.name, "settings_desc": preset.description}
+    if preset.playstyle:
+        fields["playstyle"] = preset.playstyle
+    return fields
+
+
+def apply_preset_fields(target: dict, fields: dict) -> None:
+    """把 preset_fields 写进一张 options 表：settings_* 总是写入，playstyle 只在原来就有时改
+    （只是预设附带的元数据，游戏每次开服按设置重新算游戏风格）。"""
+    for key, value in fields.items():
+        if key.startswith("settings_") or key in target:
+            target[key] = value
 
 
 def vanilla_setting_default(key: str) -> str:

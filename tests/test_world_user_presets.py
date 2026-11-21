@@ -73,5 +73,41 @@ def test_builtin_settings_preset_resets_other_settings():
     assert values["world_size"] == "small"
 
 
+def test_builtin_settings_preset_saves_preset_name_for_local_save():
+    # 本地存档：settings_* 与 world.options 里已有的 playstyle 跟着改，world.options 以外原样保留
+    from dstools.features.world.local_options import load_local_overrides
+    from dstools.features.world.reader import load_leveldata
+    from dstools.shared.lua_parser import parse_lua_table
+
+    survival = next(p for p in builtin_presets.BUILTIN_SETTINGS_PRESETS if p.preset_id == "SURVIVAL_TOGETHER")
+    with TemporaryDirectory() as tmp:
+        shard_dir = Path(tmp) / "Master"
+        (shard_dir / "save").mkdir(parents=True)
+        index_file = shard_dir / "save" / "shardindex"
+        index_file.write_bytes(
+            b'KLEI     1 return {enabled_mods={["workshop-1"]={enabled=true}}, server={playstyle="relaxed"}, '
+            b'world={options={id="RELAXED", playstyle="relaxed", settings_id="RELAXED", '
+            b'overrides={hunger="nonlethal", world_size="small"}}}}')
+        leveldata = shard_dir / "leveldataoverride.lua"
+        leveldata.write_text('return {id="RELAXED", name="x", desc="", location="forest", settings_id="RELAXED", '
+                             'overrides={hunger="nonlethal", world_size="small"}}', encoding="utf-8")
+        preset = load_leveldata(leveldata).preset
+        preset.overrides = [WorldOverride(k, v) for k, v in load_local_overrides(shard_dir).items()]
+        data = page_data.WorldPageData(page_data.STATUS_OK, is_server=False, shard_name="Master", path=leveldata,
+                                       preset=preset, location="forest", is_master_world=True)
+        page_data.apply_builtin_settings_preset(data, survival)
+        page_data.save_world_page(data)
+
+        saved = parse_lua_table(index_file.read_bytes()[11:].decode("utf-8"))
+        options = saved["world"]["options"]
+        assert options["settings_id"] == "SURVIVAL_TOGETHER" and options["playstyle"] == "survival"
+        assert options["id"] == "RELAXED" and options["overrides"] == {"hunger": "default", "world_size": "small"}
+        assert saved["enabled_mods"] == {"workshop-1": {"enabled": True}} and saved["server"] == {"playstyle": "relaxed"}
+        raw = load_leveldata(leveldata).preset.raw
+        assert raw["settings_id"] == "SURVIVAL_TOGETHER" and raw["overrides"]["hunger"] == "default"
+        # leveldataoverride 原本没有 playstyle，不新增
+        assert "playstyle" not in raw
+
+
 if __name__ == "__main__":
     run(globals())

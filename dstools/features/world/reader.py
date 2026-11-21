@@ -103,10 +103,12 @@ def _write_text_atomically(path: Path, text: str) -> None:
             os.unlink(temp_name)
 
 
-def save_leveldata(preset: WorldPreset, path: Path, value_sets: dict[str, list[str]] | None = None) -> None:
+def save_leveldata(preset: WorldPreset, path: Path, value_sets: dict[str, list[str]] | None = None,
+                   edit_raw=None) -> None:
     """把 overrides 写回 leveldataoverride.lua，其他字段保持不变。
 
-    ``value_sets`` 为 key -> 取值表，取值表全是数字的 key（如热带冒险 world_size_multi）按 Lua 数字写入。"""
+    ``value_sets`` 为 key -> 取值表，取值表全是数字的 key（如热带冒险 world_size_multi）按 Lua 数字写入。
+    ``edit_raw`` 为可选回调，写入前就地修改整张表的其他字段（如套用内置选项预设时的 settings_id）。"""
     from dstools.shared.lua_parser import parse_lua_file
     from dstools.shared.lua_parser import serialize_lua_table
 
@@ -123,6 +125,8 @@ def save_leveldata(preset: WorldPreset, path: Path, value_sets: dict[str, list[s
         raise ValueError("leveldataoverride.lua 的 overrides 必须是 Lua table")
 
     raw["overrides"] = merge_overrides(raw["overrides"], preset.overrides, value_sets)
+    if edit_raw is not None:
+        edit_raw(raw)
     text = serialize_lua_table(raw)
     _write_text_atomically(path, text)
 

@@ -58,24 +58,38 @@ def load_local_overrides(shard_dir: Path) -> dict:
     return overrides
 
 
-def save_local_overrides(shard_dir: Path, overrides: dict) -> None:
-    """只替换 world.options.overrides 一段，文件其余内容逐字节保留；写前重新解析校验，原子替换。"""
+def save_local_overrides(shard_dir: Path, overrides: dict, edit_options=None) -> None:
+    """只替换 world.options.overrides 一段，文件其余内容逐字节保留；写前重新解析校验，原子替换。
+
+    ``edit_options`` 为可选回调，就地修改 world.options 的其他字段（如套用内置选项预设时的 settings_id）；
+    传入时改为替换整个 world.options 表，world.options 以外的内容仍逐字节保留。"""
     path = shard_index_path(shard_dir)
     raw = path.read_bytes()
     if not raw.startswith(_PLAIN_HEADER):
         raise ShardIndexError("shardindex 不是明文格式，不能安全写回")
     text = raw[_HEADER_LEN:].decode("utf-8")
-    span = _nested_span(text, _PATH)
+    before = parse_lua_table(text, str(path))
+    if edit_options is None:
+        target_path, expected = _PATH, overrides
+    else:
+        target_path = _PATH[:-1]
+        expected = dict(before["world"]["options"])
+        expected["overrides"] = overrides
+        edit_options(expected)
+    span = _nested_span(text, target_path)
     if span is None:
         raise ShardIndexError("shardindex 中没有世界设置（world.options.overrides）")
-    value = serialize_lua_table(overrides).removeprefix(_RETURN) if overrides else "{}"
+    value = serialize_lua_table(expected).removeprefix(_RETURN) if expected else "{}"
     new_text = text[:span[0]] + value + text[span[1]:]
 
-    before = parse_lua_table(text, str(path))
     after = parse_lua_table(new_text, str(path))
-    written = after["world"]["options"].pop("overrides", None)
-    before["world"]["options"].pop("overrides", None)
-    if before != after or written != overrides:
+    if edit_options is None:
+        written = after["world"]["options"].pop("overrides", None)
+        before["world"]["options"].pop("overrides", None)
+    else:
+        written = after["world"].pop("options", None)
+        before["world"].pop("options", None)
+    if before != after or written != expected:
         raise ShardIndexError("写回校验失败：世界设置以外的内容发生了变化")
 
     tmp = path.with_name(path.name + ".dstcamp.tmp")

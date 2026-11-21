@@ -601,7 +601,8 @@ class WorldSettingsPage(Page):
         self._generation_panel.set_data(data.generation_categories, data.generation_by_category,
                                         data.location, data.mod_settings, data.mod_icons)
         self._update_tab_labels()
-        if changed:
+        # 取值都没变但预设名不同时也要能保存，否则游戏界面仍显示原预设名
+        if changed or data.preset.raw.get("settings_id") != preset.preset_id:
             self._set_dirty(True)
         message = t("world.builtin_preset_applied", name=preset.name, count=len(changed))
         if skipped:
