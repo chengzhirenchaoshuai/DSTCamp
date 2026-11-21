@@ -569,6 +569,16 @@ def test_modinfo_reader():
         )
         assert parse_modinfo(server_folder).client_only is False
 
+        # configuration_options 之后重新赋值（3169319734 的写法）：以最后一次为准，是服务器 Mod
+        reassigned = Path(tmp) / "654329"
+        reassigned.mkdir()
+        (reassigned / "modinfo.lua").write_text(
+            'name = "Reassigned"\nclient_only_mod = true\nconfiguration_options = {}\n'
+            'all_clients_require_mod = true\nclient_only_mod = false\n',
+            encoding="utf-8",
+        )
+        assert parse_modinfo(reassigned).client_only is False
+
         # 选项自带 client = true 的纯客户端设置应被隐藏（见 visible_config_options）
         client_folder = Path(tmp) / "654323"
         client_folder.mkdir()

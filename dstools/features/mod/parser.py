@@ -584,8 +584,11 @@ def parse_modinfo(mod_folder: Path) -> ModInfo | None:
     _extract_description(header, info)
 
     def _flag(name: str) -> bool:
-        fm = re.search(rf"\b{name}\s*=\s*(true|false)\b", header)
-        return bool(fm) and fm.group(1) == "true"
+        # 全文件找、取最后一次赋值（Lua 后赋值覆盖前面的）：有的 Mod 在开头写 client_only_mod = true，
+        # 到 configuration_options 之后又改成 false（如 3169319734），只看开头会误判成纯客户端 Mod。
+        # 排除 xxx.client_only_mod 这类字段访问
+        found = re.findall(rf"(?<![\w.]){name}\s*=\s*(true|false)\b", text)
+        return bool(found) and found[-1] == "true"
 
     # server_only_mod / all_clients_require_mod 任一为真即按服务器 Mod 处理（见 ModInfo.client_only）
     if _flag("client_only_mod") and not (
