@@ -144,22 +144,61 @@ def presets_for_location(location: str) -> list[BuiltinSettingsPreset]:
     return [p for p in BUILTIN_SETTINGS_PRESETS if p.location == location]
 
 
-def preset_fields(preset: BuiltinSettingsPreset) -> dict:
-    """套用后要写进 leveldataoverride / shardindex world.options 的预设信息，与游戏选预设后保存的一致：
-    settings_id/name/desc 标明当前选项预设（游戏世界设置界面据此显示预设名、按它统计"已修改"项数），
-    名称与说明按当前界面语言写（游戏同样存当时语言的文字）。worldgen_* 与顶层 id/name/desc 不动。"""
-    fields = {"settings_id": preset.preset_id, "settings_name": preset.name, "settings_desc": preset.description}
-    if preset.playstyle:
+# 写进 leveldataoverride / shardindex world.options 的预设信息，与游戏一致（worldsettingsmenu.lua）：
+# 保存时 CollectOptions 以基础预设为底，{类别}_id/name/desc 是官方（或 Mod）基础预设；选的是自定义预设时
+# 另写 custom_{类别}_id/name/desc，选官方预设时没有这几项。读档时 SetDataFromOptions 按 {类别}_id 载入预设、
+# 按 custom_{类别}_id 显示自定义预设名，并据此统计"已修改"项数。{类别} 为 settings（世界设置）或 worldgen
+# （世界生成）。下面的字段表中值为 None 表示删除该字段。顶层 id/name/desc 不动。
+SETTINGS = "settings"
+WORLDGEN = "worldgen"
+
+
+def find_preset(preset_id: str) -> BuiltinSettingsPreset | None:
+    return next((p for p in BUILTIN_SETTINGS_PRESETS if p.preset_id == (preset_id or "").upper()), None)
+
+
+def official_fields(category: str, base_id: str) -> dict:
+    """以官方预设 base_id 为底时的字段。名称与说明按当前界面语言写（游戏同样存当时语言的文字）；
+    本表里的预设在世界生成类别下名称、说明与选项预设相同（forest.lua/caves.lua 用同一组字符串）。
+    认不出的基础预设（Mod 预设）只写 ID，游戏读档也只用 ID。playstyle 只随选项预设写。"""
+    preset = find_preset(base_id)
+    if preset is None:
+        return {f"{category}_id": base_id} if base_id else {}
+    fields = {f"{category}_id": preset.preset_id, f"{category}_name": preset.name,
+              f"{category}_desc": preset.description}
+    if category == SETTINGS and preset.playstyle:
         fields["playstyle"] = preset.playstyle
     return fields
 
 
+def custom_fields(category: str, custom_id: str | None, name: str = "", desc: str = "") -> dict:
+    """自定义预设字段；custom_id 为 None 表示选的是官方预设，删掉残留的自定义预设信息。"""
+    keys = (f"custom_{category}_id", f"custom_{category}_name", f"custom_{category}_desc")
+    if custom_id is None:
+        return dict.fromkeys(keys)
+    return dict(zip(keys, (custom_id, name, desc)))
+
+
+def preset_fields(preset: BuiltinSettingsPreset) -> dict:
+    """套用内置选项预设后的字段：世界设置类别改为该官方预设，世界生成类别不动。"""
+    return {**official_fields(SETTINGS, preset.preset_id), **custom_fields(SETTINGS, None)}
+
+
 def apply_preset_fields(target: dict, fields: dict) -> None:
-    """把 preset_fields 写进一张 options 表：settings_* 总是写入，playstyle 只在原来就有时改
-    （只是预设附带的元数据，游戏每次开服按设置重新算游戏风格）。"""
+    """把字段表写进一张 options 表：值为 None 的删除；playstyle 只在原来就有时改（只是预设附带的元数据，
+    游戏每次开服按设置重新算游戏风格），其余总是写入。"""
     for key, value in fields.items():
-        if key.startswith("settings_") or key in target:
+        if value is None:
+            target.pop(key, None)
+        elif key != "playstyle" or key in target:
             target[key] = value
+
+
+def fields_differ(target: dict, fields: dict) -> bool:
+    """options 表套用字段表后会不会变（用来判断取值没变时是否仍需保存）。"""
+    updated = dict(target)
+    apply_preset_fields(updated, fields)
+    return updated != target
 
 
 def vanilla_setting_default(key: str) -> str:

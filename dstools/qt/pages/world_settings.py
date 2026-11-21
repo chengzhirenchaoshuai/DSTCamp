@@ -571,16 +571,16 @@ class WorldSettingsPage(Page):
         if dialog.exec() != dialogs.Dialog.DialogCode.Accepted or dialog.selected is None or data is not self._data:
             return
         preset = dialog.selected
-        changed, skipped = page_data.apply_preset_values(data, preset.overrides)
+        changed, skipped = page_data.apply_user_preset(data, preset)
         self._rules.set_data(data.rule_categories, data.rules_by_category, data.location,
                              data.mod_settings, data.mod_icons)
         self._generation_panel.set_data(data.generation_categories, data.generation_by_category,
                                         data.location, data.mod_settings, data.mod_icons)
         self._update_tab_labels()
-        if changed:
+        if changed or page_data.preset_fields_pending(data):
             self._set_dirty(True)
-            if any(key in preset.worldgen for key in changed):
-                self._generation_changed = True
+        if any(key in preset.worldgen for key in changed):
+            self._generation_changed = True
         message = t("world.preset_applied", name=preset.name, count=len(changed))
         if skipped:
             message += t("world.preset_applied_skipped", count=len(skipped), keys="、".join(skipped))
@@ -602,7 +602,7 @@ class WorldSettingsPage(Page):
                                         data.location, data.mod_settings, data.mod_icons)
         self._update_tab_labels()
         # 取值都没变但预设名不同时也要能保存，否则游戏界面仍显示原预设名
-        if changed or data.preset.raw.get("settings_id") != preset.preset_id:
+        if changed or page_data.preset_fields_pending(data):
             self._set_dirty(True)
         message = t("world.builtin_preset_applied", name=preset.name, count=len(changed))
         if skipped:

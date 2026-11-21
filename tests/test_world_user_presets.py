@@ -109,5 +109,37 @@ def test_builtin_settings_preset_saves_preset_name_for_local_save():
         assert "playstyle" not in raw
 
 
+def test_user_preset_then_builtin_preset_names():
+    # 与游戏一致：{类别}_id 写基础预设、custom_{类别}_* 写自定义预设；之后改选官方选项预设时删掉 custom_settings_*
+    from dstools.features.world.reader import load_leveldata
+
+    custom = user_presets.UserPreset("CUSTOM_MINE", "Mine", "d", "ENDLESS", "ENDLESS",
+                                     {"day": "longday"}, {"world_size": "small"})
+    relaxed = next(p for p in builtin_presets.BUILTIN_SETTINGS_PRESETS if p.preset_id == "RELAXED")
+    with TemporaryDirectory() as tmp:
+        leveldata = Path(tmp) / "leveldataoverride.lua"
+        leveldata.write_text('return {id="SURVIVAL_TOGETHER", name="x", desc="", location="forest", '
+                             'settings_id="SURVIVAL_TOGETHER", worldgen_id="SURVIVAL_TOGETHER", '
+                             'overrides={day="longday", world_size="small"}}', encoding="utf-8")
+
+        def apply_and_save(apply, preset):
+            data = page_data.WorldPageData(page_data.STATUS_OK, is_server=True, shard_name="Master", path=leveldata,
+                                           preset=load_leveldata(leveldata).preset, location="forest",
+                                           is_master_world=True)
+            changed, _ = apply(data, preset)
+            pending = page_data.preset_fields_pending(data)
+            page_data.save_world_page(data)
+            return changed, pending, load_leveldata(leveldata).preset.raw
+
+        # 取值已一致也要能保存，否则预设名改不过来
+        changed, pending, raw = apply_and_save(page_data.apply_user_preset, custom)
+        assert changed == [] and pending
+        assert raw["settings_id"] == "ENDLESS" and raw["worldgen_id"] == "ENDLESS"
+        assert raw["custom_settings_id"] == "CUSTOM_MINE" and raw["custom_worldgen_name"] == "Mine"
+        _, _, raw = apply_and_save(page_data.apply_builtin_settings_preset, relaxed)
+        assert raw["settings_id"] == "RELAXED" and "custom_settings_id" not in raw
+        assert raw["worldgen_id"] == "ENDLESS" and raw["custom_worldgen_id"] == "CUSTOM_MINE"
+
+
 if __name__ == "__main__":
     run(globals())

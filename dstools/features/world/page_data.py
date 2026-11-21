@@ -268,6 +268,22 @@ def apply_builtin_settings_preset(data: WorldPageData, preset) -> tuple[list[str
     return changed, [key for key in skipped if key in preset.overrides]
 
 
+def apply_user_preset(data: WorldPageData, preset) -> tuple[list[str], list[str]]:
+    """套用自定义预设（user_presets.UserPreset）的取值，并记下保存时要写的预设信息；返回值同 apply_preset_values。"""
+    from dstools.features.world.user_presets import preset_fields
+
+    result = apply_preset_values(data, preset.overrides)
+    data.preset_fields = preset_fields(preset)
+    return result
+
+
+def preset_fields_pending(data: WorldPageData) -> bool:
+    """记下的预设信息与文件里的是否不同：取值没变但预设名要改时也需要保存。"""
+    from dstools.features.world.builtin_presets import fields_differ
+
+    return bool(data.preset_fields) and fields_differ(data.preset.raw, data.preset_fields)
+
+
 def rebuild_view(data: WorldPageData) -> None:
     """按当前取值重新生成分类列表（显示哪些项取决于取值时调用，如海难的火山岛开关）。"""
     view_model = build_world_view_model(

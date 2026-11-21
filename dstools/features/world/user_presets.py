@@ -232,6 +232,20 @@ def delete_preset(user_dir: Path, preset_id: str) -> None:
         raise UserPresetError(f"无法删除预设：{exc}") from exc
 
 
+def preset_fields(preset: UserPreset) -> dict:
+    """套用自定义预设后写进 leveldataoverride / shardindex world.options 的预设信息，与游戏选自定义预设后
+    保存的一致（规则见 builtin_presets.official_fields 上方说明）：预设有哪一类文件就改哪一类，
+    {类别}_id 写基础预设，custom_{类别}_* 写这个自定义预设。"""
+    from dstools.features.world.builtin_presets import SETTINGS, WORLDGEN, custom_fields, official_fields
+
+    fields = {}
+    for category, base in ((SETTINGS, preset.settings_base), (WORLDGEN, preset.worldgen_base)):
+        if base:
+            fields.update(official_fields(category, base))
+            fields.update(custom_fields(category, preset.preset_id, preset.name, preset.description))
+    return fields
+
+
 def resolve_base_ids(raw: dict, location: str, user_dir: Path | None = None) -> tuple[str, str]:
     """从 leveldataoverride 取 (设置, 生成) 的基础预设 ID。世界本身由自定义预设生成时，改取那个预设的 baseid；
     找不到时与游戏迁移旧预设的做法一致，退回该世界类型的默认预设。"""
