@@ -108,24 +108,45 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.5 changes
+## 1.9.6 changes
 
 ### ✨ New features
 
-- Before starting, Mods whose files exist but that Steam hasn't registered are detected and can be fixed in one click: the server skips such Mods silently, without a word in the log.
+- World Settings and the create-world wizard support "Built-in Presets" (Survival, Relaxed, Endless and more).
+- Duplicate or similar Mods are detected, with a suggestion to keep only one.
+- The Mod configuration window shows option descriptions and the Mod's description, and gamepad buttons appear as icons.
 
 ### ✨ Improvements
+
+- After loading a custom preset, the game also shows that preset's name.
+- Dialogs for choosing a configuration set or preset have a "Back" button.
+
+### 🐞 Fixes
+
+- Changing client Mod settings while the game was running didn't take effect.
+- DSTCamp crashed on launch when a room name or password contained `%`.
+- Room names, cluster_key and similar text were rewritten as numbers (e.g. 007 became 7).
+- Some Mods were misidentified as client-only or server-only.
+- Removed the misleading "LuaJIT patch may be unable to read Mod files" diagnosis added in 1.9.5.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.5)</strong></summary>
+
+### 1.9.5
+
+#### ✨ New features
+
+- Before starting, Mods whose files exist but that Steam hasn't registered are detected and can be fixed in one click: the server skips such Mods silently, without a word in the log.
+
+#### ✨ Improvements
 
 - With LuaJIT on, "Mod file not found" errors are now diagnosed as a likely LuaJIT patch problem, suggesting you uninstall or update the patch before starting, instead of disabling the Mod that reported the error.
 - When antivirus software blocks frpc, this is said directly, with a "Resolve Block" button that opens the Defender exclusions.
 - Auto-update progress now reaches 100% and shows "Verifying" while the new version is checked, instead of sitting at 99%.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - Newly enabling the LuaJIT companion Mod wrote an invalid "Lua VM Type" value, so the world reloaded about every 10 seconds and players couldn't join. For saves already affected, the console reports "LuaJIT Patch Keeps Resetting the World": choose "Lua VM Type" again in that Mod's settings and save.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.4)</strong></summary>
 
 ### 1.9.4
 
