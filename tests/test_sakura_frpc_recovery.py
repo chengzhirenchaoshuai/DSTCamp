@@ -88,7 +88,7 @@ def test_enable_mapping_rolls_back_when_a_later_shard_fails() -> None:
         cluster = SimpleNamespace(shards=shards, path=root / "Cluster_1",
                                   source=SimpleNamespace(value="server"), platform=SimpleNamespace(value="steam"))
         page = SimpleNamespace(
-            _current_cluster=cluster, _selected_node_id=1,
+            _current_cluster=cluster, _selected_node_id=1, _adoptable_tunnels=[],
             _running_shard_names=lambda _cluster: [],
             _ensure_frpc_available=lambda **_kwargs: object(),
             _enable_mapping=lambda: None,
@@ -100,6 +100,7 @@ def test_enable_mapping_rolls_back_when_a_later_shard_fails() -> None:
         port_dialog = MagicMock()
         port_dialog.return_value.exec.return_value = True
         port_dialog.return_value.result_ports = {"Master": 20001, "Caves": 20002}
+        port_dialog.return_value.result_adopt = {}
         created = iter([{"id": 1, "remote": "20001"},
                         sakura_page.sakura_frp.SakuraApiError("远程端口 UDP:20002 已被占用")])
 
