@@ -108,29 +108,50 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.6 changes
+## 1.9.7 changes
 
 ### ✨ New features
+
+- Sakura tunneling can use tunnels that already exist in your account, and a world can have several (e.g. one VIP and one regular node).
+- Crashes are recorded to an error log, which is included in log bundles.
+
+### ✨ Improvements
+
+- Backup management can delete backups and show them in the folder, and explains when automatic backups happen.
+- The default font now uses regular weight and grey text is darker; at the standard size text no longer mixes thin and bold strokes.
+- Maximizing fills the screen.
+
+### 🐞 Fixes
+
+- The Mod list and World Settings list kept jittering at some window sizes.
+- New worlds copied settings from other saves on this PC (such as changed seasons or wildfires).
+- Creating a save failed if no "Forest + Caves" save had ever been created in the game.
+- "Possibly duplicate Mods" falsely flagged same-named scripts between an expansion and its base Mod, or ones each Mod loads via modimport.
+- Mod names, authors and so on showed as escapes like `\232\138\177`.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.6)</strong></summary>
+
+### 1.9.6
+
+#### ✨ New features
 
 - World Settings and the create-world wizard support "Built-in Presets" (Survival, Relaxed, Endless and more).
 - Duplicate or similar Mods are detected, with a suggestion to keep only one.
 - The Mod configuration window shows option descriptions and the Mod's description, and gamepad buttons appear as icons.
 
-### ✨ Improvements
+#### ✨ Improvements
 
 - After loading a custom preset, the game also shows that preset's name.
 - Dialogs for choosing a configuration set or preset have a "Back" button.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - Changing client Mod settings while the game was running didn't take effect.
 - DSTCamp crashed on launch when a room name or password contained `%`.
 - Room names, cluster_key and similar text were rewritten as numbers (e.g. 007 became 7).
 - Some Mods were misidentified as client-only or server-only.
 - Removed the misleading "LuaJIT patch may be unable to read Mod files" diagnosis added in 1.9.5.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.5)</strong></summary>
 
 ### 1.9.5
 
