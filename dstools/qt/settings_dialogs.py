@@ -179,8 +179,8 @@ class _FontChoiceCard(QWidget):
         painter.drawRoundedRect(rect, 10, 10)
 
         family = FONT_FAMILY_BY_STYLE[self._style]
-        # 麦圆体在 DirectWrite 默认 hinting 下笔画粗细不均，与 theme.apply_style_hints() 一致禁用。
-        hinting = (QFont.HintingPreference.PreferNoHinting if self._style == "cute"
+        # 雅黑、麦圆体在 DirectWrite 默认 hinting 下笔画粗细不均，与 theme.apply_style_hints() 一致禁用。
+        hinting = (QFont.HintingPreference.PreferNoHinting if self._style in ("default", "cute")
                    else QFont.HintingPreference.PreferDefaultHinting)
         name_font = QFont(family, theme.palette["FONT_SIZE_MD"])
         name_font.setHintingPreference(hinting)

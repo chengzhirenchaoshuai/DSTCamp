@@ -34,6 +34,8 @@ _PIXEL_CRISP_LEVELS: tuple[str, ...] = ()
 # 字形左侧几乎无留白的样式（像素字体、麦圆体）：非整数缩放下首列像素会被裁，文字需离边界 1px
 # （见 qss() 与 _patch_combo_paint()）；微软雅黑自带约 1px 留白
 _TIGHT_BEARING_STYLES = ("pixel", "cute")
+# 禁用 hinting 的样式（见 apply_style_hints）
+_NO_HINTING_STYLES = ("default", "cute")
 
 # 控件上记录字号语义层级（size_key）与是否加粗的动态属性名，见 _patch_widget_set_font()。
 _FONT_KEY_PROP = "dstFontKey"
@@ -391,14 +393,15 @@ class Theme(QObject):
     def apply_style_hints(self, font: QFont) -> None:
         """按当前字体样式设置抗锯齿/hinting，必须在字号设好之后调用。
 
-        像素字体在锐利档位且 FreeType 下关抗锯齿、禁 hinting；麦圆体禁 hinting（DirectWrite
-        默认 hinting 会让笔画粗细不均）；微软雅黑保持默认。显式恢复默认策略，因为复用的
+        像素字体在锐利档位且 FreeType 下关抗锯齿、禁 hinting；麦圆体、微软雅黑禁 hinting（DirectWrite
+        默认 hinting 会让笔画粗细不均：雅黑常规体 10 磅被对齐成细笔画、11 磅起突然变粗，标准档正文与
+        标签同屏一细一粗，真机放大截图确认；禁用后各字号粗细连续）。显式恢复默认策略，因为复用的
         QFont 可能残留 NoAntialias。"""
         if (self._font_style == "pixel" and self._pixel_crisp() and freetype_engine_active()
                 and _on_pixel_grid(font)):
             font.setStyleStrategy(QFont.StyleStrategy.NoAntialias)
             font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
-        elif self._font_style == "cute":
+        elif self._font_style in _NO_HINTING_STYLES:
             font.setStyleStrategy(QFont.StyleStrategy.PreferDefault)
             font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         else:
