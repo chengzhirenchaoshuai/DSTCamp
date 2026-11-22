@@ -752,6 +752,10 @@ STRINGS = {
         "sakura.disable_confirm_msg": "这会删除樱花后台对应的隧道，下次重新开启默认会随机分配新端口，直连代码也会变。\n\n"
                                       "当前远程端口：{ports}\n想沿用这些端口，重新开启时把它们填回去即可（期间被别人占用就用不了）。\n\n"
                                       "只是停服不需要关闭映射。确定继续吗？",
+        "sakura.disable_confirm_adopted": "\n\n其中选用的已有隧道不会删除，只把本地地址改回原样：{names}",
+        "sakura.adopted_tunnel_label": "{name}（#{id}，{node}，远程端口 {remote}）",
+        "sakura.adopted_tunnel_gone": "{shard}: 选用的隧道 #{id} 已不存在或已在使用中，请刷新后重新选择",
+        "sakura.restore_adopted_failed": "隧道 #{id} 的本地地址没能改回原样（{error}），可以到樱花后台手动修改",
         "dlg.mapping_rollback_done": "已撤销这次新建的隧道，各世界的端口和映射保持原样",
         "dlg.switch_done_title": "节点已切换",
         "dlg.switch_done_msg": "节点地址已经变了，原来的直连代码已失效。把新的直连代码发给朋友：\n\n{code}",
@@ -762,6 +766,12 @@ STRINGS = {
         "dlg.remote_port_note": "端口填 1~65535 之间的整数；能不能用由穿透服务判断（比如超出节点允许的范围、已被占用），用不了时下一步会显示它返回的原因。世界的本地端口会改成同一个值。",
         "dlg.remote_port_invalid": "「{shard}」的端口不正确，请填 1~65535 之间的整数，或者留空。",
         "dlg.remote_port_duplicate": "不同世界不能用同一个端口（{port}）。",
+        "dlg.remote_port_existing_intro": "也可以给世界选用账号里已有的隧道（比如在樱花后台自己建的），不占新的隧道名额。",
+        "dlg.remote_port_new_tunnel": "新建隧道",
+        "dlg.remote_port_existing_note": "选用已有隧道时：它的本地地址会改成 127.0.0.1、本地端口改成它的远程端口，世界的端口也改成同一个值；"
+                                         "隧道所在节点和远程端口不变。关闭映射时不会删除它，只把本地地址改回原样。"
+                                         "列表里只有 UDP、当前不在线、没被其他存档使用的隧道。",
+        "dlg.remote_port_tunnel_duplicate": "不同世界不能选用同一条隧道。",
         "sakura.copy_connect_btn": "复制直连代码",
         "sakura.copy_connect_master_only_hint": "饥荒直连只能连主世界，副世界无法直接连接（下洞是游戏内自动传送，不需要另外直连）。",
         "sakura.connect_copied": "连接字符串已复制到剪贴板",
@@ -2748,6 +2758,10 @@ STRINGS = {
         "sakura.disable_confirm_msg": "This deletes the corresponding tunnels on SakuraFrp's side. Next time a new random port is assigned by default, so the direct-connect code changes too.\n\n"
                                       "Current remote ports: {ports}\nTo keep them, enter them again when you re-enable mapping (unless someone else takes them in the meantime).\n\n"
                                       "Stopping the server does not require disabling mapping. Continue?",
+        "sakura.disable_confirm_adopted": "\n\nExisting tunnels you chose to use won't be deleted; only their local address is changed back: {names}",
+        "sakura.adopted_tunnel_label": "{name} (#{id}, {node}, remote port {remote})",
+        "sakura.adopted_tunnel_gone": "{shard}: the chosen tunnel #{id} no longer exists or is in use; refresh and choose again",
+        "sakura.restore_adopted_failed": "Couldn't change tunnel #{id}'s local address back ({error}); you can edit it in the SakuraFrp dashboard",
         "dlg.mapping_rollback_done": "The tunnels created this time were removed; every shard keeps its original port and mapping",
         "dlg.switch_done_title": "Node Switched",
         "dlg.switch_done_msg": "The node address has changed and the old direct-connect code no longer works. Send your friends the new code:\n\n{code}",
@@ -2758,6 +2772,12 @@ STRINGS = {
         "dlg.remote_port_note": "Use a whole number from 1 to 65535. The tunnel service decides whether it's available (e.g. outside the node's allowed range, or already taken); if not, the next step shows its reason. The shard's local port is set to the same value.",
         "dlg.remote_port_invalid": "The port for “{shard}” is invalid. Enter a whole number from 1 to 65535, or leave it blank.",
         "dlg.remote_port_duplicate": "Different shards can't use the same port ({port}).",
+        "dlg.remote_port_existing_intro": "You can also use a tunnel that already exists in your account (e.g. one you created in the SakuraFrp dashboard); it doesn't take a new tunnel slot.",
+        "dlg.remote_port_new_tunnel": "New tunnel",
+        "dlg.remote_port_existing_note": "When using an existing tunnel, its local address is changed to 127.0.0.1 and its local port to its remote port, and the shard's port is set to the same value; "
+                                         "the tunnel's node and remote port stay the same. Disabling mapping won't delete it -- its local address is just changed back. "
+                                         "Only UDP tunnels that are offline and not used by another save are listed.",
+        "dlg.remote_port_tunnel_duplicate": "Different shards can't use the same tunnel.",
         "sakura.copy_connect_btn": "Copy Direct-Connect Code",
         "sakura.copy_connect_master_only_hint": "DST direct-connect only works for the surface (Master) world -- Caves can't be connected to directly (traveling down is an automatic in-game shard hop, not a separate connection).",
         "sakura.connect_copied": "Connect string copied to clipboard",

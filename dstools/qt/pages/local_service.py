@@ -84,7 +84,7 @@ from dstools.shared.resource_paths import path_is_ascii
 from dstools.shared.server_ports import (
     collect_cluster_port_claims, disable_lan_restrictions, find_port_conflicts,
     format_lan_port_issues, lan_restriction_names, rewrite_cluster_ports_atomic,
-    rewrite_lan_server_ports_atomic, scan_udp_ports, stable_path_key, system_port_claims,
+    rewrite_lan_server_ports_atomic, scan_udp_ports, system_port_claims,
 )
 from dstools.shared.shard_roles import master_shard
 from dstools.shared.ssl_context import default_ssl_context
@@ -3378,10 +3378,10 @@ class LocalServicePage(Page):
             token = get_sakura_token()
             if not token:
                 return None, None
-            tunnels = sakura_frp.list_tunnels(token)
-            tunnel = sakura_frp.find_dstcamp_tunnel(
-                tunnels, cluster.path.name, master.name, cluster.source.value, cluster.platform.value,
-                cluster_identity=stable_path_key(cluster.path))
+            # 选用的已有隧道不是 DSTCamp 的命名，要连同本地记录的隧道 ID 一起找（与樱花页同一个查找）
+            from dstools.qt.pages.sakura import find_mapped_tunnel
+
+            tunnel = find_mapped_tunnel(sakura_frp.list_tunnels(token), cluster, master, self.ctx.env)
             if not tunnel:
                 return None, None
             node = sakura_frp.list_nodes(token).get(str(tunnel.get("node")), {})

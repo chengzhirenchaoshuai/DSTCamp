@@ -16,7 +16,7 @@ from PySide6.QtGui import (
     QPen, QTextCursor,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QAbstractItemView, QComboBox, QDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QListWidget, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QToolTip, QVBoxLayout,
     QWidget,
 )
@@ -541,15 +541,23 @@ class Dialog(QDialog):
 
 
 class RemotePortDialog(Dialog):
-    """内网穿透开启映射前为每个世界填远程端口，留空由服务端分配；只校验格式和互不重复，能否使用交给穿透服务判断。"""
+    """内网穿透开启映射前为每个世界填远程端口，留空由服务端分配；只校验格式和互不重复，能否使用交给穿透服务判断。
 
-    def __init__(self, parent, shard_names: list[str], confirm_text: str):
+    existing 为 [(隧道 ID, 显示文字)] 时（樱花），每个世界还可以改选账号里已有的隧道，选了就不用填端口；
+    结果在 result_adopt：{世界名: 隧道 ID 或 None（新建）}。"""
+
+    def __init__(self, parent, shard_names: list[str], confirm_text: str,
+                 existing: list[tuple[int, str]] | None = None):
         super().__init__(parent, t("dlg.remote_port_title"), "md", confirm_text=confirm_text)
         self.result_ports: dict[str, int | None] = {}
+        self.result_adopt: dict[str, int | None] = {}
         self.body.addWidget(self.text_label(t("dlg.remote_port_intro")))
+        if existing:
+            self.body.addWidget(self.text_label(t("dlg.remote_port_existing_intro")))
         grid = QGridLayout()
-        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2 if existing else 1, 1)
         self._edits: dict[str, QLineEdit] = {}
+        self._combos: dict[str, QComboBox] = {}
         for row, name in enumerate(shard_names):
             edit = QLineEdit()
             edit.setPlaceholderText(t("dlg.remote_port_placeholder"))
@@ -558,10 +566,23 @@ class RemotePortDialog(Dialog):
             label = QLabel(name)
             label.setFont(theme.font("FONT_SIZE_BASE"))
             grid.addWidget(label, row, 0)
-            grid.addWidget(edit, row, 1)
+            if existing:
+                combo = QComboBox()
+                combo.setFont(theme.font("FONT_SIZE_BASE"))
+                combo.addItem(t("dlg.remote_port_new_tunnel"), None)
+                for tunnel_id, text in existing:
+                    combo.addItem(text, tunnel_id)
+                # 选了已有隧道，远程端口就是它现有的，不用再填
+                combo.currentIndexChanged.connect(
+                    lambda _i, c=combo, e=edit: e.setEnabled(c.currentData() is None))
+                grid.addWidget(combo, row, 1)
+                self._combos[name] = combo
+            grid.addWidget(edit, row, 2 if existing else 1)
             self._edits[name] = edit
         self.body.addLayout(grid)
         self.body.addWidget(self.text_label(t("dlg.remote_port_note"), muted=True))
+        if existing:
+            self.body.addWidget(self.text_label(t("dlg.remote_port_existing_note"), muted=True))
         self._error = self.error_label()
         self._error.hide()
         self.body.addWidget(self._error)
@@ -573,8 +594,20 @@ class RemotePortDialog(Dialog):
 
     def accept_if_valid(self) -> None:
         ports: dict[str, int | None] = {}
+        adopt: dict[str, int | None] = {}
         seen: set[int] = set()
+        seen_tunnels: set[int] = set()
         for name, edit in self._edits.items():
+            combo = self._combos.get(name)
+            tunnel_id = combo.currentData() if combo is not None else None
+            adopt[name] = tunnel_id
+            if tunnel_id is not None:
+                if tunnel_id in seen_tunnels:
+                    self._show_error(t("dlg.remote_port_tunnel_duplicate"))
+                    return
+                seen_tunnels.add(tunnel_id)
+                ports[name] = None
+                continue
             text = edit.text().strip()
             if not text:
                 ports[name] = None
@@ -589,6 +622,7 @@ class RemotePortDialog(Dialog):
             seen.add(port)
             ports[name] = port
         self.result_ports = ports
+        self.result_adopt = adopt
         self.accept()
 
 
