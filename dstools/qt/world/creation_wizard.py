@@ -303,9 +303,6 @@ class CreationWizardDialog(QDialog):
         self._active_mod_settings: dict = {}
         self._mod_world_icons: dict = {}
         self._server_root: Path | None = None
-        self._template_root: Path | None = None
-        # 游戏生成的原版森林/洞穴完整关卡定义（location -> 计划），新增同类世界从这里复制
-        self._template_plans: dict[str, creation.WorldShardPlan] = {}
         self._created_path: Path | None = None
         self._launch_requested = False
         self._selected_mod_ids: set[str] = set()
@@ -545,9 +542,8 @@ class CreationWizardDialog(QDialog):
             self._extra_plans[shard] = plan
 
     def _fresh_plan(self, location: str) -> creation.WorldShardPlan:
-        """新世界的初始计划：原版森林/洞穴优先复制游戏生成的模板，找不到模板和其余世界取已核对的默认值。"""
-        template = getattr(self, "_template_plans", {}).get(location)
-        return copy.deepcopy(template) if template is not None else defaults.default_plan_for_location(location)
+        """新世界的初始计划：取已核对的默认预设，不复制本机其他存档的设置。"""
+        return defaults.default_plan_for_location(location)
 
     def _switch_shard_location(self, shard: str, location: str, render: bool = True) -> None:
         if location not in self._available_locations_for_shard(shard):
@@ -689,7 +685,7 @@ class CreationWizardDialog(QDialog):
                     self._removed_fixed_shards.discard(shard_name)
                     position = 0 if shard_name == MASTER_SHARD else int(self._shard_combo.find_shard(MASTER_SHARD) >= 0)
                     self._shard_combo.insert_shard(position, shard_name)
-                # 固定槽位沿用现有计划（优先官方模板），只切换世界类型
+                # 固定槽位沿用现有计划，只切换世界类型
                 self._switch_shard_location(shard_name, plan.location, render=False)
                 self._user_selected_location_shards.add(shard_name)
                 # 已有的 Master 保留用户填写的 server.ini，只有被删后恢复的才写默认值
@@ -712,16 +708,8 @@ class CreationWizardDialog(QDialog):
             if root is None:
                 root = get_documents_dir() / "Klei" / "DoNotStarveTogether"
             self._server_root = root
-            try:
-                template_root = defaults.find_verified_template(root, "forest")
-                template_plans = defaults.default_plans_from_cluster(template_root)
-                self._template_root = template_root
-                self._template_plans = {plan.location: plan for plan in template_plans}
-            except FileNotFoundError:
-                template_plans = (defaults.default_plan_for_location("forest"), defaults.default_plan_for_location("cave"))
-                self._template_root = None
-                self._template_plans = {}
-            missing = [(shard, plan) for shard, plan in zip((MASTER_SHARD, CAVES_SHARD), template_plans)
+            default_plans = (self._fresh_plan("forest"), self._fresh_plan("cave"))
+            missing = [(shard, plan) for shard, plan in zip((MASTER_SHARD, CAVES_SHARD), default_plans)
                        if shard not in self._removed_fixed_shards and self._plan_for_shard(shard) is None]
             for shard, plan in missing:
                 self._set_plan_for_shard(shard, plan)
@@ -745,20 +733,18 @@ class CreationWizardDialog(QDialog):
             self._mod_settings = get_mod_world_settings(profile.effective_mod_ids)
             self._refresh_location_combo()
             self._render_world()
-            self._status_label.setText(self._template_status_text(profile))
+            self._status_label.setText(self._creation_status_text(profile))
         except Exception as exc:
             self._status_label.setText(str(exc))
 
-    def _template_status_text(self, profile) -> str:
-        """打开向导就提示的状态：Mod 组合警告优先，其次是缺世界生成数据的世界，最后说明没找到游戏模板。"""
+    def _creation_status_text(self, profile) -> str:
+        """打开向导就提示的状态：Mod 组合警告优先，其次是缺世界生成数据的世界。"""
         if profile.warnings:
             return profile.warnings[0]
         missing = [shard for shard in self._live_shard_names()
                    if (plan := self._plan_for_shard(shard)) is not None
                    and "task_set" not in creation.shard_level_data(plan)["overrides"]]
-        if missing:
-            return t("world.creation_missing_task_set", shards="、".join(missing))
-        return t("world.creation_builtin_defaults_hint") if self._template_root is None else ""
+        return t("world.creation_missing_task_set", shards="、".join(missing)) if missing else ""
 
     def _active_preset(self):
         return self._plan_for_shard(self._shard_combo.shard_name())
@@ -792,9 +778,11 @@ class CreationWizardDialog(QDialog):
             return
         self._dirty = True
         values = get_value_set(key, self._active_mod_settings, location=plan.location, is_rule=is_rule)
-        # 模板里没有的 Mod 项从其登记的初始值起步（不一定有 "default" 档）；模板值可能是数字/布尔
+        # 计划里没有的项从初始值起步：Mod 项取其登记的初始值，原版项取 customize.lua 默认值（不一定有
+        # "default" 档）；已有取值可能是数字/布尔
         mod_info = self._active_mod_settings.get(key)
-        raw = plan.overrides.get(key, mod_info.initial_value if mod_info else "default")
+        raw = plan.overrides.get(
+            key, mod_info.initial_value if mod_info else builtin_presets.vanilla_option_default(key))
         current = raw if isinstance(raw, str) else str(raw)
         idx = values.index(current) if current in values else 0
         plan.overrides[key] = typed_override_value(values[max(0, min(len(values) - 1, idx + delta))], values)
@@ -1433,9 +1421,6 @@ class CreationWizardDialog(QDialog):
             return
         if any(self._plan_for_shard(shard) is None for shard in self._live_fixed_shards()):
             dialogs.show_error(self, t("world.creation_dialog_title"), t("world.creation_no_default_plan"))
-            return
-        if not self._server_root and self._template_root is None:
-            dialogs.show_error(self, t("world.creation_dialog_title"), t("world.creation_no_template_found"))
             return
         try:
             name = self._name_edit.text().strip()

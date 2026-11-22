@@ -330,12 +330,11 @@ class WorldSettingsPage(Page):
         if dialog.exec() != dialogs.Dialog.DialogCode.Accepted:
             return
         shard_name, world_name = dialog.shard_name, dialog.world_name
-        klei_root = self.ctx.env.klei_root_for(cluster.platform)
         clusters = list(self.ctx.env.clusters)
         self._add_shard_button.setEnabled(False)
 
         def work() -> None:
-            plan = shard_management.initial_plan(cluster, location, klei_root)
+            plan = shard_management.initial_plan(cluster, location)
             # 先校验再备份，避免明知不能加还留下一份备份
             shard_management.validate_new_shard(cluster, shard_name, plan)
             create_backup(cluster.path, keep=True)

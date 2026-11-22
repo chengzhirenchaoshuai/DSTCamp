@@ -1,4 +1,4 @@
-"""从游戏模板或已核对的 Mod 源码加载完整世界默认值。"""
+"""世界默认值：新建世界取已核对的默认预设；读取已有世界的 leveldataoverride.lua 作为计划。"""
 
 import copy
 from dataclasses import replace
@@ -14,28 +14,8 @@ from dstools.features.world.location_profiles import (
 from dstools.features.world.reader import LeveldataStatus, load_leveldata
 
 
-def find_verified_template(klei_root: Path, location: str) -> Path:
-    """Find a real two-shard template automatically; never ask the user for it."""
-    candidates = []
-    for master_file in klei_root.rglob("Master/leveldataoverride.lua"):
-        cluster = master_file.parent.parent
-        caves_file = cluster / "Caves" / "leveldataoverride.lua"
-        if not caves_file.exists():
-            continue
-        try:
-            master = shard_plan_from_template(master_file)
-            caves = shard_plan_from_template(caves_file)
-        except ValueError:
-            continue
-        if caves.location == "cave" and master.location == location:
-            candidates.append(cluster)
-    if not candidates:
-        raise FileNotFoundError(f"未找到已验证的{location}默认世界模板")
-    return sorted(candidates, key=lambda p: p.name)[0]
-
-
 def default_plan_for_location(location: str) -> WorldShardPlan:
-    """按已验证预设创建计划；Mod location 必须显式带齐默认生成参数。"""
+    """按已核对的默认预设创建计划（原版与 Mod 世界都带齐默认生成参数），新建世界一律从这里取。"""
     definition = get_location_definition(location)
     level_data = get_verified_creation_level_data(location)
     overrides = level_data.pop("overrides", {})
@@ -84,10 +64,3 @@ def shard_plan_from_template(path: Path) -> WorldShardPlan:
         overrides=overrides if isinstance(overrides, dict) else {},
         level_data=raw,
     )
-
-
-def default_plans_from_cluster(cluster_root: Path) -> tuple[WorldShardPlan, WorldShardPlan]:
-    """读取两个官方分片目录的世界计划；location 以文件内容为准，不按目录名推断。"""
-    master = shard_plan_from_template(cluster_root / "Master" / "leveldataoverride.lua")
-    caves = shard_plan_from_template(cluster_root / "Caves" / "leveldataoverride.lua")
-    return master, caves

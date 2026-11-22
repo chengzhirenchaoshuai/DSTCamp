@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from dstools.features.world.builtin_presets import vanilla_option_default
 from dstools.features.world.categories import (
     _get_settings,
     get_categories,
@@ -89,12 +90,13 @@ def build_world_view_model(
             target.setdefault(category, []).append(override)
 
     def add_builtin_defaults(is_rule: bool, target: dict) -> None:
-        # 存档里没有的原版设置补"默认"占位，世界生成也显示完整的资源/刷新点列表（Mod 世界同样原版 + Mod 混排）
+        # 存档里没有的原版设置按 customize.lua 默认值显示（游戏对缺项同样按它处理），世界生成也显示
+        # 完整的资源/刷新点列表（Mod 世界同样原版 + Mod 混排）
         for key, (category, name) in _get_settings(location, is_rule, is_master_world).items():
             if key in seen_keys or key in hidden_vanilla:
                 continue
             target.setdefault(category, []).append(
-                WorldDisplayOverride(key=key, name=localized_name(name), value="default")
+                WorldDisplayOverride(key=key, name=localized_name(name), value=vanilla_option_default(key))
             )
 
     add_builtin_defaults(True, rules_by_category)

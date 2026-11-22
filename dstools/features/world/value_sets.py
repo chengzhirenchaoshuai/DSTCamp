@@ -24,7 +24,8 @@ VALUE_SETS = {
     # 出生模式真实只有 2 档：fixed(绚丽之门)/scatter(随机)，customize.lua 的
     # spawnmode_descriptions 确认。
     "spawnmode": ["fixed", "scatter"],
-    # 以下三项游戏里只有 2 个真实选项："default" 是 "always" 的内部别名（见 worldsettings_overrides.lua）
+    # 以下三项游戏里只有 2 个真实选项："default" 是各自默认值的内部别名：ghostenabled/ghostsanitydrain
+    # 为 "always"，portalresurection 为 "none"（见 worldsettings_overrides.lua）
     "ghostenabled": ["none", "always"],
     "portalresurection": ["none", "always"],
     "ghostsanitydrain": ["none", "always"],

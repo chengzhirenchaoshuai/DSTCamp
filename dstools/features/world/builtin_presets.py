@@ -24,6 +24,11 @@ SETTINGS_NON_DEFAULT_VALUES = {
     "portalresurection": "none",
     "ghostsanitydrain": "always",
 }
+# customize.lua 的 WORLDGEN_GROUP 中默认值不是 "default" 的世界生成项（地点决定的项见 locations.lua）
+WORLDGEN_NON_DEFAULT_VALUES = {
+    "ocean_waterplant": "ocean_default",
+    "ocean_seastack": "ocean_default",
+}
 
 
 @dataclass(frozen=True)
@@ -226,3 +231,9 @@ def preset_values(preset: BuiltinSettingsPreset, current_keys, location: str, mo
 def vanilla_setting_default(key: str) -> str:
     """原版世界设置项在 customize.lua 中的默认值。"""
     return SETTINGS_NON_DEFAULT_VALUES.get(key, "default")
+
+
+def vanilla_option_default(key: str) -> str:
+    """原版世界设置或世界生成项在 customize.lua 中的默认值；游戏对缺项和 "default" 都按它处理
+    （见 worldsettings_overrides.lua，如 portalresurection 的 "default" 即 "none"）。"""
+    return WORLDGEN_NON_DEFAULT_VALUES.get(key) or vanilla_setting_default(key)

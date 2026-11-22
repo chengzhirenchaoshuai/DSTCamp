@@ -21,8 +21,6 @@ from dstools.features.mod.workshop_acf import read_acf_installed_sizes
 from dstools.features.world.creation import shard_level_data, WorldShardPlan
 from dstools.features.world.defaults import (
     default_plan_for_location,
-    default_plans_from_cluster,
-    find_verified_template,
     shard_plan_from_template,
 )
 from dstools.features.world.location_profiles import (
@@ -99,9 +97,9 @@ def next_shard_name(cluster: Cluster, location: str) -> str:
     return f"{base}_{index}"
 
 
-def initial_plan(cluster: Cluster, location: str, klei_root: Path | None) -> WorldShardPlan:
+def initial_plan(cluster: Cluster, location: str) -> WorldShardPlan:
     """新世界的初始关卡数据：优先复制本存档同类世界（完整定义，设置也与旧世界一致），
-    其次取游戏生成的其他存档模板，都没有时用已核对的默认值。"""
+    没有时用已核对的默认预设，不取其他存档的设置。"""
     for shard in cluster.shards:
         if shard.leveldata_path is None or not shard.leveldata_path.is_file():
             continue
@@ -111,12 +109,6 @@ def initial_plan(cluster: Cluster, location: str, klei_root: Path | None) -> Wor
             continue
         if plan.location == location:
             return plan
-    if klei_root is not None and location in (FOREST_LOCATION, CAVE_LOCATION):
-        try:
-            master, caves = default_plans_from_cluster(find_verified_template(klei_root, FOREST_LOCATION))
-            return master if location == FOREST_LOCATION else caves
-        except (FileNotFoundError, ValueError):
-            pass
     return default_plan_for_location(location)
 
 

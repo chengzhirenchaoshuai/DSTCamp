@@ -27,7 +27,7 @@ from dstools.features.world.creation import (  # noqa: E402
 )
 from dstools.features.world.defaults import (  # noqa: E402
     default_plan_for_location,
-    default_plans_from_cluster,
+    shard_plan_from_template,
     three_worlds_layout,
 )
 from dstools.features.world.location_profiles import (  # noqa: E402
@@ -739,9 +739,8 @@ def test_creation_matrix() -> None:
                     assert content["configuration_options"]["regression"] == "kept"
 
                 # 读取器不得再把 Caves 文件夹硬编码成 cave location。
-                loaded_master, loaded_caves = default_plans_from_cluster(output)
-                assert loaded_master.location == master_location
-                assert loaded_caves.location == caves_location
+                assert shard_plan_from_template(output / "Master" / "leveldataoverride.lua").location == master_location
+                assert shard_plan_from_template(output / "Caves" / "leveldataoverride.lua").location == caves_location
                 count += 1
         assert count == 16
 

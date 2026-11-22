@@ -5,6 +5,7 @@ from pathlib import Path
 
 from dstools.features.mod.parser import resolve_wegame_client_mods_dir
 from dstools.features.mod.sync import get_enabled_mod_ids
+from dstools.features.world.builtin_presets import vanilla_option_default
 from dstools.features.world.categories import get_setting_info, localized_name
 from dstools.features.world.location_profiles import get_location_definition
 from dstools.features.world.mod_icons import resolve_mod_setting_icons
@@ -174,7 +175,8 @@ def _step_value(data: WorldPageData, key: str, delta: int, is_rule: bool) -> Non
         override.value = values[max(0, min(len(values) - 1, index + delta))]
         return
     mod_info = data.mod_settings.get(key)
-    initial = effective_initial_value(mod_info, data.location, new_world=False) if mod_info else "default"
+    initial = (effective_initial_value(mod_info, data.location, new_world=False) if mod_info
+               else vanilla_option_default(key))
     try:
         base_index = values.index(initial)
     except ValueError:
