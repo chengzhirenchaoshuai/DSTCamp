@@ -273,6 +273,33 @@ def test_luajit_reload_loop() -> None:
                                    luajit_restarts=2).category == "luajit_reload_loop"
 
 
+def test_worldgen_retry_and_error_handler_crash() -> None:
+    """11-21 空悠夜的日志包：世界生成重试不是根因，真正的崩溃在读入世界之后，域名解析失败只是网络提示。"""
+    retry = [
+        "[00:00:05]: PANIC: missing required prefab [batbosscave]! Expected 1, got 0",
+        "[00:00:05]: An error occured during world gen we will retry! [was \t2\t of \t5\t]",
+    ]
+    loaded = "[00:00:32]: World generated on build 762172 with save version: 5.27, using seed: 1032683808"
+    crash = ["[00:00:32]: error in error handling", "[00:00:32]: error in error handling",
+             "[00:00:32]: Reset() returning"]
+    report = diagnose_server_failure(shard_name="Master", exit_code=3221226505, world_ready=False,
+                                     log_lines=retry + [loaded] + crash)
+    assert report.category == "error_handler_crash", report
+    # 退出码不是 0xC0000409 时不套用
+    report = diagnose_server_failure(shard_name="Master", exit_code=1, world_ready=False,
+                                     log_lines=retry + [loaded] + crash)
+    assert report.category == "unknown", report
+    # 5 次全失败、没再读入世界才算世界生成失败
+    gave_up = retry + ["[00:00:09]: An error occured during world and we give up! [was \t5\t of \t5\t]"]
+    report = diagnose_server_failure(shard_name="Master", exit_code=1, world_ready=False, log_lines=gave_up)
+    assert report.category == "worldgen_failed", report
+    # 兜底证据跳过域名解析失败刷屏
+    resolve = "[00:27:44]: CURL ERROR: (dst.metrics.klei.com) [6]Could not resolve host: dst.metrics.klei.com"
+    report = diagnose_server_failure(shard_name="Master", exit_code=1, world_ready=True,
+                                     log_lines=["[00:27:40]: Shutting down"] + [resolve] * 5)
+    assert report.category == "unknown" and report.evidence == ("[00:27:40]: Shutting down",), report
+
+
 def test_invalid_token_while_process_alive() -> None:
     """2026-11-02 用户日志：令牌失效后专服进程不退出、frpc 正常，用户以为是穿透问题，换节点也进不去。"""
     lines = [

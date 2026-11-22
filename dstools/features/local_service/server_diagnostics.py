@@ -48,6 +48,22 @@ LUAJIT_RELOAD_LOOP_THRESHOLD = 2
 _LIBRARY_MODS = frozenset({
     "workshop-3750536829",  # 模组运行库
 })
+# 世界生成每轮校验必需 prefab，缺了打印 PANIC: missing required prefab 并重试（worldgen_main.lua 最多 5 次），
+# 重试成功后读档时打印 World generated on build。重试本身是正常现象（11-21 一人 14 个包，缺的 prefab 每次都不同），
+# 只有 5 次都失败打印 give up、之后没再读入世界才算生成失败
+_WORLDGEN_GAVE_UP_MARKER = "an error occured during world and we give up"
+_WORLD_LOADED_MARKER = "world generated on build"
+# 读入世界之后 Lua 的错误处理函数自己又出错，进程随即以 0xC0000409 退出；日志不留 Mod 路径，只能按 Mod 二分。
+# 11-21 实例是 45 格物品栏类 Mod。末尾的 Reset() returning 正常启动时也有，不能当证据
+_ERROR_HANDLER_CRASH_MARKER = "error in error handling"
+_STACK_BUFFER_OVERRUN = 0xC0000409
+# 不会让进程退出的刷屏行，不能当成兜底证据：域名解析失败只是网络提示（11-21 18:32 一份日志里有 5598 次，
+# 曾被当成根因），世界生成重试是正常校验
+_NOISE_MARKERS = (
+    "could not resolve host",
+    "panic: missing required prefab",
+    "during world gen we will retry",
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +113,33 @@ def _tips(category: str) -> tuple[str, ...]:
 def _evidence(lines: list[str], patterns: tuple[str, ...], limit: int = 3) -> tuple[str, ...]:
     matched = [line.strip() for line in lines if any(p in line.lower() for p in patterns)]
     return tuple(matched[-limit:])
+
+
+def _last_index(lines: list[str], marker: str) -> int:
+    """最后一行含 marker（小写）的下标，没有返回 -1。"""
+    for index in range(len(lines) - 1, -1, -1):
+        if marker in lines[index].lower():
+            return index
+    return -1
+
+
+def _worldgen_gave_up(lines: list[str]) -> bool:
+    """5 次世界生成全部失败，且之后没有再读入世界。"""
+    gave_up = _last_index(lines, _WORLDGEN_GAVE_UP_MARKER)
+    return gave_up >= 0 and _last_index(lines, _WORLD_LOADED_MARKER) < gave_up
+
+
+def _error_handler_crash(lines: list[str], exit_code: int | None) -> bool:
+    """读入世界后错误处理崩溃、以 0xC0000409 退出，且这之后没有可归因的 Lua 堆栈。"""
+    if exit_code is None or exit_code & 0xFFFFFFFF != _STACK_BUFFER_OVERRUN:
+        return False
+    loaded = _last_index(lines, _WORLD_LOADED_MARKER)
+    crashed = _last_index(lines, _ERROR_HANDLER_CRASH_MARKER)
+    if loaded < 0 or crashed < loaded:
+        return False
+    # 读档后有正常的 Lua 堆栈时它更有价值，交给 Mod 冲突诊断
+    return not any(marker in line.lower() for line in lines[loaded:]
+                   for marker in _RUNTIME_LUA_ERROR_MARKERS)
 
 
 def _lua_evidence(lines: list[str], limit: int = 14) -> tuple[str, ...]:
@@ -272,6 +315,20 @@ def diagnose_server_failure(
             _evidence(lines, ("task set", "worldgen_main.lua")), related_mods,
         )
 
+    if _worldgen_gave_up(lines):
+        return DiagnosticReport(
+            "worldgen_failed", t("diag.worldgen_failed.title"),
+            t("diag.worldgen_failed.summary", shard=shard_name), _tips("worldgen_failed"),
+            _evidence(lines, ("panic: missing required prefab", _WORLDGEN_GAVE_UP_MARKER)), related_mods,
+        )
+
+    if _error_handler_crash(lines, exit_code):
+        return DiagnosticReport(
+            "error_handler_crash", t("diag.error_handler_crash.title"),
+            t("diag.error_handler_crash.summary", shard=shard_name), _tips("error_handler_crash"),
+            _evidence(lines, (_WORLD_LOADED_MARKER, _ERROR_HANDLER_CRASH_MARKER)), (),
+        )
+
     if any(marker in lower for marker in _RUNTIME_LUA_ERROR_MARKERS):
         return _lua_report(shard_name, world_ready, lines, related_mods)
 
@@ -289,8 +346,20 @@ def diagnose_server_failure(
     return DiagnosticReport(
         "unknown", t("diag.unknown.title_crashed" if world_ready else "diag.unknown.title_startup"),
         t("diag.unknown.summary"), _tips("unknown"),
-        tuple(line.strip() for line in lines[-3:] if line.strip()), related_mods,
+        _tail_evidence(lines), related_mods,
     )
+
+
+def _tail_evidence(lines: list[str], limit: int = 3) -> tuple[str, ...]:
+    """日志末尾几行作兜底证据，跳过域名解析失败、世界生成重试等不会让进程退出的刷屏行。"""
+    result: list[str] = []
+    for line in reversed(lines):
+        text = line.strip()
+        if text and not any(marker in text.lower() for marker in _NOISE_MARKERS):
+            result.append(text)
+            if len(result) >= limit:
+                break
+    return tuple(reversed(result))
 
 
 def contains_startup_failure(lines: Iterable[str]) -> bool:
