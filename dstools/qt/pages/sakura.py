@@ -87,21 +87,38 @@ def _frpc_pointer_path(cluster_path, shard_name, app_env):
 
 
 # ── 选用的已有隧道 ─────────────────────────────────────────────────────
-# 用户在樱花后台自己建的隧道也可以给某个世界用。樱花开放 API 改不了隧道名（/tunnel/edit 只收
-# note/local_ip/local_port/extra，见 natfrp/api 的 openapi.yaml），所以它不会叫 DSTCamp 的规则名，
-# 只能靠 ID 指针认出来；关闭映射或删存档时不删除它，只把本地地址改回原样。原本地地址记在指针旁边。
+# 用户在樱花后台自己建的隧道也可以给世界用，一个世界还可以挂多条（如 VIP 与普通节点各一条，
+# 玩家任选一个节点进）。樱花开放 API 改不了隧道名（/tunnel/edit 只收 note/local_ip/local_port/extra，
+# 见 natfrp/api 的 openapi.yaml），所以它们不会叫 DSTCamp 的规则名，只能靠 ID 指针认出来；
+# 关闭映射或删存档时不删除，只把本地地址改回原样。原本地地址记在指针旁边。
+# 指针内容是逗号分隔的隧道 ID，第一个为主隧道（界面显示与复制直连代码用它）。
 
 def _adopted_marker_path(pointer_path: Path) -> Path:
     return pointer_path.with_name(pointer_path.stem + ".adopted.json")
 
 
-def _read_adopted(pointer_path: Path) -> dict | None:
-    """选用记录 {id, local_ip, local_port}；不是选用的隧道或读不出时返回 None。"""
+def _pointer_ids(pointer_path: Path) -> list[int]:
+    """指针里记录的隧道 ID，第一个为主隧道；没有指针或读不出时为空。"""
+    try:
+        text = pointer_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [int(part) for part in (p.strip() for p in text.split(",")) if part.isdigit()]
+
+
+def _read_adopted(pointer_path: Path) -> list[dict]:
+    """选用记录 [{id, local_ip, local_port}]；没有选用的隧道或读不出时为空。"""
     try:
         data = json.loads(_adopted_marker_path(pointer_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) and str(data.get("id", "")).isdigit() else None
+        return []
+    items = data.get("tunnels") if isinstance(data, dict) else None
+    return [x for x in items or [] if isinstance(x, dict) and str(x.get("id", "")).isdigit()]
+
+
+def _write_adopted(pointer_path: Path, originals: list[dict]) -> None:
+    _adopted_marker_path(pointer_path).write_text(
+        json.dumps({"tunnels": originals}, ensure_ascii=False), encoding="utf-8")
 
 
 def _restore_adopted(token: str, original: dict) -> None:
@@ -120,8 +137,12 @@ def adoptable_tunnel(tunnel: dict) -> bool:
     return tunnel.get("type") == "udp" and tunnel.get("status") != 2 and not tunnel.get("online")
 
 
+def _tunnel_by_id(tunnels: list[dict], tunnel_id) -> dict | None:
+    return next((item for item in tunnels if str(item.get("id", "")) == str(tunnel_id)), None)
+
+
 def find_mapped_tunnel(tunnels: list[dict], cluster, shard, app_env) -> dict | None:
-    """这个世界对应的隧道：先按 DSTCamp 命名规则找，找不到再按本地记录的隧道 ID 找（选用的已有隧道只能这样认）。"""
+    """这个世界对应的（主）隧道：先按 DSTCamp 命名规则找，找不到再按本地记录的隧道 ID 找（选用的已有隧道只能这样认）。"""
     same_name = [c for c in app_env.clusters if c.source == cluster.source and c.platform == cluster.platform
                  and c.path.name == cluster.path.name]
     tunnel = sakura_frp.find_dstcamp_tunnel(
@@ -129,12 +150,28 @@ def find_mapped_tunnel(tunnels: list[dict], cluster, shard, app_env) -> dict | N
         cluster_identity=stable_path_key(cluster.path), allow_legacy=len(same_name) == 1)
     if tunnel:
         return tunnel
-    pointer = _frpc_pointer_path(cluster.path, shard.name, app_env)
-    try:
-        tunnel_id = int(pointer.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return None
-    return next((item for item in tunnels if str(item.get("id", "")).isdigit() and int(item["id"]) == tunnel_id), None)
+    ids = _pointer_ids(_frpc_pointer_path(cluster.path, shard.name, app_env))
+    return _tunnel_by_id(tunnels, ids[0]) if ids else None
+
+
+def _preselect_shards(shards, tunnels: list[dict]) -> dict[int, str]:
+    """开启时预先勾上的隧道 {隧道 ID: 世界名}：本地端口正指向该世界（等于它当前的 server_port）的，
+    认出用户已为它建的隧道（可能有多条，如 VIP + 普通）。同一世界的隧道远程端口必须相同：
+    都相同就全勾；不同就只勾远程端口等于世界端口的；还分不出来就不勾，交给用户选。"""
+    result: dict[int, str] = {}
+    for shard in shards:
+        port = str(get_shard_option(load_shard_config(shard.path), "NETWORK", "server_port"))
+        pointing = [x for x in tunnels if str(x.get("local_port")) == port]
+        if len({str(x.get("remote")) for x in pointing}) > 1:
+            pointing = [x for x in pointing if str(x.get("remote")) == port]
+        result.update({int(x["id"]): shard.name for x in pointing})
+    return result
+
+
+def mapped_extra_tunnels(tunnels: list[dict], cluster, shard, app_env) -> list[dict]:
+    """同一世界挂着的其余隧道（指针里第二个起），账号里已不存在的跳过。"""
+    ids = _pointer_ids(_frpc_pointer_path(cluster.path, shard.name, app_env))
+    return [x for x in (_tunnel_by_id(tunnels, i) for i in ids[1:]) if x is not None]
 
 
 class _FrpcRecoveryDialog(dialogs.Dialog):
@@ -236,6 +273,7 @@ class _SakuraMappingPanel(QWidget):
         self._reload_gen = 0
         self._tunnel_occupants: list[str] = []
         self._adoptable_tunnels: list[dict] = []  # 最近一次加载时可以选给世界用的已有隧道
+        self._extra_tunnels_by_key: dict[tuple[str, str], list[dict]] = {}  # 世界挂着的非主隧道
         self._any_mapped = False
         self._frpc_health: SakuraFrpcHealth | None = None
 
@@ -451,15 +489,18 @@ class _SakuraMappingPanel(QWidget):
                 node_loads = {}  # 负载只是参考信息，取不到不影响选节点
             tunnels = sakura_frp.list_tunnels(token)
             by_key = {}
+            extras = {}  # 同一世界挂着的其余隧道（VIP + 普通节点这类）
             if can_host(cluster):
                 for shard in cluster.shards:
                     tunnel = self._find_cluster_tunnel(tunnels, cluster, shard)
                     if tunnel:
                         by_key[(str(cluster.path), shard.name)] = tunnel
+                        extras[(str(cluster.path), shard.name)] = mapped_extra_tunnels(
+                            tunnels, cluster, shard, self.ctx.env)
             recent_bytes = 0
             now = time.time()
             cutoff = now - 7 * 86400
-            for tunnel in by_key.values():
+            for tunnel in [*by_key.values(), *(x for group in extras.values() for x in group)]:
                 try:
                     history = sakura_frp.get_traffic(token, tunnel["id"])
                 except sakura_frp.SakuraApiError:
@@ -483,9 +524,10 @@ class _SakuraMappingPanel(QWidget):
                     if occupant_tunnel:
                         occupants.append(f"{c.name}（{shard.name}）")
                         occupied_ids.add(occupant_tunnel.get("id"))
+                    occupied_ids.update(_pointer_ids(_frpc_pointer_path(c.path, shard.name, self.ctx.env)))
             # 没被任何存档占用、可以选给世界用的已有隧道（含用户在樱花后台自己建的）
             adoptable = [x for x in tunnels if x.get("id") not in occupied_ids and adoptable_tunnel(x)]
-            return user_info, nodes, node_loads, by_key, recent_bytes, len(tunnels), occupants, adoptable
+            return user_info, nodes, node_loads, by_key, extras, recent_bytes, len(tunnels), occupants, adoptable
 
         def done(result) -> None:
             self._apply_loaded(*result, gen, cluster_key, token)
@@ -507,11 +549,12 @@ class _SakuraMappingPanel(QWidget):
         self._recent_traffic_label.setText("")
         self._status_label.setText(_api_error_text(exc))
 
-    def _apply_loaded(self, user_info, nodes, node_loads, by_key, recent_bytes, tunnel_count, occupants,
+    def _apply_loaded(self, user_info, nodes, node_loads, by_key, extras, recent_bytes, tunnel_count, occupants,
                       adoptable, gen, cluster_key, token) -> None:
         if not self._reload_is_current(gen, cluster_key, token):
             return
         self._adoptable_tunnels = list(adoptable)
+        self._extra_tunnels_by_key = extras
         self._nodes = nodes
         self._node_loads = node_loads
         self._tunnels_by_key = by_key
@@ -610,15 +653,24 @@ class _SakuraMappingPanel(QWidget):
                 mapped_label = QLabel(t("sakura.shard_mapped"))
                 mapped_label.setStyleSheet(f"color: {theme.hex('ACCENT')};")
                 self._shards_grid.addWidget(mapped_label, row, 1)
-                port_label = QLabel(t("sakura.port_display", remote=remote))
-                local_port = tunnel.get("local_port", "?")
-                if str(local_port) != str(remote):
-                    port_label.setToolTip(t("sakura.port_mismatch_hint", local=local_port, remote=remote))
+                group = [tunnel, *self._extra_tunnels_by_key.get(key, [])]
+                port_text = t("sakura.port_display", remote=remote)
+                if len(group) > 1:
+                    port_text += t("sakura.multi_tunnel_suffix", count=len(group))
+                port_label = QLabel(port_text)
+                tips = []
+                if len(group) > 1:
+                    tips.append(t("sakura.multi_tunnel_tip", nodes="、".join(self._node_name(x) for x in group)))
+                for item in group:
+                    item_remote, local_port = item.get("remote", "?"), item.get("local_port", "?")
+                    if str(local_port) != str(item_remote):
+                        tips.append(t("sakura.port_mismatch_hint", local=local_port, remote=item_remote))
+                port_label.setToolTip("\n".join(tips))
                 self._shards_grid.addWidget(port_label, row, 2)
                 is_master = self._is_master_shard(shard)
                 copy_btn = QPushButton(t("sakura.copy_connect_btn"))
                 copy_btn.setEnabled(is_master)
-                copy_btn.clicked.connect(lambda _c=False, tun=tunnel: self._copy_connect_string(tun))
+                copy_btn.clicked.connect(lambda _c=False, tuns=group: self._copy_connect_string(tuns))
                 if not is_master:
                     copy_btn.setToolTip(t("sakura.copy_connect_master_only_hint"))
                 self._shards_grid.addWidget(copy_btn, row, 3)
@@ -649,14 +701,20 @@ class _SakuraMappingPanel(QWidget):
         else:
             self._action_btn.setToolTip("")
 
-    def _copy_connect_string(self, tunnel: dict) -> None:
-        node = self._nodes.get(str(tunnel.get("node")), {})
-        host = node.get("host", "")
-        remote = tunnel.get("remote", "")
+    def _node_name(self, tunnel: dict) -> str:
+        return str(self._nodes.get(str(tunnel.get("node")), {}).get("name") or tunnel.get("node", "?"))
+
+    def _copy_connect_string(self, tunnels: list[dict]) -> None:
+        """复制直连代码；世界挂着多条隧道（多个节点）时每个节点一行、前面标节点名，发给玩家任选一个。"""
         cluster = self._current_cluster
         password = get_cluster_option(load_cluster_config(cluster.path), "NETWORK", "cluster_password") if cluster else None
-        text = f'c_connect("{host}", {remote}, "{password}")' if password else f'c_connect("{host}", {remote})'
-        QGuiApplication.clipboard().setText(text)
+        lines = []
+        for tunnel in tunnels:
+            host = self._nodes.get(str(tunnel.get("node")), {}).get("host", "")
+            remote = tunnel.get("remote", "")
+            code = f'c_connect("{host}", {remote}, "{password}")' if password else f'c_connect("{host}", {remote})'
+            lines.append(f"{self._node_name(tunnel)}: {code}" if len(tunnels) > 1 else code)
+        QGuiApplication.clipboard().setText("\n".join(lines))
         dialogs.show_toast(self.window(), t("sakura.connect_copied"))
 
     # ── frpc 本地进程 ───────────────────────────────────────────────────
@@ -672,12 +730,12 @@ class _SakuraMappingPanel(QWidget):
     def mapped_remote_port(self, cluster, shard) -> int | None:
         """最近一次读到的隧道远程端口（本地只存隧道 ID）；没加载过或已不是指针里的隧道时返回 None。"""
         tunnel = self._tunnels_by_key.get((str(cluster.path), shard.name))
-        try:
-            pointer_id = int(_frpc_pointer_path(cluster.path, shard.name, self.ctx.env).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        ids = _pointer_ids(_frpc_pointer_path(cluster.path, shard.name, self.ctx.env))
+        if not ids:
             return None
         remote = str((tunnel or {}).get("remote", ""))
-        if not tunnel or tunnel.get("id") != pointer_id or not remote.isdigit():
+        # 多条隧道时远程端口都相同（开启时校验过），按主隧道取
+        if not tunnel or tunnel.get("id") != ids[0] or not remote.isdigit():
             return None
         return int(remote)
 
@@ -833,9 +891,10 @@ class _SakuraMappingPanel(QWidget):
         restartable = existing is None or existing.status in {FrpcStatus.CRASHED, FrpcStatus.STOPPED}
         if health.ready and restartable:
             token = app_settings.get_sakura_token()
-            tunnel_id = pointer_path.read_text(encoding="utf-8").strip()
-            if token and tunnel_id:
-                self.frpc.start(cluster.path, shard.name, health.path, token, int(tunnel_id))
+            ids = _pointer_ids(pointer_path)
+            if token and ids:
+                # 世界挂多条隧道时同一个 frpc 进程一起跑（-f 密钥:ID1,ID2）
+                self.frpc.start(cluster.path, shard.name, health.path, token, ",".join(map(str, ids)))
 
     def stop_frpc_for_shard(self, cluster, shard, on_done=None) -> None:
         if self.frpc.get(cluster.path, shard.name):
@@ -854,9 +913,11 @@ class _SakuraMappingPanel(QWidget):
         token = app_settings.get_sakura_token()
         if not cluster or not self._any_mapped or not token:
             return
+        # 挂着多条隧道的世界不迁移：它们本来就分属不同节点（如 VIP 与普通各一条），由用户自己选的
         targets = [(shard, tunnel) for shard in cluster.shards
                    if (tunnel := self._tunnels_by_key.get((str(cluster.path), shard.name)))
-                   and sakura_frp.tunnel_node_id(tunnel) != node_id]
+                   and sakura_frp.tunnel_node_id(tunnel) != node_id
+                   and not self._extra_tunnels_by_key.get((str(cluster.path), shard.name))]
         if not targets:
             return
         node_name = self._nodes.get(str(node_id), {}).get("name") or str(node_id)
@@ -994,13 +1055,16 @@ class _SakuraMappingPanel(QWidget):
             return
         shards = list(cluster.shards)
         # 只对新建的隧道生效：已有隧道的远程端口建好后改不了，照旧复用
-        existing_choices = [(int(x["id"]), self._adopted_label(x)) for x in self._adoptable_tunnels]
+        preselect = _preselect_shards(shards, self._adoptable_tunnels)
+        existing_choices = [dialogs.ExistingTunnel(int(x["id"]), self._adopted_label(x), str(x.get("remote", "")),
+                                                   preselect.get(int(x["id"])))
+                            for x in self._adoptable_tunnels]
         port_dialog = dialogs.RemotePortDialog(self.window(), [shard.name for shard in shards],
                                               t("sakura.enable_btn"), existing=existing_choices)
         if not port_dialog.exec():
             return
         remote_ports = port_dialog.result_ports
-        adopt_ids = port_dialog.result_adopt
+        adopt_ids = port_dialog.result_adopt  # 世界名 -> 选用的已有隧道 ID 列表（空为新建）
 
         progress = dialogs.LogDialog(self.window(), t("sakura.setup_progress_title"))
         progress.show()
@@ -1018,7 +1082,7 @@ class _SakuraMappingPanel(QWidget):
                 except sakura_frp.SakuraApiError as exc:
                     ok = False
                     log(t("dlg.mapping_rollback_failed", tunnels="、".join(map(str, created_ids)), detail=exc))
-            for original in adopted.values():
+            for original in (item for group in adopted.values() for item in group):
                 try:
                     _restore_adopted(token, original)
                 except sakura_frp.SakuraApiError as exc:
@@ -1045,7 +1109,7 @@ class _SakuraMappingPanel(QWidget):
         def work():
             created_ids: list[int] = []
             originals: dict[str, tuple] = {}
-            adopted: dict[str, dict] = {}  # 世界名 -> 选用的已有隧道改动前的本地地址
+            adopted: dict[str, list[dict]] = {}  # 世界名 -> 选用的已有隧道改动前的本地地址
             try:
                 # 第一步只动樱花后台：所有世界的隧道都建好/复用成功后，才改本地端口和指针
                 ready = []
@@ -1056,16 +1120,24 @@ class _SakuraMappingPanel(QWidget):
                     name = sakura_frp.sanitize_tunnel_name(cluster.path.name, shard.name, cluster.source.value,
                                                             cluster.platform.value, cluster_identity=stable_path_key(cluster.path))
                     existing = self._find_cluster_tunnel(tunnels, cluster, shard)
-                    adopt_id = adopt_ids.get(shard.name)
-                    if existing is None and adopt_id is not None:
-                        # 选用账号里已有的隧道：节点和远程端口都不动，只改本地地址
-                        chosen = next((x for x in tunnels if str(x.get("id")) == str(adopt_id)), None)
-                        if chosen is None or not adoptable_tunnel(chosen):
+                    adopt_list = adopt_ids.get(shard.name) or []
+                    if existing is None and adopt_list:
+                        # 选用账号里已有的隧道（可多条，如 VIP 与普通节点各一条）：节点和远程端口都不动，
+                        # 只改本地地址。跨世界传送时玩家按"当前节点 + 目标世界端口"重连，同一世界的
+                        # 各条隧道远程端口必须相同，都等于世界端口
+                        for adopt_id in adopt_list:
+                            chosen = _tunnel_by_id(tunnels, adopt_id)
+                            if chosen is None or not adoptable_tunnel(chosen):
+                                raise sakura_frp.SakuraApiError(
+                                    t("sakura.adopted_tunnel_gone", shard=shard.name, id=adopt_id))
+                        chosen_all = [_tunnel_by_id(tunnels, i) for i in adopt_list]
+                        remotes = sorted({str(x.get("remote")) for x in chosen_all})
+                        if len(remotes) > 1:
                             raise sakura_frp.SakuraApiError(
-                                t("sakura.adopted_tunnel_gone", shard=shard.name, id=adopt_id))
-                        tunnel_id, remote = int(chosen["id"]), chosen.get("remote")
-                        adopted[shard.name] = {"id": tunnel_id, "local_ip": chosen.get("local_ip"),
-                                               "local_port": chosen.get("local_port")}
+                                t("sakura.adopted_remote_mismatch", shard=shard.name, ports="、".join(remotes)))
+                        tunnel_ids, remote = [int(x["id"]) for x in chosen_all], chosen_all[0].get("remote")
+                        adopted[shard.name] = [{"id": int(x["id"]), "local_ip": x.get("local_ip"),
+                                                "local_port": x.get("local_port")} for x in chosen_all]
                     elif existing:
                         tunnel_id, remote = existing["id"], existing.get("remote")
                         old_node = sakura_frp.tunnel_node_id(existing)
@@ -1085,20 +1157,21 @@ class _SakuraMappingPanel(QWidget):
                     if remote_port is None or not (1 <= remote_port <= 65535):
                         raise sakura_frp.SakuraApiError(f"invalid remote port for {name}: {remote}")
                     if shard.name in adopted:
-                        sakura_frp.edit_tunnel(token, tunnel_id, local_ip="127.0.0.1", local_port=remote_port)
+                        for adopt_id in tunnel_ids:
+                            sakura_frp.edit_tunnel(token, adopt_id, local_ip="127.0.0.1", local_port=remote_port)
                     else:
                         sakura_frp.edit_tunnel(token, tunnel_id, name=name, local_port=remote_port)
-                    ready.append((shard, tunnel_id, remote_port))
-                for shard, tunnel_id, remote_port in ready:
+                        tunnel_ids = [tunnel_id]
+                    ready.append((shard, tunnel_ids, remote_port))
+                for shard, tunnel_ids, remote_port in ready:
                     shard_config = load_shard_config(shard.path)
                     pointer_path = _frpc_pointer_path(cluster.path, shard.name, self.ctx.env)
                     originals[shard.name] = ((shard.path / "server.ini").read_bytes(),
                                              pointer_path.read_text(encoding="utf-8") if pointer_path.exists() else None)
                     pointer_path.parent.mkdir(parents=True, exist_ok=True)
-                    pointer_path.write_text(str(tunnel_id), encoding="utf-8")
+                    pointer_path.write_text(",".join(map(str, tunnel_ids)), encoding="utf-8")
                     if shard.name in adopted:
-                        _adopted_marker_path(pointer_path).write_text(
-                            json.dumps(adopted[shard.name], ensure_ascii=False), encoding="utf-8")
+                        _write_adopted(pointer_path, adopted[shard.name])
                     set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
                     save_shard_config(shard_config, shard.path)
                     log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
@@ -1139,12 +1212,14 @@ class _SakuraMappingPanel(QWidget):
         ports = "、".join(f"{name} {tunnel.get('remote', '?')}" for name, tunnel in mapped)
         # 选用的已有隧道不删除，只把本地地址改回去
         adopted = [original for shard in cluster.shards
-                   if (original := _read_adopted(_frpc_pointer_path(cluster.path, shard.name, self.ctx.env)))]
+                   for original in _read_adopted(_frpc_pointer_path(cluster.path, shard.name, self.ctx.env))]
         adopted_ids = {int(original["id"]) for original in adopted}
+        all_mapped = [x for name, tunnel in mapped
+                      for x in (tunnel, *self._extra_tunnels_by_key.get((str(cluster.path), name), []))]
         message = t("sakura.disable_confirm_msg", ports=ports)
         if adopted:
             message += t("sakura.disable_confirm_adopted", names="、".join(
-                str(tunnel.get("name") or tunnel["id"]) for _name, tunnel in mapped if int(tunnel["id"]) in adopted_ids))
+                str(x.get("name") or x["id"]) for x in all_mapped if int(x["id"]) in adopted_ids))
         if not dialogs.ask_yes_no(self.window(), t("sakura.disable_confirm_title"), message):
             return
         token = app_settings.get_sakura_token()
@@ -1184,15 +1259,14 @@ class _SakuraMappingPanel(QWidget):
         if not mapped:
             return None
         pointer_ids = {}
-        adopted = {}  # 选用的已有隧道：不删除，只把本地地址改回去
+        adopted = {}  # 世界名 -> 选用的已有隧道（可多条）：不删除，只把本地地址改回去
         for shard in mapped:
-            try:
-                pointer_ids[shard.name] = int(pointers[shard.name].read_text(encoding="utf-8").strip())
-            except (OSError, ValueError):
-                pass
-            original = _read_adopted(pointers[shard.name])
-            if original:
-                adopted[shard.name] = original
+            ids = _pointer_ids(pointers[shard.name])
+            if ids:
+                pointer_ids[shard.name] = ids[0]
+            originals = _read_adopted(pointers[shard.name])
+            if originals:
+                adopted[shard.name] = originals
             _adopted_marker_path(pointers[shard.name]).unlink(missing_ok=True)
             pointers[shard.name].unlink(missing_ok=True)
             if self.frpc.get(cluster.path, shard.name):
@@ -1209,12 +1283,13 @@ class _SakuraMappingPanel(QWidget):
             if not token:
                 return [remote_failure_item("sakura", names, t("save.delete_mapping_not_logged_in"))]
             failures = []
-            for shard_name, original in adopted.items():
-                try:
-                    _restore_adopted(token, original)
-                except (sakura_frp.SakuraApiError, OSError) as exc:
-                    failures.append(remote_failure_item(
-                        "sakura", [shard_name], t("sakura.restore_adopted_failed", id=original["id"], error=exc)))
+            for shard_name, originals in adopted.items():
+                for original in originals:
+                    try:
+                        _restore_adopted(token, original)
+                    except (sakura_frp.SakuraApiError, OSError) as exc:
+                        failures.append(remote_failure_item(
+                            "sakura", [shard_name], t("sakura.restore_adopted_failed", id=original["id"], error=exc)))
             try:
                 tunnels = sakura_frp.list_tunnels(token)
                 ids = set()

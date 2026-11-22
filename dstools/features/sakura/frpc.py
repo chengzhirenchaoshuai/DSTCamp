@@ -29,7 +29,9 @@ class FrpcProcess:
     直接运行会提示 "is not intended to be run directly"。
     """
 
-    def __init__(self, cluster_path: Path, shard_name: str, frpc_exe: Path, token: str, tunnel_id: int):
+    def __init__(self, cluster_path: Path, shard_name: str, frpc_exe: Path, token: str, tunnel_id: int | str):
+        # tunnel_id 可以是逗号分隔的多个 ID（一个世界挂多条隧道，如 VIP 与普通节点各一条）：
+        # 官方 frpc 支持 -f 密钥:ID1,ID2，新版不要求同一节点（doc.natfrp.com/frpc/usage.html）
         self.cluster_path = cluster_path
         self.shard_name = shard_name
         self.frpc_exe = frpc_exe
@@ -133,7 +135,8 @@ class FrpcManager:
     def _key(cluster_path: Path, shard_name: str) -> tuple[str, str]:
         return (str(cluster_path), shard_name)
 
-    def start(self, cluster_path: Path, shard_name: str, frpc_exe: Path, token: str, tunnel_id: int) -> FrpcProcess:
+    def start(self, cluster_path: Path, shard_name: str, frpc_exe: Path, token: str,
+              tunnel_id: int | str) -> FrpcProcess:
         proc = FrpcProcess(cluster_path, shard_name, frpc_exe, token, tunnel_id)
         proc.start()
         self._procs[self._key(cluster_path, shard_name)] = proc

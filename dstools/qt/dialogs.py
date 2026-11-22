@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 from PySide6.QtCore import (
     QEasingCurve, QPoint, QPropertyAnimation, QRect, QRectF, QSequentialAnimationGroup, Qt, QTimer,
@@ -16,8 +17,8 @@ from PySide6.QtGui import (
     QPen, QTextCursor,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-    QListWidget, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QToolTip, QVBoxLayout,
+    QAbstractItemView, QDialog, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QListWidget, QListWidgetItem, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit, QToolTip, QVBoxLayout,
     QWidget,
 )
 
@@ -540,25 +541,38 @@ class Dialog(QDialog):
         return label
 
 
+class ExistingTunnel(NamedTuple):
+    """开启映射时可选用的已有隧道（樱花）。"""
+
+    id: int
+    label: str
+    remote: str  # 远程端口
+    shard: str | None  # 本地端口正指向的世界：打开窗口时预先勾上
+
+
 class RemotePortDialog(Dialog):
     """内网穿透开启映射前为每个世界填远程端口，留空由服务端分配；只校验格式和互不重复，能否使用交给穿透服务判断。
 
-    existing 为 [(隧道 ID, 显示文字)] 时（樱花），每个世界还可以改选账号里已有的隧道，选了就不用填端口；
-    结果在 result_adopt：{世界名: 隧道 ID 或 None（新建）}。"""
+    existing 不为空时（樱花），每个世界下面还列出账号里已有的隧道，可以勾选一条或多条（如 VIP 与普通节点各一条）
+    代替新建；勾了就不用填端口。结果在 result_adopt：{世界名: [隧道 ID]}，空列表为新建。"""
+
+    _LIST_ROWS = 4  # 隧道清单最多显示几行，多了滚动
 
     def __init__(self, parent, shard_names: list[str], confirm_text: str,
-                 existing: list[tuple[int, str]] | None = None):
+                 existing: list[ExistingTunnel] | None = None):
         super().__init__(parent, t("dlg.remote_port_title"), "md", confirm_text=confirm_text)
         self.result_ports: dict[str, int | None] = {}
-        self.result_adopt: dict[str, int | None] = {}
+        self.result_adopt: dict[str, list[int]] = {}
+        self._existing = {item.id: item for item in existing or []}
         self.body.addWidget(self.text_label(t("dlg.remote_port_intro")))
         if existing:
             self.body.addWidget(self.text_label(t("dlg.remote_port_existing_intro")))
         grid = QGridLayout()
-        grid.setColumnStretch(2 if existing else 1, 1)
+        grid.setColumnStretch(1, 1)
         self._edits: dict[str, QLineEdit] = {}
-        self._combos: dict[str, QComboBox] = {}
-        for row, name in enumerate(shard_names):
+        self._lists: dict[str, QListWidget] = {}
+        for index, name in enumerate(shard_names):
+            row = index * 2
             edit = QLineEdit()
             edit.setPlaceholderText(t("dlg.remote_port_placeholder"))
             edit.setMaxLength(5)
@@ -566,19 +580,24 @@ class RemotePortDialog(Dialog):
             label = QLabel(name)
             label.setFont(theme.font("FONT_SIZE_BASE"))
             grid.addWidget(label, row, 0)
-            if existing:
-                combo = QComboBox()
-                combo.setFont(theme.font("FONT_SIZE_BASE"))
-                combo.addItem(t("dlg.remote_port_new_tunnel"), None)
-                for tunnel_id, text in existing:
-                    combo.addItem(text, tunnel_id)
-                # 选了已有隧道，远程端口就是它现有的，不用再填
-                combo.currentIndexChanged.connect(
-                    lambda _i, c=combo, e=edit: e.setEnabled(c.currentData() is None))
-                grid.addWidget(combo, row, 1)
-                self._combos[name] = combo
-            grid.addWidget(edit, row, 2 if existing else 1)
+            grid.addWidget(edit, row, 1)
             self._edits[name] = edit
+            if existing:
+                tunnels = QListWidget()
+                tunnels.setFont(theme.font("FONT_SIZE_SM"))
+                for item in existing:
+                    entry = QListWidgetItem(item.label)
+                    entry.setData(Qt.ItemDataRole.UserRole, item.id)
+                    entry.setFlags(entry.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    entry.setCheckState(Qt.CheckState.Checked if item.shard == name else Qt.CheckState.Unchecked)
+                    tunnels.addItem(entry)
+                tunnels.setFixedHeight(tunnels.sizeHintForRow(0) * min(len(existing), self._LIST_ROWS)
+                                       + 2 * tunnels.frameWidth() + 4)
+                # 勾了已有隧道，远程端口就是它们现有的，不用再填
+                tunnels.itemChanged.connect(lambda _i, n=name: self._sync_edit(n))
+                grid.addWidget(tunnels, row + 1, 1)
+                self._lists[name] = tunnels
+                self._sync_edit(name)
         self.body.addLayout(grid)
         self.body.addWidget(self.text_label(t("dlg.remote_port_note"), muted=True))
         if existing:
@@ -588,24 +607,38 @@ class RemotePortDialog(Dialog):
         self.body.addWidget(self._error)
         self.add_buttons()
 
+    def _checked_ids(self, name: str) -> list[int]:
+        tunnels = self._lists.get(name)
+        if tunnels is None:
+            return []
+        return [tunnels.item(i).data(Qt.ItemDataRole.UserRole) for i in range(tunnels.count())
+                if tunnels.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _sync_edit(self, name: str) -> None:
+        self._edits[name].setEnabled(not self._checked_ids(name))
+
     def _show_error(self, text: str) -> None:
         self._error.setText(text)
         self._error.show()
 
     def accept_if_valid(self) -> None:
         ports: dict[str, int | None] = {}
-        adopt: dict[str, int | None] = {}
+        adopt: dict[str, list[int]] = {}
         seen: set[int] = set()
         seen_tunnels: set[int] = set()
         for name, edit in self._edits.items():
-            combo = self._combos.get(name)
-            tunnel_id = combo.currentData() if combo is not None else None
-            adopt[name] = tunnel_id
-            if tunnel_id is not None:
-                if tunnel_id in seen_tunnels:
+            ids = self._checked_ids(name)
+            adopt[name] = ids
+            if ids:
+                if seen_tunnels & set(ids):
                     self._show_error(t("dlg.remote_port_tunnel_duplicate"))
                     return
-                seen_tunnels.add(tunnel_id)
+                seen_tunnels.update(ids)
+                # 跨世界传送时玩家按"当前节点 + 目标世界端口"重连，同一世界的各条隧道远程端口必须相同
+                remotes = sorted({self._existing[i].remote for i in ids})
+                if len(remotes) > 1:
+                    self._show_error(t("dlg.remote_port_tunnel_mismatch", shard=name, ports="、".join(remotes)))
+                    return
                 ports[name] = None
                 continue
             text = edit.text().strip()
