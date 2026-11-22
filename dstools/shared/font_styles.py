@@ -16,7 +16,8 @@ class FontStyleDef:
 
 
 FONT_STYLES: list[FontStyleDef] = [
-    FontStyleDef(key="default", family="Microsoft YaHei UI Light", filename=None),
+    # 常规粗细：原来用 Light 细体，1080P/24 寸这类约 92 DPI 的屏上笔画发虚、看着费劲（用户反馈）
+    FontStyleDef(key="default", family="Microsoft YaHei UI", filename=None),
     FontStyleDef(key="cute", family="KN Maiyuan", filename="KNMaiyuan-Regular.ttf"),
     # Fusion Pixel Font 简体中文版（TakWolf/fusion-pixel-font，SIL OFL 1.1），已核对覆盖文案用到的全部汉字。
     # 只用 12px 版本（8/10px 字形风格不同，混用不统一）；同磅值下字形尺寸与雅黑基本一致，不缩放。
