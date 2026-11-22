@@ -1216,21 +1216,16 @@ class MainWindow(QWidget):
                       avail.top() + max(0, (avail.height() - height) // 2))
 
     def toggle_maximize(self) -> None:
-        """"伪最大化"：在保持 16:9 的前提下放到当前显示器工作区能放下的最大尺寸并居中，再点还原。"""
+        """"伪最大化"：铺满当前显示器工作区（不保持 16:9，与其他软件一致），再点还原。
+
+        拖边缩放仍保持 16:9；原来最大化也按 16:9，1920×1080 屏扣掉任务栏后左右各空一条。"""
         if self._restore_geometry is not None:
             self.setGeometry(self._restore_geometry)
             self._restore_geometry = None
             self._ornaments.refresh()  # 移动事件时仍算最大化，还原后补摆一次
             return
         self._restore_geometry = self.geometry()
-        avail = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
-        height = avail.height()
-        width = round(height * ASPECT)
-        if width > avail.width():
-            width = avail.width()
-            height = round(width / ASPECT)
-        self.setGeometry(avail.left() + (avail.width() - width) // 2,
-                         avail.top() + (avail.height() - height) // 2, width, height)
+        self.setGeometry((self.screen() or QGuiApplication.primaryScreen()).availableGeometry())
 
     def nativeEvent(self, event_type, message):
         if event_type == b"windows_generic_MSG":

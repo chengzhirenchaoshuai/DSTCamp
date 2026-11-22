@@ -26,6 +26,7 @@
         frpc_config、frp_selfhost_config、lolia_frpc_config                 三种穿透的 frpc 配置
         mod_config_memory   Mod 配置记忆与覆盖前的游戏配置备份
         mod_repair          V1 Mod 目录多余文件的清理记录（日志包会收录）
+        crash_log           DSTCamp 自身的未捕获异常与进程崩溃记录（日志包会收录）
     security/       凭据与主机信任
         frp_selfhost（SSH 密钥/known_hosts）、lobby_accel_wireguard、lobby_accel_mihomo、lolia（OAuth 令牌）
 """

@@ -276,6 +276,11 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
     from dstools.features.mod.legacy_v1 import legacy_extras_log_path
 
     _add_file(files, legacy_extras_log_path(), "DSTCamp/v1_extras.log")
+    # DSTCamp 自身的崩溃记录
+    from dstools.shared.crash_log import log_files
+
+    for path in log_files():
+        _add_file(files, path, f"DSTCamp/crash_log/{path.name}")
 
     output_dir = Path(output_dir) if output_dir else default_log_output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)

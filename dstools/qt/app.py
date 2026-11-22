@@ -46,6 +46,10 @@ def notify_old_instance_busy(server_count: int) -> None:
 
 
 def main() -> int:
+    # 最先装上崩溃记录：窗口版没有控制台，之后任何未捕获异常或进程崩溃都写进 data/crash_log/
+    from dstools.shared import crash_log
+
+    crash_log.install()
     # 清理上次自动更新留下的临时文件、旧版 EXE 备份等（尽力而为，失败不影响启动）
     from dstools.shared.auto_update import (
         cleanup_stale_update_artifacts,

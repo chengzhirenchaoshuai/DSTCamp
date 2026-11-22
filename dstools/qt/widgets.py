@@ -5,11 +5,25 @@ from ctypes import wintypes
 
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QMenu, QScrollArea, QToolTip, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QAbstractScrollArea, QComboBox, QFrame, QLabel, QMenu, QScrollArea, QToolTip,
+                               QVBoxLayout, QWidget)
 
 from dstools.i18n import t
 from dstools.qt.text_halo import draw_adaptive_text
 from dstools.qt.theme import theme
+
+
+def settle_vertical_scrollbar(area: QAbstractScrollArea, content_height) -> None:
+    """按不带滚动条时的视口宽度决定竖向滚动条显示与否，并固定下来。
+
+    自绘列表的行高随宽度同比缩放时，若交给 Qt 按需显示：滚动条出现 → 视口变窄 → 内容变矮放得下
+    → 滚动条消失 → 视口变宽 → 内容变高放不下……在临界尺寸上无限来回切换，列表"抽搐"（离屏已复现）。
+    这里只用满宽判断一次，结果不随滚动条本身变化。content_height(width) 返回该宽度下的内容总高。"""
+    full = area.maximumViewportSize()
+    need = content_height(max(1, full.width())) > full.height()
+    policy = Qt.ScrollBarPolicy.ScrollBarAlwaysOn if need else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    if area.verticalScrollBarPolicy() != policy:
+        area.setVerticalScrollBarPolicy(policy)
 
 
 class ShardCombo(QComboBox):

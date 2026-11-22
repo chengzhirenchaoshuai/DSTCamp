@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QAbstractScrollArea, QToolTip
 from dstools.i18n import t
 from dstools.qt.imaging import pil_to_pixmap
 from dstools.qt.theme import theme
+from dstools.qt.widgets import settle_vertical_scrollbar
 from dstools.shared.resource_paths import bundled_resource_dir
 
 BASE_WIDTH = 1300
@@ -139,6 +140,8 @@ class ModListPanel(QAbstractScrollArea):
         self._total_h = mod_list_height(len(self._rows), max(1, width), self._column_count)
 
     def _update_scrollbar(self) -> None:
+        settle_vertical_scrollbar(
+            self, lambda width: mod_list_height(len(self._rows), width, self._column_count))
         self._ensure_layout()
         bar = self.verticalScrollBar()
         bar.setRange(0, max(0, self._total_h - self.viewport().height()))

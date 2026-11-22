@@ -14,6 +14,7 @@ from dstools.features.world.value_labels import get_value_label
 from dstools.features.world.value_sets import get_value_set, is_mod_readonly
 from dstools.qt.imaging import pil_to_pixmap
 from dstools.qt.theme import theme
+from dstools.qt.widgets import settle_vertical_scrollbar
 from dstools.shared.resource_paths import bundled_resource_dir
 
 BASE_WIDTH = 1300
@@ -148,6 +149,10 @@ class WorldPanel(QAbstractScrollArea):
         if width == self._layout_width:
             return
         self._layout_width = width
+        self._layout, self._total_h = self._build_layout(width)
+
+    def _build_layout(self, width: int) -> tuple[list, int]:
+        """按给定宽度排版各分类框，返回 (版式, 内容总高)。"""
         m = _Metrics(width)
         y = m.pad_x
         layout = []
@@ -161,10 +166,10 @@ class WorldPanel(QAbstractScrollArea):
             box_bottom = items_top + ((len(items) + COLS - 1) // COLS) * m.row_h
             layout.append((key, name, items, box_top, items_top, box_bottom))
             y = box_bottom + CAT_GAP_AFTER * m.s
-        self._layout = layout
-        self._total_h = max(int(y), int(40 * m.s)) if layout else 0
+        return layout, (max(int(y), int(40 * m.s)) if layout else 0)
 
     def _update_scrollbar(self) -> None:
+        settle_vertical_scrollbar(self, lambda width: self._build_layout(width)[1])
         self._ensure_layout()
         bar = self.verticalScrollBar()
         bar.setRange(0, max(0, self._total_h - self.viewport().height()))
