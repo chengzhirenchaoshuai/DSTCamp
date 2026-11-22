@@ -3808,13 +3808,15 @@ class LocalServicePage(Page):
                 self._last_auto_backup_ts[path_str] = now
                 continue
             if now - last >= interval_s:
-                try:
-                    # 存档没变（没人在线时世界暂停不存盘等）就不备份，免得重复的备份把有用的旧备份挤掉
-                    if changed_since_last_backup(Path(path_str)):
-                        create_backup(Path(path_str))
-                except OSError:
-                    pass
                 self._last_auto_backup_ts[path_str] = now
+
+                def work(path=Path(path_str)):
+                    # 存档没变（没人在线时世界暂停不存盘等）就不备份，免得重复的备份把有用的旧备份挤掉
+                    if changed_since_last_backup(path):
+                        create_backup(path)
+
+                # 压缩整个存档要一两秒，放后台，免得界面定时卡顿
+                run_async(work, lambda _result: None, lambda _exc: None)
 
     def _state_signature(self, cluster) -> tuple:
         """影响按钮和横幅的进程状态摘要：与上次不同就立即走一遍慢速刷新。"""

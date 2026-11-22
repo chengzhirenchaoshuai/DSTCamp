@@ -632,31 +632,71 @@ def format_backup_label(path: Path, cluster_name: str) -> str:
 
 
 class RestoreBackupDialog(Dialog):
-    """从备份恢复：列出历史备份（新的在前），选中后才现查那一份的详情（需要解压一次，放后台）。"""
+    """查看备份：列出历史备份（新的在前），可恢复、删除（移到回收站）或在文件夹中显示；
+    选中后才现查那一份的详情（需要解压一次，放后台）。"""
 
     def __init__(self, parent, cluster, backups: list[Path]):
-        super().__init__(parent, t("save.restore_backup"), 560, confirm_text=t("save.restore_confirm_btn"))
+        super().__init__(parent, t("save.backup_list_title"), 560, confirm_text=t("save.restore_confirm_btn"))
         self.result_backup: Path | None = None
-        self._backups = backups
+        self._backups = list(backups)
         self._detail_generation = 0
         self.body.addWidget(self.text_label(t("save.restore_prompt")))
         self._list = QListWidget()
         self._list.setMinimumHeight(260)
         self._list.setFont(theme.font("FONT_SIZE_BASE"))
-        for backup in backups:
+        for backup in self._backups:
             label = format_backup_label(backup, cluster.path.name)
             self._list.addItem(label + t("save.backup_kept_tag") if is_kept_backup(backup) else label)
         self.body.addWidget(self._list, 1)
         self._detail = self.text_label("", muted=True, size_key="FONT_SIZE_SM")
         self.body.addWidget(self._detail)
-        self.add_buttons()
+        cancel = style_button(QPushButton(t("dlg.cancel_btn")), "secondary")
+        delete = style_button(QPushButton(t("save.backup_delete_btn")), "secondary")
+        reveal = style_button(QPushButton(t("save.backup_reveal_btn")), "secondary")
+        confirm = QPushButton(self._confirm_text)
+        cancel.clicked.connect(self.reject)
+        delete.clicked.connect(self._on_delete)
+        reveal.clicked.connect(self._on_reveal)
+        confirm.clicked.connect(self.accept_if_valid)
+        for button in (cancel, delete, reveal):
+            button.setAutoDefault(False)
+        confirm.setDefault(True)
+        self.add_footer([cancel, delete], [reveal, confirm])
         self._list.currentRowChanged.connect(self._on_select)
         self._list.setCurrentRow(0)
+
+    def _on_reveal(self) -> None:
+        row = self._list.currentRow()
+        if row >= 0:
+            _open_in_explorer_foreground(self._backups[row])
+
+    def _on_delete(self) -> None:
+        from dstools.shared.recycle_bin import move_to_recycle_bin
+
+        row = self._list.currentRow()
+        if row < 0:
+            return
+        title = t("save.backup_delete_btn")
+        if not ask_yes_no(self, title, t("save.backup_delete_confirm", name=self._list.item(row).text()),
+                          danger=True):
+            return
+        try:
+            move_to_recycle_bin(self._backups[row])
+        except OSError as exc:
+            show_error(self, title, t("save.backup_delete_failed", error=str(exc)))
+            return
+        del self._backups[row]
+        self._list.takeItem(row)
+        if not self._backups:
+            self.reject()
+            return
+        self._on_select(self._list.currentRow())  # 详情随删除后新选中的那份刷新
 
     def _on_select(self, row: int) -> None:
         self._detail_generation += 1
         generation = self._detail_generation
-        if row < 0:
+        # 删除时 takeItem 过程中会先发一次指向旧行号的信号，此时可能越界
+        if not 0 <= row < len(self._backups):
             self._detail.setText("")
             return
         self._detail.setText(t("save.loading"))

@@ -159,7 +159,7 @@ class SaveInfoPage(Page):
         self._manage_button.setText(t("save.backup_management"))
         self._backup_now_item.setText(t("save.backup_now"))
         self._backup_policy_item.setText(t("save.backup_policy_btn"))
-        self._restore_item.setText(t("save.restore_backup"))
+        self._restore_item.setText(t("save.backup_list_title"))
         self._sync_manage_width()
 
     def _sync_manage_width(self) -> None:
@@ -480,7 +480,8 @@ class SaveInfoPage(Page):
         title = t("save.backup_title")
         run_async(
             lambda: create_backup(cluster.path, keep=True),
-            lambda _result: dialogs.show_info(self._window(), title, t("save.backup_ok")),
+            lambda path: dialogs.show_file_location(self._window(), title, path,
+                                                    t("save.backup_ok_location"), ""),
             lambda exc: dialogs.show_error(self._window(), title, t("save.backup_failed", error=str(exc))),
         )
 
