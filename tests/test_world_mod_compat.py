@@ -818,15 +818,18 @@ def test_multi_shard_creation() -> None:
         assert len({config.network["server_port"] for config in configs.values()}) == 4
 
 
-def test_vanilla_world_without_task_set_is_rejected() -> None:
-    """回归真实报错：额外森林没带模板数据，开服报 Must specify the task set for a level!"""
+def test_vanilla_world_without_template_has_task_set() -> None:
+    """回归用户报错：本机没有游戏建过的森林+洞穴存档时，原版默认计划缺 task_set，创建被拦下。
+    现在按本体 locations.lua + levels/*.lua 补齐地点默认值，不带模板也能创建。"""
     plan = WorldCreationPlan(
-        "missing_task_set",
-        _complete_plan(FOREST_LOCATION),
-        _complete_plan(CAVE_LOCATION),
+        "no_template",
+        default_plan_for_location(FOREST_LOCATION),
+        default_plan_for_location(CAVE_LOCATION),
         extra_shards={"Forest": default_plan_for_location(FOREST_LOCATION)},
     )
-    _expect_value_error(lambda: validate_creation_plan(plan), "缺 task_set 的原版世界不应写盘")
+    validate_creation_plan(plan)
+    assert shard_level_data(plan.master)["overrides"]["task_set"] == "default"
+    assert shard_level_data(plan.caves)["overrides"]["task_set"] == "cave_default"
 
 
 def test_add_shard_to_existing_cluster() -> None:
@@ -888,8 +891,6 @@ def test_add_shard_to_existing_cluster() -> None:
         cluster = _build_cluster(output, SaveSource.SERVER)
         _expect_value_error(lambda: add_shard(cluster, "caves", _complete_plan(CAVE_LOCATION)),
                             "同名世界（不区分大小写）不应覆盖")
-        _expect_value_error(lambda: add_shard(cluster, "Forest3", default_plan_for_location(FOREST_LOCATION)),
-                            "缺 task_set 的原版世界不应写盘")
         assert sorted(path.name for path in output.iterdir() if path.is_dir()) == ["Caves", "Forest2", "Master"]
 
         # 手动删掉的世界不再占名字，新世界复用编号也不继承旧名称

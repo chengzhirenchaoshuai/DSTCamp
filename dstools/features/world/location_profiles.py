@@ -122,9 +122,64 @@ LOCATION_DEFINITIONS: dict[str, WorldLocationDefinition] = {
 }
 
 
+# 原版森林/洞穴：本体 map/levels.lua 的 GetDataForLevelID = MergeMapsDeep(map/locations.lua 的 AddLocation,
+# map/levels/forest.lua、caves.lua 的 AddLevel)，再经 map/level.lua 的 Level() 补齐 hideminimap 等默认字段。
+# 没找到游戏生成的森林+洞穴存档时用作兜底；关卡预设的 overrides 为空，其余选项缺省时游戏按 customize.lua 默认值处理。
+_SURVIVAL_TOGETHER_RANDOM_SET_PIECES = [
+    "Sculptures_2", "Sculptures_3", "Sculptures_4", "Sculptures_5",
+    "Chessy_1", "Chessy_2", "Chessy_3", "Chessy_4", "Chessy_5", "Chessy_6",
+    "Maxwell1", "Maxwell2", "Maxwell3", "Maxwell4", "Maxwell6", "Maxwell7",
+    "Warzone_1", "Warzone_2", "Warzone_3",
+]
+
 # 取自 Island Adventures 1467214795 源码（sw_locations.lua、levels/shipwrecked.lua、levels/volcano.lua）。
 # 官方创建界面会把 AddLocation 默认值合并进 AddWorldGenLevel 再写 leveldataoverride.lua，不能只写空 overrides
-_MOD_CREATION_LEVEL_DATA: dict[str, dict[str, object]] = {
+_CREATION_LEVEL_DATA: dict[str, dict[str, object]] = {
+    FOREST_LOCATION: {
+        "version": 4,
+        "hideminimap": False,
+        "min_playlist_position": 0,
+        "max_playlist_position": 999,
+        "override_level_string": False,
+        "substitutes": {},
+        "required_setpieces": ["Sculptures_1", "Maxwell5"],
+        "numrandom_set_pieces": 4,
+        "random_set_pieces": _SURVIVAL_TOGETHER_RANDOM_SET_PIECES,
+        "required_prefabs": ["multiplayer_portal"],
+        "overrides": {
+            "start_location": "default",
+            "season_start": "default",
+            "world_size": "default",
+            "task_set": "default",
+            "layout_mode": "LinkNodesByKeys",
+            "wormhole_prefab": "wormhole",
+            "roads": "default",
+            "keep_disconnected_tiles": True,
+            "no_wormholes_to_disconnected_tiles": True,
+            "no_joining_islands": True,
+            "has_ocean": True,
+        },
+    },
+    CAVE_LOCATION: {
+        "version": 4,
+        "hideminimap": False,
+        "min_playlist_position": 0,
+        "max_playlist_position": 999,
+        "override_level_string": False,
+        "substitutes": {},
+        "numrandom_set_pieces": 0,
+        "background_node_range": [0, 1],
+        "required_prefabs": ["multiplayer_portal"],
+        "overrides": {
+            "task_set": "cave_default",
+            "start_location": "caves",
+            "season_start": "default",
+            "world_size": "default",
+            "layout_mode": "RestrictNodesByKey",
+            "wormhole_prefab": "tentacle_pillar",
+            "roads": "never",
+        },
+    },
     SHIPWRECKED_LOCATION: {
         "version": 4,
         "hideminimap": False,
@@ -228,8 +283,8 @@ _MOD_CREATION_LEVEL_DATA: dict[str, dict[str, object]] = {
 
 
 def get_verified_creation_level_data(location: str) -> dict[str, object]:
-    """返回已从真实 Mod 源码核对过的创建数据副本。"""
-    return copy.deepcopy(_MOD_CREATION_LEVEL_DATA.get(location, {}))
+    """返回已从游戏本体或真实 Mod 源码核对过的创建数据副本。"""
+    return copy.deepcopy(_CREATION_LEVEL_DATA.get(location, {}))
 
 
 @dataclass(frozen=True)

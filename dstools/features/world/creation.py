@@ -140,12 +140,10 @@ def validate_creation_plan(plan: WorldCreationPlan) -> None:
         if not shard_plan.preset_id:
             raise ValueError(f"{shard_name} 世界预设不能为空")
         # 游戏把 leveldataoverride.lua 当完整关卡定义整体替换（shardindex.lua SetServerShardData），
-        # 缺 task_set 开服就报 "Must specify the task set for a level!"，世界生成不出来
+        # 缺 task_set 开服就报 "Must specify the task set for a level!"，世界生成不出来。
+        # 已登记的 location 都会合并核对过的默认值，这里只拦未登记的数据
         if "task_set" not in shard_level_data(shard_plan)["overrides"]:
-            raise ValueError(
-                f"{shard_name} 缺少完整的世界生成数据（task_set），"
-                "请先用游戏创建一个带洞穴的世界，作为原版森林/洞穴的模板"
-            )
+            raise ValueError(f"{shard_name} 缺少完整的世界生成数据（task_set）")
 
 
 def _write_lua(path: Path, data: dict) -> None:

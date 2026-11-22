@@ -101,7 +101,7 @@ def next_shard_name(cluster: Cluster, location: str) -> str:
 
 def initial_plan(cluster: Cluster, location: str, klei_root: Path | None) -> WorldShardPlan:
     """新世界的初始关卡数据：优先复制本存档同类世界（完整定义，设置也与旧世界一致），
-    其次取游戏生成的其他存档模板，Mod 世界用已核对的默认值。"""
+    其次取游戏生成的其他存档模板，都没有时用已核对的默认值。"""
     for shard in cluster.shards:
         if shard.leveldata_path is None or not shard.leveldata_path.is_file():
             continue
@@ -205,7 +205,7 @@ def validate_new_shard(cluster: Cluster, shard_name: str, plan: WorldShardPlan) 
         raise ValueError("世界预设不能为空")
     # 游戏把 leveldataoverride.lua 当完整关卡定义整体替换，缺 task_set 世界生成不出来
     if "task_set" not in shard_level_data(plan)["overrides"]:
-        raise ValueError("缺少完整的世界生成数据（task_set），请先用游戏创建一个带洞穴的世界作为模板")
+        raise ValueError("缺少完整的世界生成数据（task_set）")
 
 
 def plan_shard_config(cluster: Cluster, shard_name: str, used_ports) -> ShardConfig:

@@ -545,7 +545,7 @@ class CreationWizardDialog(QDialog):
             self._extra_plans[shard] = plan
 
     def _fresh_plan(self, location: str) -> creation.WorldShardPlan:
-        """新世界的初始计划：原版森林/洞穴复制游戏生成的模板（Mod 默认值里没有它们的 task_set），其余取已核对的默认值。"""
+        """新世界的初始计划：原版森林/洞穴优先复制游戏生成的模板，找不到模板和其余世界取已核对的默认值。"""
         template = getattr(self, "_template_plans", {}).get(location)
         return copy.deepcopy(template) if template is not None else defaults.default_plan_for_location(location)
 
@@ -745,9 +745,20 @@ class CreationWizardDialog(QDialog):
             self._mod_settings = get_mod_world_settings(profile.effective_mod_ids)
             self._refresh_location_combo()
             self._render_world()
-            self._status_label.setText(profile.warnings[0] if profile.warnings else "")
+            self._status_label.setText(self._template_status_text(profile))
         except Exception as exc:
             self._status_label.setText(str(exc))
+
+    def _template_status_text(self, profile) -> str:
+        """打开向导就提示的状态：Mod 组合警告优先，其次是缺世界生成数据的世界，最后说明没找到游戏模板。"""
+        if profile.warnings:
+            return profile.warnings[0]
+        missing = [shard for shard in self._live_shard_names()
+                   if (plan := self._plan_for_shard(shard)) is not None
+                   and "task_set" not in creation.shard_level_data(plan)["overrides"]]
+        if missing:
+            return t("world.creation_missing_task_set", shards="、".join(missing))
+        return t("world.creation_builtin_defaults_hint") if self._template_root is None else ""
 
     def _active_preset(self):
         return self._plan_for_shard(self._shard_combo.shard_name())
