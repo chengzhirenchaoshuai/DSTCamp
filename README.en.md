@@ -108,29 +108,43 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.7 changes
+## 1.9.8 changes
 
-### ✨ New features
+### ✨ Improvements
+
+- The console's "Mods that failed to load" list shows the error text from the log with suggestions; Mods Steam has not registered can be fixed here with one-click resubscribe.
+- Server diagnosis adds "crash caused by a Mod error", and detects "world generation failed" more accurately.
+- When frpc cannot connect, a local DNS timeout is told apart from node problems; for DNS timeouts it suggests switching network or DNS instead of changing nodes.
+
+### 🐞 Fixes
+
+- After choosing an existing Sakura tunnel and turning mapping off, mapping could not be turned on again.
+- The local save Mod page showed Chinese++ Pro, the Bingbingyang runtime library and the LuaJIT companion Mod as "not installed", while the main Mods showed as disabled.
+- Duplicate Mod detection falsely flagged series Mods by the same author.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.7)</strong></summary>
+
+### 1.9.7
+
+#### ✨ New features
 
 - Sakura tunneling can use tunnels that already exist in your account, and a world can have several (e.g. one VIP and one regular node).
 - Crashes are recorded to an error log, which is included in log bundles.
 
-### ✨ Improvements
+#### ✨ Improvements
 
 - Backup management can delete backups and show them in the folder, and explains when automatic backups happen.
 - The default font now uses regular weight and grey text is darker; at the standard size text no longer mixes thin and bold strokes.
 - Maximizing fills the screen.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - The Mod list and World Settings list kept jittering at some window sizes.
 - New worlds copied settings from other saves on this PC (such as changed seasons or wildfires).
 - Creating a save failed if no "Forest + Caves" save had ever been created in the game.
 - "Possibly duplicate Mods" falsely flagged same-named scripts between an expansion and its base Mod, or ones each Mod loads via modimport.
 - Mod names, authors and so on showed as escapes like `\232\138\177`.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.6)</strong></summary>
 
 ### 1.9.6
 
