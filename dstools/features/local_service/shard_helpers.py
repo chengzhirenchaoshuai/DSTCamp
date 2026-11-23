@@ -66,6 +66,30 @@ def find_process_mod_folders(proc, mod_ids) -> dict[str, Path]:
     return result
 
 
+def find_process_unregistered_mods(proc, mod_ids, server_mods_root: Path | None) -> tuple[str, ...]:
+    """加载失败的 Mod 里"文件在、Steam 清单没登记"的那些（原样返回 ``workshop-<id>`` 形式的 ID）。
+
+    判定与开服前检查相同（``missing_mods.find_missing_enabled_mods``），工坊目录用这个进程启动时实际传的
+    ``-ugc_directory``；没传该参数或读不到清单时无从判断，返回空。"""
+    from dstools.features.mod.missing_mods import find_missing_enabled_mods
+    from dstools.features.mod.workshop_acf import read_acf_installed_ids
+
+    ugc_directory = getattr(proc, "ugc_directory", None)
+    if not ugc_directory:
+        return ()
+    by_number = {mod_id[9:]: mod_id for mod_id in mod_ids
+                 if mod_id.lower().startswith("workshop-") and mod_id[9:].isdigit()}
+    if not by_number:
+        return ()
+    content_root = Path(ugc_directory) / "content" / "322330"
+    missing = find_missing_enabled_mods(
+        by_number,
+        ugc_content_root=content_root,
+        server_mods_root=server_mods_root,
+        acf_installed_ids=read_acf_installed_ids(content_root))
+    return tuple(by_number[wid] for wid in missing.unregistered_ids)
+
+
 def mod_names(folders: dict[str, Path]) -> dict[str, str]:
     """读取各 Mod 目录 modinfo.lua 里的名称，读不到的不出现在结果里。"""
     names: dict[str, str] = {}
@@ -94,6 +118,7 @@ __all__ = [
     "max_rollback_days",
     "mod_display_names",
     "find_process_mod_folders",
+    "find_process_unregistered_mods",
     "mod_names",
     "find_shared_ugc_directory",
 ]

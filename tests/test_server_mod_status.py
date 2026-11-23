@@ -341,5 +341,30 @@ def test_unregistered_mods_separated_from_missing_ones():
         assert unknown.workshop_ids == ("9",)
 
 
+def test_failed_list_picks_unregistered_mods_by_process_ugc_directory():
+    """控制台加载失败列表按进程实际的 -ugc_directory 和清单找出未登记的 Mod，ID 保持 workshop- 形式。"""
+    import tempfile
+    from types import SimpleNamespace
+    from dstools.features.local_service.shard_helpers import find_process_unregistered_mods
+
+    with tempfile.TemporaryDirectory() as tmp:
+        workshop = Path(tmp) / "workshop"
+        content = workshop / "content" / "322330"
+        for wid in ("1", "7"):
+            (content / wid).mkdir(parents=True)
+            (content / wid / "modinfo.lua").write_text("name='x'", encoding="utf-8")
+        (workshop / "appworkshop_322330.acf").write_text(
+            '"AppWorkshop"\n{\n\t"appid"\t\t"322330"\n\t"WorkshopItemsInstalled"\n\t{\n'
+            '\t\t"1"\n\t\t{\n\t\t\t"size"\t\t"1"\n\t\t}\n\t}\n'
+            '\t"WorkshopItemDetails"\n\t{\n\t\t"1"\n\t\t{\n\t\t\t"manifest"\t\t"5"\n\t\t}\n\t}\n}\n',
+            encoding="utf-8")
+        failed = ("workshop-1", "workshop-7", "workshop-9", "localmod")
+        proc = SimpleNamespace(ugc_directory=str(workshop))
+        # 1 已登记、9 没下载、localmod 不是工坊 Mod，都不算未登记
+        assert find_process_unregistered_mods(proc, failed, None) == ("workshop-7",)
+        # 没传 -ugc_directory 时专服走自己的下载目录，无从判断
+        assert find_process_unregistered_mods(SimpleNamespace(ugc_directory=None), failed, None) == ()
+
+
 if __name__ == "__main__":
     run(globals())

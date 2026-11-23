@@ -57,7 +57,9 @@ from dstools.features.local_service.steam_backend import (
 from dstools.features.local_service.usage_scenario import (
     UsageScenario, backend_for, current_scenario, suggested_scenario,
 )
-from dstools.features.local_service.shard_helpers import RUNNING_LIKE, STATUS_TEXT_KEYS, ordered_shards, max_rollback_days
+from dstools.features.local_service.shard_helpers import (
+    RUNNING_LIKE, STATUS_TEXT_KEYS, find_process_unregistered_mods, ordered_shards, max_rollback_days,
+)
 from dstools.features.local_service.auto_restart import TOKEN_HOLD_DURATION, TOKEN_WAIT_LIMIT
 from dstools.features.local_service.token_scheduler import TokenSelection, TokenUse, select_token_for_cluster
 from dstools.features.sakura import api as sakura_frp
@@ -2707,15 +2709,26 @@ class LocalServicePage(Page):
               count=len(ids), mods="\n".join(shown)),
             choices, default="fix", danger_values=("start",))
         if choice == "fix":
-            if steamcmd:
-                # SteamCMD 没有订阅，重新下载一遍就会把条目写回清单
-                from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
-                run_steamcmd_mod_update(self.window(), list(ids),
-                                        on_finished=self.ctx.workshop_mods_changed.emit)
-            else:
-                self._subscribe_missing_mods(list(ids), resubscribe_ids=list(ids))
+            self._fix_unregistered_mods(ids)
             return False
         return choice == "start"
+
+    def _fix_unregistered_mods(self, ids: list[str]) -> None:
+        """修复"文件在、Steam 清单没登记"的 Mod（``ids`` 为纯数字 ID）：开服前检查和控制台加载失败列表共用。"""
+        if get_backend() is SteamBackend.STEAMCMD:
+            # SteamCMD 没有订阅，重新下载一遍就会把条目写回清单
+            from dstools.qt.mod.steamcmd_mods import run_steamcmd_mod_update
+            run_steamcmd_mod_update(self.window(), list(ids),
+                                    on_finished=self.ctx.workshop_mods_changed.emit)
+        else:
+            self._subscribe_missing_mods(list(ids), resubscribe_ids=list(ids))
+
+    def _unregistered_failed_mods(self, proc, mod_ids) -> tuple[str, ...]:
+        """控制台加载失败列表里属于"Steam 清单没登记"的 Mod；只有 Steam 存档能这样修复。"""
+        cluster = self._cluster_for_running_process(proc, self.get_cluster())
+        if cluster is None or cluster.platform != Platform.STEAM:
+            return ()
+        return find_process_unregistered_mods(proc, mod_ids, self._runtime_mods_root())
 
     # ── SteamCMD 通道：启动前的 Mod 更新检查 ─────────────────────────────
     # SteamCMD 不会自动更新 Mod，过期后玩家用新版本进服会因版本不一致被拒。联网检查放后台，
@@ -3035,7 +3048,9 @@ class LocalServicePage(Page):
                                 on_registered=self._on_server_registered,
                                 on_export_mods=lambda p, c=cluster: self._export_running_mods(p, c),
                                 token_conflict_actions=self._token_conflict_actions,
-                                cluster_procs=lambda c=cluster: self._cluster_procs(c))
+                                cluster_procs=lambda c=cluster: self._cluster_procs(c),
+                                unregistered_mods=self._unregistered_failed_mods,
+                                on_fix_unregistered=self._fix_unregistered_mods)
             self._console_panes[key] = pane
             if str(cluster.path) == (str(self.get_cluster().path) if self.get_cluster() else None):
                 self._add_console_tab(pane, shard.name)

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from dstools.features.local_service import player_commands
 from dstools.features.local_service.dedicated_server import ServerStatus, advance_world_ready_marker
+from dstools.features.local_service.steam_backend import SteamBackend, get_backend
 from dstools.features.local_service.server_diagnostics import (
     analyze_mod_loading, contains_runtime_lua_error, contains_server_registration_success,
     contains_startup_failure, contains_token_conflict, diagnose_server_failure,
@@ -99,12 +100,19 @@ class _DiagnosticDetailDialog(QDialog):
 
 
 class _FailedModsDialog(dialogs.Dialog):
-    """加载失败的 Mod 列表：每个 Mod 一张圆角卡片，显示图标、名称、ID 与本地目录，可直接打开所在位置。"""
+    """加载失败的 Mod 列表：每个 Mod 一张圆角卡片，显示图标、名称、ID 与本地目录，可直接打开所在位置。
+
+    ``unregistered`` 中的 Mod（文件在、Steam 清单没登记）额外写明原因并给出修复按钮；点修复后弹窗先关闭，
+    要修复的 ID 放在 ``fix_ids`` 里由调用方处理（模态弹窗开着时，修复进度窗口点不动）。"""
 
     _ICON = 44  # 图标边长（逻辑像素）
 
-    def __init__(self, parent, shard_name: str, mod_ids: tuple[str, ...], folders: dict):
+    def __init__(self, parent, shard_name: str, mod_ids: tuple[str, ...], folders: dict,
+                 unregistered: tuple[str, ...] = (), steamcmd: bool = False):
         super().__init__(parent, t("local.mods_failed_dialog_title", shard=shard_name), width="lg")
+        self._unregistered = set(unregistered)
+        self._steamcmd = steamcmd
+        self.fix_ids: list[str] = []
         hint = QLabel(t("local.mods_failed_dialog_hint", count=len(mod_ids)))
         hint.setWordWrap(True)
         hint.setProperty("muted", True)
@@ -169,13 +177,34 @@ class _FailedModsDialog(dialogs.Dialog):
         else:
             detail.setProperty("muted", True)
         text.addWidget(detail)
+        unregistered = mod_id in self._unregistered
+        if unregistered:
+            reason = QLabel(t("local.mods_failed_unregistered_steamcmd" if self._steamcmd
+                              else "local.mods_failed_unregistered"))
+            reason.setFont(theme.font("FONT_SIZE_XS"))
+            reason.setWordWrap(True)
+            reason.setStyleSheet(f"color: {theme.hex('ERROR')};")
+            text.addWidget(reason)
         row.addLayout(text, 1)
 
+        buttons = QVBoxLayout()
+        buttons.setSpacing(6)
+        if unregistered:
+            fix_btn = dialogs.style_button(QPushButton(t(
+                "local.missing_mods_steamcmd_btn" if self._steamcmd else "local.unregistered_mods_fix_btn")),
+                "primary")
+            fix_btn.clicked.connect(lambda _checked=False, m=mod_id: self._fix(m))
+            buttons.addWidget(fix_btn)
         open_btn = dialogs.style_button(QPushButton(t("env.open_location")), "secondary")
         open_btn.setEnabled(folder is not None)
         open_btn.clicked.connect(lambda _checked=False, m=mod_id, f=folder: self._open(m, f))
-        row.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        buttons.addWidget(open_btn)
+        row.addLayout(buttons)
         return card
+
+    def _fix(self, mod_id: str) -> None:
+        self.fix_ids = [mod_id]
+        self.accept()
 
     def _icon_pixmap(self, info, folder) -> QPixmap | None:
         """优先用已转换好的图标缓存（不在界面线程里跑 ktech 转换），没有时用默认图标。"""
@@ -363,9 +392,13 @@ class ConsolePane(QWidget):
     status_changed = Signal(object)
 
     def __init__(self, proc, on_close, on_rollback, on_failure=None, on_registered=None, on_export_mods=None,
-                 token_conflict_actions=None, cluster_procs=None, parent=None):
+                 token_conflict_actions=None, cluster_procs=None, unregistered_mods=None,
+                 on_fix_unregistered=None, parent=None):
         super().__init__(parent)
         self._on_export_mods = on_export_mods
+        # 加载失败列表里"Steam 清单没登记"的 Mod：(proc, ids) -> 其中未登记的 ID；修复回调收纯数字 ID
+        self._unregistered_mods = unregistered_mods
+        self._on_fix_unregistered = on_fix_unregistered
         # 同一存档各世界当前的进程（按世界顺序），"在线玩家"要查所有世界；未提供时只查本世界
         self._cluster_procs = cluster_procs or (lambda: [self.proc])
         # 手动暂停状态，按日志里的 "Server Paused/Unpaused" 跟踪（只有主世界控制台有暂停按钮）
@@ -770,7 +803,16 @@ class ConsolePane(QWidget):
         if self._mod_failed_ids:
             ids = self._mod_failed_ids
             folders = find_process_mod_folders(self.proc, ids)
-            _FailedModsDialog(self.window(), self.proc.shard_name, ids, folders).exec()
+            # 每次打开现查：修复后 Steam 清单已登记的，不再显示修复按钮
+            unregistered = ()
+            if self._unregistered_mods is not None and self._on_fix_unregistered is not None:
+                unregistered = self._unregistered_mods(self.proc, ids)
+            dialog = _FailedModsDialog(self.window(), self.proc.shard_name, ids, folders,
+                                       unregistered=unregistered,
+                                       steamcmd=get_backend() is SteamBackend.STEAMCMD)
+            dialog.exec()
+            if dialog.fix_ids:
+                self._on_fix_unregistered([mod_id[9:] for mod_id in dialog.fix_ids])
         elif self._on_export_mods is not None:
             self._on_export_mods(self.proc)
 
