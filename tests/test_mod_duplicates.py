@@ -78,6 +78,25 @@ def test_clash_between_mods_linked_by_dependencies_is_intentional():
             (("my-mod", "workshop-100", "workshop-200"), ("a.lua",))]
 
 
+def test_clash_between_mods_of_same_author_is_intentional():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        main = _mod(root, "main", {"a.lua": "main"})
+        chars = _mod(root, "chars", {"a.lua": "chars"})
+        other = _mod(root, "other", {"a.lua": "other"})
+        blank = _mod(root, "blank", {"a.lua": "blank"})
+        (main / "modinfo.lua").write_text('name = "Main"\nauthor = "羽中, 小明"\n', encoding="utf-8")
+        (chars / "modinfo.lua").write_text('author="羽中,  小明" -- 同一作者\n', encoding="utf-8")
+        (other / "modinfo.lua").write_text('author = "Someone"\n', encoding="utf-8")
+        (blank / "modinfo.lua").write_text('author = ""\n', encoding="utf-8")
+        report = find_duplicates({"main": ("Main", main), "chars": ("Chars", chars)})
+        assert not report.file_clashes
+        # 空作者不互相合并；同作者那组内部不算，与其他 Mod 之间照常提示
+        report = find_duplicates({"main": ("Main", main), "chars": ("Chars", chars),
+                                  "other": ("Other", other), "blank": ("Blank", blank)})
+        assert [c.mod_ids for c in report.file_clashes] == [("blank", "chars", "main", "other")]
+
+
 def test_scripts_loaded_only_by_modimport_do_not_clash():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

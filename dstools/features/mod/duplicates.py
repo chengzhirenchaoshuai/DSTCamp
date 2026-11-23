@@ -7,7 +7,8 @@
    的 ``scripts`` 目录依次加到 ``package.path`` 前面（scripts/mods.lua），``require`` 按模块名缓存，
    同名模块只会有一份生效，另一份等于被覆盖；内容相同的只是一起带的公共库，不提示。
    在 modinfo 的 ``mod_dependencies`` 里直接或间接依赖对方的（扩展包依赖本体，如岛屿冒险海难依赖核心），
-   覆盖是作者有意为之，也不提示。
+   覆盖是作者有意为之，也不提示；modinfo 的 ``author`` 完全相同的（同一作者的系列 Mod，如神话书说与
+   只在介绍里要求先开本体、没写依赖的神话人物）同样视为有意共用，不提示。
    ``modimport`` 按 Mod 自己的根目录加载（scripts/mods.lua 里 ``kleiloadlua(env.MODROOT..modulename)``），
    不走 ``package.path``；每个带该文件的 Mod 都只用 modimport 加载、没有 require/loadfile 到它时，也不提示。
 """
@@ -120,8 +121,26 @@ def _declared_dependencies(mod_folder: Path) -> set[str]:
     return result
 
 
+_AUTHOR = re.compile(r"(?m)^[ \t]*author[ \t]*=[ \t]*(.+?)[ \t]*;?[ \t]*$")
+
+
+def _declared_author(mod_folder: Path) -> str:
+    """modinfo.lua 顶层 author 赋值的右侧原文（去空白、不分大小写），用于判断同一作者；没写或写空串返回 ""。
+
+    只比较原文，不执行 Lua：写成表达式（如按语言选择）的两个 Mod 原文相同也算同一作者。"""
+    try:
+        text = (mod_folder / "modinfo.lua").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    match = _AUTHOR.search(_strip_comments_fast(text))
+    if match is None:
+        return ""
+    value = "".join(match.group(1).split()).casefold()
+    return "" if value in ('""', "''") else value
+
+
 def _dependency_components(mods: dict[str, tuple[str, Path | None]]) -> dict[str, str]:
-    """按 mod_dependencies 把已启用 Mod 连成组（不分方向、可传递），返回 {Mod 键: 组代表}。"""
+    """按 mod_dependencies 与相同的 author 把已启用 Mod 连成组（不分方向、可传递），返回 {Mod 键: 组代表}。"""
     parent = {mod_id: mod_id for mod_id in mods}
 
     def find(mod_id: str) -> str:
@@ -145,6 +164,16 @@ def _dependency_components(mods: dict[str, tuple[str, Path | None]]) -> dict[str
             target = alias.get(dep)
             if target is not None:
                 parent[find(mod_id)] = find(target)
+    # 同一作者的系列 Mod 共用脚本是作者自己维护的，与声明依赖同等对待
+    first_of_author: dict[str, str] = {}
+    for mod_id, (_name, folder) in mods.items():
+        author = _declared_author(folder) if folder is not None else ""
+        if not author:
+            continue
+        if author in first_of_author:
+            parent[find(mod_id)] = find(first_of_author[author])
+        else:
+            first_of_author[author] = mod_id
     return {mod_id: find(mod_id) for mod_id in mods}
 
 
