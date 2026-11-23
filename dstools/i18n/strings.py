@@ -775,6 +775,9 @@ STRINGS = {
                                          "隧道所在节点和远程端口不变。同一世界勾的多条隧道远程端口必须相同，否则跨世界传送会失败。"
                                          "关闭映射时不会删除它们，只把本地地址改回原样。列表里只有 UDP、当前不在线、没被其他存档使用的隧道。",
         "dlg.remote_port_tunnel_duplicate": "不同世界不能选用同一条隧道。",
+        "dlg.remote_port_tunnel_online": "（在线，暂不能选）",
+        "dlg.remote_port_tunnel_online_tip": "这条隧道正在线，说明有别的 frpc（比如樱花启动器）正在用它，同一条隧道不能两边同时连。"
+                                             "先在那边停掉它，过几秒点「刷新」再开启映射。",
         "dlg.remote_port_tunnel_mismatch": "「{shard}」勾选的隧道远程端口不同（{ports}）。跨世界传送时玩家按当前节点加目标世界的端口重连，"
                                            "同一世界的各条隧道远程端口必须相同，请到樱花后台改成相同端口，或只勾其中一条。",
         "sakura.copy_connect_btn": "复制直连代码",
@@ -2795,6 +2798,9 @@ STRINGS = {
                                          "their nodes and remote ports stay the same. Tunnels ticked for one shard must share the same remote port, or cross-shard travel fails. "
                                          "Disabling mapping won't delete them -- their local address is just changed back. Only UDP tunnels that are offline and not used by another save are listed.",
         "dlg.remote_port_tunnel_duplicate": "Different shards can't use the same tunnel.",
+        "dlg.remote_port_tunnel_online": " (online, can't be chosen now)",
+        "dlg.remote_port_tunnel_online_tip": "This tunnel is online, meaning another frpc (e.g. the SakuraFrp launcher) is using it; one tunnel can't be connected from two places at once. "
+                                             "Stop it there, wait a few seconds, click Refresh and enable mapping again.",
         "dlg.remote_port_tunnel_mismatch": "The tunnels ticked for \"{shard}\" have different remote ports ({ports}). When travelling between shards, players reconnect to the current node plus the target shard's port, "
                                            "so all tunnels of one shard must share the same remote port. Change them to the same port in the SakuraFrp dashboard, or tick only one.",
         "sakura.copy_connect_btn": "Copy Direct-Connect Code",

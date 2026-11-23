@@ -548,6 +548,7 @@ class ExistingTunnel(NamedTuple):
     label: str
     remote: str  # 远程端口
     shard: str | None  # 本地端口正指向的世界：打开窗口时预先勾上
+    online: bool = False  # 在线（别处的 frpc 正在用）：列出但不能勾
 
 
 class RemotePortDialog(Dialog):
@@ -586,10 +587,16 @@ class RemotePortDialog(Dialog):
                 tunnels = QListWidget()
                 tunnels.setFont(theme.font("FONT_SIZE_SM"))
                 for item in existing:
-                    entry = QListWidgetItem(item.label)
+                    entry = QListWidgetItem(item.label + (t("dlg.remote_port_tunnel_online") if item.online else ""))
                     entry.setData(Qt.ItemDataRole.UserRole, item.id)
-                    entry.setFlags(entry.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    entry.setCheckState(Qt.CheckState.Checked if item.shard == name else Qt.CheckState.Unchecked)
+                    if item.online:
+                        # 在线的隧道正被别处的 frpc（如樱花启动器）占着，同一条不能两边同时连
+                        # QListWidgetItem 默认就带 ItemIsUserCheckable，要一并去掉
+                        entry.setFlags(entry.flags() & ~(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable))
+                        entry.setToolTip(t("dlg.remote_port_tunnel_online_tip"))
+                    else:
+                        entry.setFlags(entry.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                        entry.setCheckState(Qt.CheckState.Checked if item.shard == name else Qt.CheckState.Unchecked)
                     tunnels.addItem(entry)
                 tunnels.setFixedHeight(tunnels.sizeHintForRow(0) * min(len(existing), self._LIST_ROWS)
                                        + 2 * tunnels.frameWidth() + 4)
@@ -612,7 +619,8 @@ class RemotePortDialog(Dialog):
         if tunnels is None:
             return []
         return [tunnels.item(i).data(Qt.ItemDataRole.UserRole) for i in range(tunnels.count())
-                if tunnels.item(i).checkState() == Qt.CheckState.Checked]
+                if tunnels.item(i).flags() & Qt.ItemFlag.ItemIsUserCheckable
+                and tunnels.item(i).checkState() == Qt.CheckState.Checked]
 
     def _sync_edit(self, name: str) -> None:
         self._edits[name].setEnabled(not self._checked_ids(name))

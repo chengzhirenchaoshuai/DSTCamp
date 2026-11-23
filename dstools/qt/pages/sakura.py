@@ -4,6 +4,7 @@
 """
 
 import json
+import threading
 import time
 import webbrowser
 from collections import deque
@@ -44,6 +45,7 @@ from dstools.shared.token_manager import mask_token
 _FALLBACK_MAX_TUNNELS = 2
 _SUB_TAB_KEYS = ["sakura", "lolia", "selfhost"]  # 子页签顺序，同时是 nat_sub_tab 的取值
 _FRPC_DATA_NAME = "frpc_config"
+_ONLINE_REFRESH_DELAY_MS = 5000  # 停掉 frpc 后等樱花后台更新隧道在线状态再刷新
 
 
 def _format_bytes_adaptive(num_bytes: float) -> str:
@@ -132,9 +134,14 @@ def _restore_adopted(token: str, original: dict) -> None:
         sakura_frp.edit_tunnel(token, int(original["id"]), **fields)
 
 
+def candidate_tunnel(tunnel: dict) -> bool:
+    """开启窗口里列出的已有隧道：UDP、未被封禁。在线的也列出但不能勾，让用户知道它为什么用不了。"""
+    return tunnel.get("type") == "udp" and tunnel.get("status") != 2
+
+
 def adoptable_tunnel(tunnel: dict) -> bool:
-    """可以选给世界用的已有隧道：UDP、未被封禁、当前不在线（在线说明别处的 frpc 正在用它）。"""
-    return tunnel.get("type") == "udp" and tunnel.get("status") != 2 and not tunnel.get("online")
+    """可以选给世界用的已有隧道：在列出的基础上当前不在线（在线说明别处的 frpc 正在用它）。"""
+    return candidate_tunnel(tunnel) and not tunnel.get("online")
 
 
 def _tunnel_by_id(tunnels: list[dict], tunnel_id) -> dict | None:
@@ -272,7 +279,7 @@ class _SakuraMappingPanel(QWidget):
         self._tunnels_exhausted = False
         self._reload_gen = 0
         self._tunnel_occupants: list[str] = []
-        self._adoptable_tunnels: list[dict] = []  # 最近一次加载时可以选给世界用的已有隧道
+        self._adoptable_tunnels: list[dict] = []  # 最近一次加载时列给用户选的已有隧道（含在线、不能勾的）
         self._extra_tunnels_by_key: dict[tuple[str, str], list[dict]] = {}  # 世界挂着的非主隧道
         self._any_mapped = False
         self._frpc_health: SakuraFrpcHealth | None = None
@@ -526,7 +533,7 @@ class _SakuraMappingPanel(QWidget):
                         occupied_ids.add(occupant_tunnel.get("id"))
                     occupied_ids.update(_pointer_ids(_frpc_pointer_path(c.path, shard.name, self.ctx.env)))
             # 没被任何存档占用、可以选给世界用的已有隧道（含用户在樱花后台自己建的）
-            adoptable = [x for x in tunnels if x.get("id") not in occupied_ids and adoptable_tunnel(x)]
+            adoptable = [x for x in tunnels if x.get("id") not in occupied_ids and candidate_tunnel(x)]
             return user_info, nodes, node_loads, by_key, extras, recent_bytes, len(tunnels), occupants, adoptable
 
         def done(result) -> None:
@@ -896,6 +903,17 @@ class _SakuraMappingPanel(QWidget):
                 # 世界挂多条隧道时同一个 frpc 进程一起跑（-f 密钥:ID1,ID2）
                 self.frpc.start(cluster.path, shard.name, health.path, token, ",".join(map(str, ids)))
 
+    def _stop_frpc_and_wait(self, cluster, timeout: float = 10.0) -> None:
+        """停掉这个存档各世界的 frpc 并等进程退出（在后台线程调用）。"""
+        events = []
+        for shard in cluster.shards:
+            if self.frpc.get(cluster.path, shard.name):
+                event = threading.Event()
+                events.append(event)
+                self.frpc.stop(cluster.path, shard.name, on_done=lambda _p, e=event: e.set())
+        for event in events:
+            event.wait(timeout)
+
     def stop_frpc_for_shard(self, cluster, shard, on_done=None) -> None:
         if self.frpc.get(cluster.path, shard.name):
             self.frpc.stop(cluster.path, shard.name, on_done=lambda _p: on_done() if on_done else None)
@@ -1055,9 +1073,9 @@ class _SakuraMappingPanel(QWidget):
             return
         shards = list(cluster.shards)
         # 只对新建的隧道生效：已有隧道的远程端口建好后改不了，照旧复用
-        preselect = _preselect_shards(shards, self._adoptable_tunnels)
+        preselect = _preselect_shards(shards, [x for x in self._adoptable_tunnels if adoptable_tunnel(x)])
         existing_choices = [dialogs.ExistingTunnel(int(x["id"]), self._adopted_label(x), str(x.get("remote", "")),
-                                                   preselect.get(int(x["id"])))
+                                                   preselect.get(int(x["id"])), online=bool(x.get("online")))
                             for x in self._adoptable_tunnels]
         port_dialog = dialogs.RemotePortDialog(self.window(), [shard.name for shard in shards],
                                               t("sakura.enable_btn"), existing=existing_choices)
@@ -1227,6 +1245,9 @@ class _SakuraMappingPanel(QWidget):
 
         def work() -> list[str]:
             failures = []
+            # 先停掉这个存档各世界的 frpc 并等它退出：原来不停，DSTCamp 自建的隧道被删后 frpc 自己会断，
+            # 但选用的已有隧道不删，frpc 一直挂着、隧道保持在线，再开启时它就因"在线"不在可选列表里
+            self._stop_frpc_and_wait(cluster)
             try:
                 if ids:
                     sakura_frp.delete_tunnel(token, ids)
@@ -1247,6 +1268,9 @@ class _SakuraMappingPanel(QWidget):
             if failures:
                 dialogs.show_warning(self.window(), t("sakura.disable_confirm_title"), "\n".join(failures))
             self._reload_async()
+            if adopted:
+                # 樱花后台的在线状态可能晚几秒才变，过一会儿再刷新一次，选用过的隧道才会回到可选状态
+                QTimer.singleShot(_ONLINE_REFRESH_DELAY_MS, self._reload_async)
             self.ctx.cluster_config_saved.emit(cluster)
 
         run_async(work, done, lambda _exc: done(None))
