@@ -86,7 +86,7 @@ from dstools.shared.app_settings import (
 from dstools.shared.clipboard import copy_file_to_clipboard
 from dstools.shared.resource_paths import path_is_ascii
 from dstools.shared.server_ports import (
-    collect_cluster_port_claims, disable_lan_restrictions, find_port_conflicts,
+    collect_cluster_port_claims, describe_conflict_owners, disable_lan_restrictions, find_port_conflicts,
     format_lan_port_issues, lan_restriction_names, rewrite_cluster_ports_atomic,
     rewrite_lan_server_ports_atomic, scan_udp_ports, system_port_claims,
 )
@@ -2516,7 +2516,7 @@ class LocalServicePage(Page):
             return True
         details = []
         for conflict in conflicts[:12]:
-            owners = "; ".join(claim.display_owner() for claim in conflict.claims)
+            owners = describe_conflict_owners(conflict.claims)
             details.append(f"{conflict.port}: {owners}")
         if len(conflicts) > 12:
             details.append(t("local.port_preflight_more", count=len(conflicts) - 12))

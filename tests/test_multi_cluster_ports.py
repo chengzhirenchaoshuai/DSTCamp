@@ -611,8 +611,8 @@ def test_config_editor_effective_conflicts() -> None:
         )
         assert any(
             warning.startswith("10888: ")
-            and "Cluster_A (master_port)" in warning
-            and "Cluster_B (master_port)" in warning
+            and "Cluster_A/Master (master_port)" in warning
+            and "Cluster_B/Master (master_port)" in warning
             for warning in cluster_warnings
         ), "保存 cluster.ini 时必须校验 master_port"
 

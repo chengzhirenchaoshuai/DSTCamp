@@ -11,7 +11,9 @@ from dstools.features.cluster_config.form_logic import (
 from dstools.features.cluster_config.ini_field_info import get_field_info, get_range_limits
 from dstools.i18n import t
 from dstools.models import Cluster, Platform, SaveSource, Shard
-from dstools.shared.server_ports import collect_cluster_port_claims, find_port_conflicts
+from dstools.shared.server_ports import (
+    collect_cluster_port_claims, describe_conflict_owners, find_port_conflicts,
+)
 
 Values = dict[tuple[str, str], object]   # (分区, 键) -> 界面上当前的值（不含只读字段）
 
@@ -122,7 +124,7 @@ def first_target_port_conflict(target_claims, all_claims) -> str | None:
     if not conflicts:
         return None
     conflict = conflicts[0]
-    owners = "; ".join(claim.display_owner() for claim in conflict.claims)
+    owners = describe_conflict_owners(conflict.claims)
     return t("cluster.port_conflict_effective", value=conflict.port, owners=owners)
 
 
@@ -137,7 +139,7 @@ def cross_cluster_port_conflicts(cluster: Cluster, target_claims, env_clusters: 
         other_claims.extend(claims)
     target_keys = {claim.owner_key for claim in target_claims}
     return [
-        f"{conflict.port}: " + "; ".join(claim.display_owner() for claim in conflict.claims)
+        f"{conflict.port}: " + describe_conflict_owners(conflict.claims)
         for conflict in find_port_conflicts(target_claims + other_claims)
         if any(claim.owner_key in target_keys for claim in conflict.claims)
     ]

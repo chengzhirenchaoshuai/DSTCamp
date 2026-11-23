@@ -53,10 +53,20 @@ class PortClaim:
     def display_owner(self) -> str:
         if self.cluster_path == "<system>":
             return f"系统进程 PID {self.pid}" if self.pid is not None else "系统中的其他进程"
-        # master_port 是 cluster 级别的端口（只由主世界监听），不归属于某个
-        # 分片，展示时无需带上世界名。
-        shard = f"/{self.shard_name}" if self.shard_name and self.field != "master_port" else ""
+        # master_port 虽是 cluster 级别的端口，也带上世界名：同一存档里有两个世界都被当成主世界时，
+        # 不带世界名会显示成两条一模一样的「存档名 (master_port)」，看不出是谁和谁冲突
+        shard = f"/{self.shard_name}" if self.shard_name else ""
         return f"{self.cluster_name}{shard} ({self.field})"
+
+
+def describe_conflict_owners(claims: Iterable[PortClaim]) -> str:
+    """冲突双方的说明；显示名相同（如不同目录下的同名存档）时补上存档路径以便区分。"""
+    claims = list(claims)
+    names = [claim.display_owner() for claim in claims]
+    return "; ".join(
+        f"{name} [{claim.cluster_path}]" if names.count(name) > 1 and claim.cluster_path != "<system>" else name
+        for name, claim in zip(names, claims)
+    )
 
 
 @dataclass(frozen=True)
