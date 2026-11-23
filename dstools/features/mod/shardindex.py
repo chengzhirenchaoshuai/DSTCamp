@@ -26,6 +26,34 @@ _PLAIN_HEADER = b"KLEI     1 "
 _ENCODED_FLAG = b"D"
 _KEY = "enabled_mods"
 
+# 几个 Mod 往客户端 Mod 列表注入的"仅服务端"代理名 -> 本体的工坊文件夹名。这些本体是客户端模组，游戏开服界面
+# 不让勾进服务器模组，于是 Mod 自己注册一个硬盘上不存在的虚拟服务器模组占位：开服时钩子把代理名换回本体名，
+# 进主菜单时再把各存档 shardindex 里的本体名改回代理名（不改回的话，原版读档会按本体名把客户端模组强行打开，
+# 而虚拟模组不会被勾上）。代理名一条的配置是服务器用的，与客户端模组列表里本体的配置互不影响。
+# 专服没有这些钩子，代理名原样写进 modoverrides.lua 会被当成不存在的 Mod 静默跳过（已实测），所以：
+# 读 shardindex 时代理名换成本体名（两种名字同时出现时以代理名一条为准），写回时再换成代理名。
+# 依据：workshop-3444078585/force_enable_mod.lua、workshop-2941527805/main/AddtoServerModList.lua、
+# workshop-3750536829/modmain.lua 的 server_folder_name；转换逻辑见 3750536829/bbgoat_utils/AddClientModToServerModList.lua。
+PROXY_MOD_NAMES = {
+    "DontStarveLuaJIT2-Server": "workshop-3444078585",
+    "Chinese-Pro-Server": "workshop-2941527805",
+    "bbgoat-utils-server": "workshop-3750536829",
+}
+_PROXY_BY_REAL = {real: proxy for proxy, real in PROXY_MOD_NAMES.items()}
+
+
+def unproxy_mods(mods: dict[str, ModEntry]) -> dict[str, ModEntry]:
+    """代理名换成本体工坊名；两种名字同时出现时以代理名一条为准。其余条目原样保留。"""
+    result: dict[str, ModEntry] = {}
+    for key, entry in mods.items():
+        real = PROXY_MOD_NAMES.get(key)
+        if real is None:
+            result.setdefault(key, entry)
+        else:
+            result[real] = ModEntry(workshop_id=real, enabled=entry.enabled,
+                                    configuration_options=dict(entry.configuration_options))
+    return result
+
 
 class ShardIndexError(Exception):
     """shardindex 无法读取或不能安全写回。"""
@@ -75,7 +103,8 @@ def decode_persistent_bytes(raw: bytes) -> tuple[str, bool]:
 
 
 def load_shardindex_mods(path: Path) -> dict[str, ModEntry]:
-    """读取 enabled_mods，返回与 load_mod_overrides() 相同形状的条目；文件缺失或解析失败抛 ShardIndexError。"""
+    """读取 enabled_mods，返回与 load_mod_overrides() 相同形状的条目（代理名已换成本体工坊名，见 PROXY_MOD_NAMES）；
+    文件缺失或解析失败抛 ShardIndexError。"""
     try:
         text, _ = decode_persistent_bytes(Path(path).read_bytes())
         data = parse_lua_table(text, str(path))
@@ -92,12 +121,14 @@ def load_shardindex_mods(path: Path) -> dict[str, ModEntry]:
         options = mod_data.get("configuration_options") or mod_data.get("config_data") or {}
         mods[key] = ModEntry(workshop_id=key, enabled=bool(mod_data.get("enabled", False)),
                              configuration_options=dict(options))
-    return mods
+    return unproxy_mods(mods)
 
 
 def save_shardindex_mods(path: Path, mods: dict[str, ModEntry]) -> None:
-    """只替换 enabled_mods 一段，文件其余内容逐字节保留；写前重新解析校验，原子替换。"""
+    """只替换 enabled_mods 一段，文件其余内容逐字节保留；写前重新解析校验，原子替换。
+    有代理名的本体一律写成代理名，即游戏进主菜单转换后的样子（见 PROXY_MOD_NAMES）。"""
     path = Path(path)
+    mods = {_PROXY_BY_REAL.get(key, key): entry for key, entry in mods.items()}
     raw = path.read_bytes()
     if not raw.startswith(_PLAIN_HEADER):
         raise ShardIndexError("shardindex 不是明文格式，不能安全写回")

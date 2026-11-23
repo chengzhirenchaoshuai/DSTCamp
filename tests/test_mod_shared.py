@@ -634,18 +634,23 @@ def test_shadowed_v1_copy_is_detected_only_when_v2_exists():
 
 
 def test_shardindex_save_replaces_only_enabled_mods():
-    """本地存档 shardindex 写回只替换 enabled_mods，字符串里的括号和其它字段原样保留。"""
+    """本地存档 shardindex 写回只替换 enabled_mods，字符串里的括号和其它字段原样保留。
+    虚拟服务器模组的代理名读成本体工坊名（两种名字都在时以代理名为准），写回时换回代理名。"""
     from dstools.features.mod.shardindex import load_shardindex_mods, save_shardindex_mods
     from dstools.models import ModEntry
 
     rest = ('  server={ name="a}{b", description=[[x}]] },\n'
-            '  enabled_mods={ ["workshop-1"]={ enabled=true, configuration_options={ k="}" } } },\n'
+            '  enabled_mods={ ["workshop-1"]={ enabled=true, configuration_options={ k="}" } },'
+            ' ["Chinese-Pro-Server"]={ enabled=true, configuration_options={ s=1 } },'
+            ' ["workshop-2941527805"]={ enabled=false, configuration_options={ c=1 } } },\n'
             '  session_id="S", version=5\n}')
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "shardindex"
         path.write_bytes(b"KLEI     1 return {\n" + rest.encode())
         mods = load_shardindex_mods(path)
         assert mods["workshop-1"].configuration_options == {"k": "}"}
+        assert "Chinese-Pro-Server" not in mods
+        assert mods["workshop-2941527805"].enabled and mods["workshop-2941527805"].configuration_options == {"s": 1}
         mods["workshop-1"].enabled = False
         mods["workshop-2"] = ModEntry("workshop-2", True, {"n": 3})
         save_shardindex_mods(path, mods)
@@ -654,6 +659,8 @@ def test_shardindex_save_replaces_only_enabled_mods():
     assert text.startswith('KLEI     1 return {\n  server={ name="a}{b", description=[[x}]] },\n  enabled_mods=')
     assert text.endswith(',\n  session_id="S", version=5\n}')
     assert not back["workshop-1"].enabled and back["workshop-2"].configuration_options == {"n": 3}
+    assert '["Chinese-Pro-Server"]' in text and "workshop-2941527805" not in text
+    assert back["workshop-2941527805"].configuration_options == {"s": 1}
 
 
 def test_client_mods_disabled_switch_is_not_a_mod():

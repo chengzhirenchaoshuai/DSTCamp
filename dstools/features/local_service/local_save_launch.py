@@ -29,7 +29,7 @@ from dstools.features.cluster_config.local_server_data import (
     load_local_server_data,
 )
 from dstools.features.local_service.dedicated_server import resolve_storage_args
-from dstools.features.mod.manager import ModEntry, ModOverrides, load_mod_overrides, save_mod_overrides
+from dstools.features.mod.manager import ModOverrides, load_mod_overrides, save_mod_overrides
 from dstools.features.mod.shardindex import load_shardindex_mods, shardindex_path
 from dstools.features.world.local_options import load_local_overrides
 from dstools.models import Platform, SaveSource
@@ -38,17 +38,6 @@ from dstools.shared.lua_parser import parse_lua_file, serialize_lua_table
 # Steam 32 位账号 ID（本地存档的账号目录名）换算 SteamID64 的基数：
 # 280257116 + 基数 = 76561198240522844，与客户端开服命令行的 -ownernetid 一致（已实测）
 STEAM_ID64_BASE = 76561197960265728
-
-# 几个 Mod 往客户端 Mod 列表注入的"仅服务端"代理名 -> 专服认的工坊文件夹名。
-# 客户端在主菜单把 shardindex 里的工坊名换成代理名，开服时再换回来（钩子在各 Mod 里），专服没有这一步：
-# 代理名原样写进 modoverrides 会被专服当成不存在的 Mod 静默跳过（已实测）。
-# 依据：workshop-3444078585/inject_server_only_mod.lua、workshop-2941527805/main/AddtoServerModList.lua、
-# workshop-3750536829/bbgoat_utils/AddClientModToServerModList.lua 的 server_folder_name / folder_name。
-PROXY_MOD_NAMES = {
-    "DontStarveLuaJIT2-Server": "workshop-3444078585",
-    "Chinese-Pro-Server": "workshop-2941527805",
-    "bbgoat-utils-server": "workshop-3750536829",
-}
 
 def can_host(cluster) -> bool:
     """DSTCamp 能拉起专服（也就能做内网穿透映射）的存档：服务器存档，以及 Steam 的本地存档。
@@ -75,21 +64,9 @@ def local_storage_args(cluster) -> list[str]:
     return args
 
 
-def _server_mods(cluster_path: Path) -> dict[str, ModEntry]:
-    """Master shardindex 的 Mod（游戏前端以它为准），代理名换回工坊名；两种名字同时出现时以代理名一条为准。"""
-    mods: dict[str, ModEntry] = {}
-    for key, entry in load_shardindex_mods(shardindex_path(cluster_path)).items():
-        real = PROXY_MOD_NAMES.get(key)
-        if real is None:
-            mods.setdefault(key, entry)
-        else:
-            mods[real] = ModEntry(workshop_id=real, enabled=entry.enabled,
-                                  configuration_options=dict(entry.configuration_options))
-    return mods
-
-
 def _sync_mods(cluster) -> list[str]:
-    mods = _server_mods(cluster.path)
+    # Master shardindex 的 Mod（游戏前端以它为准）；代理名已在读取时换回专服认的工坊名
+    mods = load_shardindex_mods(shardindex_path(cluster.path))
     changed = []
     for shard in cluster.shards:
         path = shard.mod_overrides_path or shard.path / "modoverrides.lua"

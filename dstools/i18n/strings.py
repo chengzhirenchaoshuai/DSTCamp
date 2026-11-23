@@ -1117,6 +1117,7 @@ STRINGS = {
         "copy.created_dest": "已创建目标目录 {dest}",
         "copy.copying_dir": "正在复制 {name}/ ...",
         "copy.copying_file": "正在复制 {name} ...",
+        "copy.proxy_mods_renamed": "{name}/modoverrides.lua：虚拟服务器模组名已换回本体工坊名，专服才能加载。",
         "copy.token_assigned": "已从全局令牌池分配第一个令牌。",
         "copy.done": "复制完成。",
         # 更新过的标签
@@ -3135,6 +3136,7 @@ STRINGS = {
         "copy.created_dest": "Created destination directory {dest}",
         "copy.copying_dir": "Copying {name}/ ...",
         "copy.copying_file": "Copying {name} ...",
+        "copy.proxy_mods_renamed": "{name}/modoverrides.lua: renamed virtual server mods back to their workshop folders so the dedicated server loads them.",
         "copy.token_assigned": "Assigned the first token from the global pool.",
         "copy.done": "Copy complete.",
         # 更新过的标签

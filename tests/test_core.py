@@ -846,6 +846,9 @@ def test_cluster_copy():
         (local_cluster / "Master" / "server.ini").write_text(
             "[NETWORK]\n", encoding="utf-8"
         )
+        # 旧版 Mod 页同步进来的代理名：专服不认，复制时换回本体工坊名，源存档不动
+        proxy_overrides = 'return { ["Chinese-Pro-Server"]={ configuration_options={ s=1 }, enabled=true } }'
+        (local_cluster / "Master" / "modoverrides.lua").write_text(proxy_overrides, encoding="utf-8")
 
         logs = []
         dest = copy_local_cluster_to_server(
@@ -856,6 +859,10 @@ def test_cluster_copy():
             local_cluster / "cluster.ini"
         ).read_text(encoding="utf-8")
         assert (dest / "Master" / "server.ini").exists()
+        copied_mods = load_mod_overrides(dest / "Master" / "modoverrides.lua").mods
+        assert list(copied_mods) == ["workshop-2941527805"], copied_mods
+        assert copied_mods["workshop-2941527805"].configuration_options == {"s": 1}
+        assert (local_cluster / "Master" / "modoverrides.lua").read_text(encoding="utf-8") == proxy_overrides
         assert local_cluster.exists() and (local_cluster / "cluster.ini").exists(), (
             "源文件夹必须保持不变"
         )

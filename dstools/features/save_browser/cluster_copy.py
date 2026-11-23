@@ -7,6 +7,8 @@
 import shutil
 from pathlib import Path
 
+from dstools.features.mod.manager import load_mod_overrides, save_mod_overrides
+from dstools.features.mod.shardindex import PROXY_MOD_NAMES, unproxy_mods
 from dstools.i18n import t
 from dstools.shared import app_settings
 from dstools.shared.token_manager import is_valid_token, read_token, write_token
@@ -49,6 +51,15 @@ def copy_local_cluster_to_server(local_cluster_path: Path, klei_root: Path,
         else:
             log(t("copy.copying_file", name=entry.name))
             shutil.copy2(entry, target)
+
+    # 游戏写的 modoverrides.lua 用本体工坊名；旧版 DSTCamp 的 Mod 页曾把 shardindex 里的代理名原样同步进来，
+    # 专服不认代理名，会静默跳过这些 Mod，这里换回本体名（见 shardindex.PROXY_MOD_NAMES）
+    for overrides_path in sorted(dest.glob("*/modoverrides.lua")):
+        overrides = load_mod_overrides(overrides_path)
+        if any(key in PROXY_MOD_NAMES for key in overrides.mods):
+            overrides.mods = unproxy_mods(overrides.mods)
+            save_mod_overrides(overrides)
+            log(t("copy.proxy_mods_renamed", name=overrides_path.parent.name))
 
     # 本地存档通常没有令牌：全局令牌池非空时自动填第一个。按 is_valid_token() 判断而不是文件是否存在
     # （可能有内容为空的 cluster_token.txt）
