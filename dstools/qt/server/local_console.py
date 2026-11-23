@@ -19,7 +19,7 @@ from dstools.features.local_service.steam_backend import SteamBackend, get_backe
 from dstools.features.local_service.server_diagnostics import (
     analyze_mod_loading, contains_runtime_lua_error, contains_server_registration_success,
     contains_startup_failure, contains_token_conflict, diagnose_server_failure,
-    LUAJIT_RELOAD_LOOP_THRESHOLD, count_luajit_restarts,
+    LUAJIT_RELOAD_LOOP_THRESHOLD, count_luajit_restarts, mod_error_is_missing_file, summarize_mod_error,
 )
 from dstools.features.local_service.shard_helpers import (
     STATUS_TEXT_KEYS, find_process_mod_folders, mod_display_names, mod_names,
@@ -103,14 +103,16 @@ class _FailedModsDialog(dialogs.Dialog):
     """加载失败的 Mod 列表：每个 Mod 一张圆角卡片，显示图标、名称、ID 与本地目录，可直接打开所在位置。
 
     ``unregistered`` 中的 Mod（文件在、Steam 清单没登记）额外写明原因并给出修复按钮；点修复后弹窗先关闭，
-    要修复的 ID 放在 ``fix_ids`` 里由调用方处理（模态弹窗开着时，修复进度窗口点不动）。"""
+    要修复的 ID 放在 ``fix_ids`` 里由调用方处理（模态弹窗开着时，修复进度窗口点不动）。
+    ``errors`` 是日志里各 Mod 的加载错误原文：卡片显示第一行和处理建议，全文可复制。"""
 
     _ICON = 44  # 图标边长（逻辑像素）
 
     def __init__(self, parent, shard_name: str, mod_ids: tuple[str, ...], folders: dict,
-                 unregistered: tuple[str, ...] = (), steamcmd: bool = False):
+                 unregistered: tuple[str, ...] = (), steamcmd: bool = False, errors: dict | None = None):
         super().__init__(parent, t("local.mods_failed_dialog_title", shard=shard_name), width="lg")
         self._unregistered = set(unregistered)
+        self._errors = errors or {}
         self._steamcmd = steamcmd
         self.fix_ids: list[str] = []
         hint = QLabel(t("local.mods_failed_dialog_hint", count=len(mod_ids)))
@@ -141,7 +143,9 @@ class _FailedModsDialog(dialogs.Dialog):
         close = QPushButton(t("dlg.close_btn"))
         close.clicked.connect(self.accept)
         self.add_footer(right=[close])
-        dialogs.fit_to_screen(self, dialogs.DIALOG_WIDTHS["lg"], 170 + 78 * min(len(mod_ids), 6))
+        # 带错误原因或修复按钮的卡片多两行文字
+        card_height = 120 if self._errors or self._unregistered else 78
+        dialogs.fit_to_screen(self, dialogs.DIALOG_WIDTHS["lg"], 170 + card_height * min(len(mod_ids), 6))
 
     def _mod_card(self, mod_id: str, folder) -> QWidget:
         info = None
@@ -185,6 +189,20 @@ class _FailedModsDialog(dialogs.Dialog):
             reason.setWordWrap(True)
             reason.setStyleSheet(f"color: {theme.hex('ERROR')};")
             text.addWidget(reason)
+        error = self._errors.get(mod_id, "")
+        if error:
+            summary = QLabel(t("local.mods_failed_error", summary=summarize_mod_error(error)))
+            summary.setFont(theme.font("FONT_SIZE_XS"))
+            summary.setWordWrap(True)
+            summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            summary.setStyleSheet(f"color: {theme.hex('ERROR')};")
+            text.addWidget(summary)
+            advice = QLabel(t("local.mods_failed_error_missing_file" if mod_error_is_missing_file(error)
+                              else "local.mods_failed_error_code"))
+            advice.setFont(theme.font("FONT_SIZE_XS"))
+            advice.setWordWrap(True)
+            advice.setProperty("muted", True)
+            text.addWidget(advice)
         row.addLayout(text, 1)
 
         buttons = QVBoxLayout()
@@ -195,12 +213,23 @@ class _FailedModsDialog(dialogs.Dialog):
                 "primary")
             fix_btn.clicked.connect(lambda _checked=False, m=mod_id: self._fix(m))
             buttons.addWidget(fix_btn)
+        if error:
+            copy_btn = dialogs.style_button(QPushButton(t("local.mods_failed_copy_error_btn")), "secondary")
+            copy_btn.clicked.connect(
+                lambda _checked=False, b=copy_btn, m=mod_id, name=title.text(), e=error: self._copy_error(b, m, name, e))
+            buttons.addWidget(copy_btn)
         open_btn = dialogs.style_button(QPushButton(t("env.open_location")), "secondary")
         open_btn.setEnabled(folder is not None)
         open_btn.clicked.connect(lambda _checked=False, m=mod_id, f=folder: self._open(m, f))
         buttons.addWidget(open_btn)
         row.addLayout(buttons)
         return card
+
+    def _copy_error(self, button, mod_id: str, name: str, error: str) -> None:
+        # 带上 Mod 名称和 ID，发给作者或在群里求助时对方知道是哪个 Mod
+        header = mod_id if name == mod_id else f"{name} ({mod_id})"
+        QGuiApplication.clipboard().setText(f"{header}\n{error}")
+        dialogs.show_toast(self, t("local.mods_failed_error_copied"), near=button)
 
     def _fix(self, mod_id: str) -> None:
         self.fix_ids = [mod_id]
@@ -809,7 +838,8 @@ class ConsolePane(QWidget):
                 unregistered = self._unregistered_mods(self.proc, ids)
             dialog = _FailedModsDialog(self.window(), self.proc.shard_name, ids, folders,
                                        unregistered=unregistered,
-                                       steamcmd=get_backend() is SteamBackend.STEAMCMD)
+                                       steamcmd=get_backend() is SteamBackend.STEAMCMD,
+                                       errors=getattr(self.proc, "mod_errors", {}))
             dialog.exec()
             if dialog.fix_ids:
                 self._on_fix_unregistered([mod_id[9:] for mod_id in dialog.fix_ids])

@@ -20,7 +20,7 @@ from dstools.shared import app_settings
 from dstools.features.cluster_config.config_manager import get_shard_option, load_shard_config
 from dstools.features.mod.manager import load_mod_overrides
 from dstools.features.local_service.console_log import ConsoleOnlyLog
-from dstools.features.local_service.server_diagnostics import analyze_mod_loading
+from dstools.features.local_service.server_diagnostics import ModErrorCollector, analyze_mod_loading
 from dstools.shared.steam_discovery import find_all_steam_libraries
 
 IS_WINDOWS = sys.platform == "win32"
@@ -342,11 +342,19 @@ class ServerProcess:
         self.mods_failed: set[str] = set()
         self._mod_context: str | None = None
         self.missing_mods: list[str] | None = None
+        # 世界就绪前日志里各 Mod 的加载错误原文（mod_id -> 文本），控制台加载失败列表用
+        self._mod_error_collector = ModErrorCollector()
 
     @property
     def visible_mod_ids(self) -> set[str]:
         """已启用的 Mod（LuaJIT 加速补丁也是启动的 Mod，一并计入）。"""
         return set(self.mods_enabled)
+
+    @property
+    def mod_errors(self) -> dict[str, str]:
+        """世界就绪前收集到的各 Mod 加载错误原文（mod_id -> 文本）。"""
+        collector = getattr(self, "_mod_error_collector", None)
+        return dict(collector.errors) if collector is not None else {}
 
     @property
     def visible_mod_count(self) -> int:
@@ -395,6 +403,8 @@ class ServerProcess:
             self.mods_failed = set()
         if not hasattr(self, "_mod_context"):
             self._mod_context = None
+        if not hasattr(self, "_mod_error_collector"):
+            self._mod_error_collector = ModErrorCollector()
         try:
             for line in self.proc.stdout:
                 line = line.rstrip("\n")
@@ -406,6 +416,7 @@ class ServerProcess:
                 if console_log is not None:
                     console_log.line(line)
                 if not self.world_ready:
+                    self._mod_error_collector.feed(line)
                     m = _MOD_ENABLING_RE.search(line)
                     if m:
                         self.mods_enabled.add(m.group(1))
@@ -430,6 +441,7 @@ class ServerProcess:
                         line, self.is_master, real_start_seen,
                     )
                     if ready_now:
+                        self._mod_error_collector.finish()
                         self.world_ready = True
                         self.missing_mods = list(analyze_mod_loading(
                             enabled_mods=self.mods_enabled,

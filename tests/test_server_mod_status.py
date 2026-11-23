@@ -156,6 +156,45 @@ def test_mod_syntax_error_is_failed_but_world_can_be_ready() -> None:
     assert process.world_ready is True
     assert process.mods_failed == {"CommonModSets"}
     assert process.missing_mods == ["CommonModSets"]
+    # 错误原文到 Disabling 行为止，卡片上的摘要去掉 [string "../mods/<目录>/..."] 包装
+    from dstools.features.local_service.server_diagnostics import summarize_mod_error
+    error = process.mod_errors["CommonModSets"]
+    assert error == "[string \"../mods/CommonModSets/modmain.lua\"]:7: unfinished string near '''"
+    assert summarize_mod_error(error) == "modmain.lua:7: unfinished string near '''"
+
+
+def test_mod_error_text_collected_from_real_log_block() -> None:
+    """10-30 真机日志（节选）：运行出错的错误块不带时间戳、以只有空白的行结束，随后游戏又带时间戳重印一遍。"""
+    from dstools.features.local_service.server_diagnostics import (
+        ModErrorCollector, mod_error_is_missing_file, summarize_mod_error,
+    )
+    collector = ModErrorCollector()
+    for line in [
+        "[19:15:39]: Mod: workshop-2736985627 (夜雨心空10.29.1)\tLoading modmain.lua\t",
+        "[19:15:40]: MOD ERROR: workshop-2736985627 (夜雨心空10.29.1): Mod: workshop-2736985627 (夜雨心空10.29.1)"
+        "  Error loading mod!",
+        "[string \"../mods/workshop-2736985627/images/saveslot...\"]:1: module 'yyxkasdkvgassamjka' not found:",
+        "\tno field package.preload['yyxkasdkvgassamjka']",
+        "LUA ERROR stack traceback:",
+        "        ../mods/workshop-2736985627/modmain.lua(1306,1) in main chunk",
+        "\t",
+        "[19:15:40]: Mod: workshop-2912906543 (Boss锻炼了-1.8.5)\tLoading modmain.lua\t",
+        "[19:15:40]: [string \"../mods/workshop-2736985627/images/saveslot...\"]:1: module 'other' not found:",
+        # modinfo 出错：正文以空格开头
+        "Error loading mod: workshop-5 (坏模组)!",
+        " [string \"../mods/workshop-5/modinfo.lua\"]:3: '=' expected near 'x'",
+        "",
+    ]:
+        collector.feed(line)
+    collector.finish()
+    error = collector.errors["workshop-2736985627"]
+    assert error.splitlines()[0].endswith("module 'yyxkasdkvgassamjka' not found:")
+    assert error.splitlines()[-1].strip() == "../mods/workshop-2736985627/modmain.lua(1306,1) in main chunk"
+    assert summarize_mod_error(error) == "images/saveslot...:1: module 'yyxkasdkvgassamjka' not found:"
+    assert mod_error_is_missing_file(error)
+    assert summarize_mod_error(collector.errors["workshop-5"]) == "modinfo.lua:3: '=' expected near 'x'"
+    assert not mod_error_is_missing_file(collector.errors["workshop-5"])
+    assert set(collector.errors) == {"workshop-2736985627", "workshop-5"}
 
 
 def test_console_log_reads_are_bounded_during_error_storm() -> None:

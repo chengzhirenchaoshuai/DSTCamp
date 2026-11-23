@@ -105,6 +105,79 @@ def analyze_mod_loading(
     )
 
 
+# Mod 加载出错时游戏打印的错误块（本体 mods.lua / modutil.lua 原文，10-30 真机日志核对过）：
+#   Mod: <id> (<名称>)\t  Error loading mod!            modmain/modworldgenmain 编译失败，之后 Disabling
+#   MOD ERROR: <id> (<名称>): Mod: <id> (<名称>)  Error loading mod!   运行出错（moderror）
+#   Error loading mod: <id> (<名称>)!                   modinfo.lua 出错
+# 错误正文从下一行起，没有时间戳前缀，以空行（或只有空白的行）结束；运行出错还跟着 LUA ERROR 堆栈。
+# modinfo 这一种在启动时对目录里所有 Mod 都会读，未启用的 Mod 也会打印，只能提供原文，不能用来判定失败
+_MOD_ERROR_LOADING_MARKER = "error loading mod!"
+_MOD_ERROR_CONTEXT_RE = re.compile(r"\bMod:\s+([^\s(]+)", re.IGNORECASE)
+_MODINFO_ERROR_RE = re.compile(r"Error loading mod:\s+([^\s(!]+)", re.IGNORECASE)
+_LOG_TIMESTAMP_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\]:")
+_MOD_DISABLED_MARKER = "because it had an error"
+MOD_ERROR_MAX_LINES = 30
+# [string "../mods/workshop-1/modmain.lua"]:7: → modmain.lua:7:（游戏会把过长的路径截成 ...）
+_LUA_CHUNK_RE = re.compile(r'\[string "\.\./mods/[^/"\\]+[/\\]([^"]*)"\]')
+_MISSING_MOD_FILE_RE = re.compile(r"module '[^']+' not found|cannot open \S+", re.IGNORECASE)
+
+
+class ModErrorCollector:
+    """逐行接收专服日志，收集每个 Mod 第一次加载出错时的错误原文（mod_id -> 文本）。"""
+
+    def __init__(self) -> None:
+        self.errors: dict[str, str] = {}
+        self._mod_id: str | None = None
+        self._lines: list[str] = []
+
+    def feed(self, line: str) -> None:
+        if self._mod_id is not None:
+            if self._block_ended(line):
+                self._close()
+            else:
+                if len(self._lines) < MOD_ERROR_MAX_LINES:
+                    self._lines.append(line.rstrip())
+                return
+        lower = line.lower()
+        mod_id = None
+        if _MOD_ERROR_LOADING_MARKER in lower:
+            match = _MOD_ERROR_CONTEXT_RE.search(line)
+            mod_id = match.group(1) if match else None
+        elif "error loading mod:" in lower:
+            match = _MODINFO_ERROR_RE.search(line)
+            mod_id = match.group(1) if match else None
+        if mod_id:
+            self._mod_id, self._lines = mod_id, []
+
+    def finish(self) -> None:
+        """日志读完时收尾（错误块可能在最后一行之后才结束）。"""
+        if self._mod_id is not None:
+            self._close()
+
+    @staticmethod
+    def _block_ended(line: str) -> bool:
+        return (not line.strip() or _LOG_TIMESTAMP_RE.match(line) is not None
+                or _MOD_DISABLED_MARKER in line.lower())
+
+    def _close(self) -> None:
+        text = "\n".join(self._lines).strip()
+        # 同一个错误游戏常会再打印一遍，只留第一次
+        if text and self._mod_id not in self.errors:
+            self.errors[self._mod_id] = text
+        self._mod_id, self._lines = None, []
+
+
+def summarize_mod_error(text: str) -> str:
+    """错误原文的第一行，Lua 代码块名简化成 Mod 内的相对路径。"""
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    return _LUA_CHUNK_RE.sub(r"\1", first)
+
+
+def mod_error_is_missing_file(text: str) -> bool:
+    """错误是读不到 Mod 自己的文件（module not found / cannot open），而不是代码写错。"""
+    return _MISSING_MOD_FILE_RE.search(summarize_mod_error(text)) is not None
+
+
 def _tips(category: str) -> tuple[str, ...]:
     """每类诊断固定两条建议，文案按 diag.<类别>.tip1/tip2 存放在 i18n 中。"""
     return (t(f"diag.{category}.tip1"), t(f"diag.{category}.tip2"))
