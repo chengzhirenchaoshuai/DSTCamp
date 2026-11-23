@@ -19,7 +19,7 @@ _ERROR_MARKERS = (
     "socket_port_already_in_use",
 )
 _MAX_LOG_BYTES = 32 * 1024 * 1024
-_MAX_BACKUP_FILES_PER_SHARD = 5
+_MAX_BACKUP_FILES_PER_SHARD = 10
 _MOD_LINE_RE = re.compile(
     r"(?:inserting\s+modname,|Loading\s+mod:|Mod:)\s*"
     r"(workshop-\d+)(?:\s*\(([^)]*)\))?",
