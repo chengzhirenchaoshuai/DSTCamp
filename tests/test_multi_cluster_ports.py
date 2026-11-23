@@ -1071,5 +1071,38 @@ def test_public_ipv4_prefers_cip_cc_plain_text() -> None:
     assert len(calls) == 1
 
 
+def test_damaged_server_ini_is_reported_and_never_shrunk_to_port_line() -> None:
+    """11-23 zhanshen：server.ini 读不出内容时，按“空配置 + 端口”写回会只剩一行、丢掉 is_master。"""
+    from dstools.features.cluster_config.config_manager import (
+        ServerIniDamagedError, find_server_ini_problems, set_server_port,
+    )
+    from dstools.shared.ini_parser import parse_server_ini
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cluster = _write_cluster(Path(tmp), "zhanshen")
+        master, caves = (Path(s.path) for s in cluster.shards)
+        assert find_server_ini_problems(cluster) == []
+
+        assert set_server_port(caves, 30186) is True
+        config = parse_server_ini(caves / "server.ini")
+        assert config.network["server_port"] == 30186
+        assert config.shard == {"is_master": False, "name": "Caves"}
+        assert config.steam == {"master_server_port": 27017, "authentication_port": 8767}
+        assert set_server_port(caves, 30186) is False
+
+        damaged = b"\x00" * 64  # 断电后常见的整块 NUL
+        (master / "server.ini").write_bytes(damaged)
+        try:
+            set_server_port(master, 54948)
+        except ServerIniDamagedError:
+            pass
+        else:
+            raise AssertionError("损坏的 server.ini 不能被写成只剩端口")
+        assert (master / "server.ini").read_bytes() == damaged
+
+        (caves / "server.ini").write_text("[NETWORK]\nserver_port = 30186\n", encoding="utf-8")
+        assert find_server_ini_problems(cluster) == [("Master", "damaged"), ("Caves", "no_is_master")]
+
+
 if __name__ == "__main__":
     run(globals())

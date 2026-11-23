@@ -151,6 +151,62 @@ def save_shard_config(config: ShardConfig, path: Path) -> None:
     write_server_ini(config, path)
 
 
+class ServerIniDamagedError(ValueError):
+    """server.ini 不存在或读不出任何配置，不能只补一个字段写回。"""
+
+    def __init__(self, path: Path) -> None:
+        from dstools.i18n import t
+        super().__init__(t("cluster.server_ini_damaged", path=str(path)))
+        self.path = path
+
+
+def _is_blank(config: ShardConfig) -> bool:
+    return not (config.network or config.shard or config.account or config.steam)
+
+
+def set_server_port(shard_path: Path, port: int) -> bool:
+    """只改 server.ini 的 server_port，其余内容原样保留；值没变不写，返回是否写了。
+
+    文件不存在或读不出任何内容（空文件、断电留下的整块 NUL）时抛 ServerIniDamagedError：
+    此时按"读出来的空配置 + 端口"写回，会得到只有一行端口、缺了 is_master 的文件，
+    多世界存档里所有世界都被游戏当成没开分片，用户只能看到看不懂的端口冲突（11-23 zhanshen 实例）。"""
+    path = shard_path / "server.ini"
+    if not path.is_file():
+        raise ServerIniDamagedError(path)
+    config = parse_server_ini(path)
+    if _is_blank(config):
+        raise ServerIniDamagedError(path)
+    if config.network.get("server_port") == port:
+        return False
+    config.network["server_port"] = port
+    write_server_ini(config, path)
+    return True
+
+
+def find_server_ini_problems(cluster) -> list[tuple[str, str]]:
+    """开服前检查各世界 server.ini 是否完整，返回 [(世界名, 问题)]，问题为 "damaged" 或 "no_is_master"。
+
+    damaged：文件不存在或读不出任何内容。no_is_master：多世界且开了分片，却没写 is_master——
+    游戏会关掉分片模式（日志 Missing 'is_master'），各世界互不相连，还都去监听 master_port。"""
+    problems: list[tuple[str, str]] = []
+    try:
+        cluster_shard = load_cluster_config(Path(cluster.path)).shard
+    except OSError:
+        cluster_shard = {}
+    multi_shard = len(cluster.shards) > 1 and bool(cluster_shard.get("shard_enabled", False))
+    for shard in cluster.shards:
+        path = Path(shard.path) / "server.ini"
+        try:
+            config = parse_server_ini(path) if path.is_file() else None
+        except OSError:
+            continue  # 一时读不了（被占用）不算损坏，交给后面的流程
+        if config is None or _is_blank(config):
+            problems.append((shard.name, "damaged"))
+        elif multi_shard and "is_master" not in config.shard:
+            problems.append((shard.name, "no_is_master"))
+    return problems
+
+
 def set_shard_option(config: ShardConfig, section: str, key: str,
                      value: Any) -> None:
     """设置 server.ini 中的单个选项。"""

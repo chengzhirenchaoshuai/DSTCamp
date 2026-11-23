@@ -18,8 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.cluster_config.config_manager import (
-    get_cluster_option, get_shard_option, load_cluster_config, load_shard_config, save_shard_config,
-    set_shard_option,
+    ServerIniDamagedError, get_cluster_option, get_shard_option, load_cluster_config, load_shard_config,
+    set_server_port,
 )
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE
 from dstools.features.sakura import api as sakura_frp
@@ -61,6 +61,8 @@ def _format_bytes_adaptive(num_bytes: float) -> str:
 def _api_error_text(exc: Exception) -> str:
     """樱花 API 报错文案。5xx 时樱花返回的说明可能很误导（实测服务端故障时建隧道报"本地 IP 输入有误"，
     而 IP 是程序自动填的 127.0.0.1），补一句说明是樱花服务器的问题。"""
+    if isinstance(exc, ServerIniDamagedError):
+        return str(exc)  # 本地配置文件的问题，不是樱花 API 出错
     text = t("sakura.api_error", detail=str(exc))
     status = getattr(exc, "status", None)
     if isinstance(status, int) and status >= 500:
@@ -974,9 +976,7 @@ class _SakuraMappingPanel(QWidget):
                     raise sakura_frp.SakuraApiError(f"invalid remote port for {shard.name}: {remote}")
                 if str(remote_port) != str(tunnel.get("remote")):
                     sakura_frp.edit_tunnel(token, tunnel["id"], local_port=remote_port)
-                    shard_config = load_shard_config(shard.path)
-                    set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
-                    save_shard_config(shard_config, shard.path)
+                    set_server_port(shard.path, remote_port)
                     changed.append(shard.name)
                 ports[shard.name] = remote_port
                 log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
@@ -1182,7 +1182,6 @@ class _SakuraMappingPanel(QWidget):
                         tunnel_ids = [tunnel_id]
                     ready.append((shard, tunnel_ids, remote_port))
                 for shard, tunnel_ids, remote_port in ready:
-                    shard_config = load_shard_config(shard.path)
                     pointer_path = _frpc_pointer_path(cluster.path, shard.name, self.ctx.env)
                     originals[shard.name] = ((shard.path / "server.ini").read_bytes(),
                                              pointer_path.read_text(encoding="utf-8") if pointer_path.exists() else None)
@@ -1190,8 +1189,7 @@ class _SakuraMappingPanel(QWidget):
                     pointer_path.write_text(",".join(map(str, tunnel_ids)), encoding="utf-8")
                     if shard.name in adopted:
                         _write_adopted(pointer_path, adopted[shard.name])
-                    set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
-                    save_shard_config(shard_config, shard.path)
+                    set_server_port(shard.path, remote_port)
                     log(t("sakura.setup_step_ready", shard=shard.name, port=remote_port))
             except Exception:
                 rollback(created_ids, originals, adopted)

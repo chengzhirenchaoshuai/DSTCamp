@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.cluster_config.config_manager import (
-    get_cluster_option, get_shard_option, load_cluster_config, load_shard_config, save_shard_config,
-    set_shard_option,
+    ServerIniDamagedError, find_server_ini_problems, get_cluster_option, get_shard_option, load_cluster_config,
+    load_shard_config, set_server_port,
 )
 from dstools.features.local_service import luajit_injector, luajit_runtime, steam_client_updater, steamcmd_updater
 from dstools.features.local_service.backup_manager import changed_since_last_backup, create_backup
@@ -2368,6 +2368,8 @@ class LocalServicePage(Page):
             return False
         if not self._check_launch_names(cluster, shards):
             return False
+        if not self._check_server_ini(cluster):
+            return False
         if cluster.source == SaveSource.LOCAL and not self._prepare_local_save(cluster):
             return False
         if cluster.platform == Platform.STEAM:
@@ -2406,6 +2408,18 @@ class LocalServicePage(Page):
             dialogs.show_error(self.window(), t("local.port_preflight_title"), t("local.port_preflight_invalid", details="\n".join(lines)))
             return False
         return self._check_port_conflicts(cluster, shards, target_names, candidate_claims, allow_repair, restarting)
+
+    def _check_server_ini(self, cluster) -> bool:
+        """server.ini 空了、坏了或多世界缺 is_master 时拦下：照常开服只会表现成端口冲突、地上洞穴连不上，
+        用户看不出原因；DSTCamp 也不能在这种文件上补写端口（见 config_manager.set_server_port）。"""
+        problems = find_server_ini_problems(cluster)
+        if not problems:
+            return True
+        keys = {"damaged": "local.server_ini_damaged_line", "no_is_master": "local.server_ini_no_master_line"}
+        details = "\n".join(t(keys[kind], shard=name) for name, kind in problems)
+        dialogs.show_error(self.window(), t("local.server_ini_title"),
+                           t("local.server_ini_problems", details=details))
+        return False
 
     def _check_launch_names(self, cluster, shards) -> bool:
         """专服读不了非英文的存档/世界文件夹名；开着 LuaJIT 时 Klei 根目录有系统编码转不了的名字会启动即崩。
@@ -3018,12 +3032,13 @@ class LocalServicePage(Page):
         port = self.ctx.mapped_server_port(cluster, shard)
         if port is None:
             return
-        config = load_shard_config(shard.path)
-        if get_shard_option(config, "NETWORK", "server_port") == port:
+        try:
+            changed = set_server_port(Path(shard.path), port)
+        except ServerIniDamagedError:
+            # 开服预检已拦下这种文件；万一预检后才坏，宁可不同步端口也不把它写成只剩端口的一行
             return
-        set_shard_option(config, "NETWORK", "server_port", port)
-        save_shard_config(config, shard.path)
-        self.ctx.cluster_config_saved.emit(cluster)
+        if changed:
+            self.ctx.cluster_config_saved.emit(cluster)
 
     def _continue_start_shard(self, cluster, shard, storage_args) -> None:
         self._save_extra_args()

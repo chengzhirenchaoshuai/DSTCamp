@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.cluster_config.config_manager import (
-    get_cluster_option, get_shard_option, load_cluster_config, load_shard_config, save_shard_config,
-    set_shard_option,
+    ServerIniDamagedError, get_cluster_option, get_shard_option, load_cluster_config, load_shard_config,
+    set_server_port,
 )
 from dstools.features.frp_selfhost.client import FrpcManager, FrpcStatus, probe_login
 from dstools.features.local_service.shard_helpers import RUNNING_LIKE
@@ -729,8 +729,11 @@ class LoliaPanel(QWidget):
             self._restart_frpc(cluster, on_done=lambda: self._on_enable_done(progress))
 
         def error(exc: Exception) -> None:
-            detail = t("lolia.relogin_needed") if isinstance(exc, lolia_api.LoliaAuthError) else str(exc)
-            progress.append(t("lolia.api_error", detail=detail), "result_error")
+            if isinstance(exc, ServerIniDamagedError):
+                progress.append(str(exc), "result_error")  # 本地配置文件的问题，不是 Lolia 出错
+            else:
+                detail = t("lolia.relogin_needed") if isinstance(exc, lolia_api.LoliaAuthError) else str(exc)
+                progress.append(t("lolia.api_error", detail=detail), "result_error")
             progress.finish()
             self._render_shard_rows()
             self._reload_async()
@@ -759,9 +762,7 @@ class LoliaPanel(QWidget):
                 )
                 config_path.parent.mkdir(parents=True, exist_ok=True)
                 config_path.write_text(toml_text, encoding="utf-8")
-                shard_config = load_shard_config(shard.path)
-                set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
-                save_shard_config(shard_config, shard.path)
+                set_server_port(shard.path, remote_port)
                 app_settings.set_lolia_mapping(cluster.path, shard.name, remote_port, host, tunnel_name)
                 if old_mapping is None or old_mapping["remote_port"] != remote_port:
                     changed.append(shard.name)
@@ -898,8 +899,11 @@ class LoliaPanel(QWidget):
                                    t("sakura.setup_done_msg_restart", shards="、".join(running)))
 
         def error(exc: Exception) -> None:
-            detail = t("lolia.relogin_needed") if isinstance(exc, lolia_api.LoliaAuthError) else str(exc)
-            progress.append(t("lolia.api_error", detail=detail), "result_error")
+            if isinstance(exc, ServerIniDamagedError):
+                progress.append(str(exc), "result_error")  # 本地配置文件的问题，不是 Lolia 出错
+            else:
+                detail = t("lolia.relogin_needed") if isinstance(exc, lolia_api.LoliaAuthError) else str(exc)
+                progress.append(t("lolia.api_error", detail=detail), "result_error")
             progress.finish()
             self._render_shard_rows()
             self._reload_async()

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.cluster_config.config_manager import (
-    get_cluster_option, load_cluster_config, load_shard_config, save_shard_config, set_shard_option,
+    get_cluster_option, load_cluster_config, load_shard_config, set_server_port,
 )
 from dstools.features.frp_selfhost import connectivity, deploy, host_firewall, probe, remote_deploy, wireguard_deploy
 from dstools.features.frp_selfhost.client import FrpcManager, FrpcStatus, build_frpc_toml
@@ -1365,9 +1365,7 @@ class SelfHostPanel(QWidget):
                     remote_port = self._next_free_port(
                         base_port, extra_used=fresh_used_ports | frozenset(requested.values()))
                     app_settings.set_selfhost_frp_mapping(cluster.path, shard.name, remote_port)
-                shard_config = load_shard_config(shard.path)
-                set_shard_option(shard_config, "NETWORK", "server_port", remote_port)
-                save_shard_config(shard_config, shard.path)
+                set_server_port(shard.path, remote_port)
                 post_to_ui(lambda _a, s=shard, p=remote_port: progress.append(t("selfhost.setup_step_mapping", shard=s.name, port=p)))
             self._rebuild_frpc_config(cluster)
 

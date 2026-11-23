@@ -481,6 +481,7 @@ STRINGS = {
             "确定保存“{name}”的房间设置吗？"
         ),
         "cluster.port_conflict_effective": "UDP 端口 {value} 在当前存档内冲突：{owners}。游戏实际使用的默认端口也参与检查，请修改后再保存。",
+        "cluster.server_ini_damaged": "世界配置文件已损坏或不存在，没有改动它：{path}\n请到「存档信息」页用「从备份恢复」恢复到它还正常时的备份。",
         "cluster.cross_cluster_port_title": "与其他存档端口重复",
         "cluster.cross_cluster_port_confirm": "该配置与其他服务器存档使用了相同端口。允许保存，但这些存档不能按当前配置同时启动：\n\n{details}\n\n仍要保存吗？",
         "cluster.range_hint": "取值范围：{min}~{max}",
@@ -1460,6 +1461,11 @@ STRINGS = {
         "local.port_preflight_scan_failed": "其它存档正在运行，但无法读取系统 UDP 端口占用。为避免端口冲突，本次没有启动。\n\n详细信息：{detail}",
         "local.port_conflict_title": "检测到端口冲突",
         "local.port_conflict_confirm": "检测到以下端口冲突：\n\n{details}\n\n是否继续启动？",
+        "local.server_ini_title": "世界配置文件不完整",
+        "local.server_ini_problems": "以下世界的配置文件（server.ini）不完整，这样开服地上和洞穴连不起来：\n\n{details}\n\n"
+                                     "请到「存档信息」页用「从备份恢复」，恢复到配置还正常时的备份（恢复前会自动保留一份当前状态）。",
+        "local.server_ini_damaged_line": "{shard}：文件是空的、已损坏或不存在",
+        "local.server_ini_no_master_line": "{shard}：缺少「是否主世界」（is_master）",
         "local.allocate_ports_btn": "分配不冲突的端口",
         "local.port_preflight_more": "……另有 {count} 项冲突",
         "local.launch_already_pending": "以下世界正在准备启动，请勿重复操作：{shards}",
@@ -2516,6 +2522,7 @@ STRINGS = {
             "Save the cluster settings of \"{name}\"?"
         ),
         "cluster.port_conflict_effective": "UDP port {value} conflicts inside this save: {owners}. Effective game defaults are included in this check; change the port before saving.",
+        "cluster.server_ini_damaged": "The shard config file is damaged or missing, so it was left unchanged: {path}\nUse \"Restore from Backup\" on the Save Info page to go back to a backup from before it broke.",
         "cluster.cross_cluster_port_title": "Port Also Used by Another Save",
         "cluster.cross_cluster_port_confirm": "This configuration shares ports with another server save. It may be saved, but the saves cannot run together with their current settings:\n\n{details}\n\nSave anyway?",
         "cluster.range_hint": "Valid range: {min}-{max}",
@@ -3509,6 +3516,11 @@ STRINGS = {
         "local.port_preflight_scan_failed": "Another save is running, but local UDP port usage could not be read. Nothing was started to avoid a possible conflict.\n\nDetails: {detail}",
         "local.port_conflict_title": "Port Conflict Detected",
         "local.port_conflict_confirm": "These port conflicts were found:\n\n{details}\n\nContinue launching?",
+        "local.server_ini_title": "Shard Config Incomplete",
+        "local.server_ini_problems": "The config file (server.ini) of these shards is incomplete, so the surface and caves can't connect:\n\n{details}\n\n"
+                                     "Use \"Restore from Backup\" on the Save Info page to go back to a backup from before it broke (the current state is kept first).",
+        "local.server_ini_damaged_line": "{shard}: the file is empty, damaged or missing",
+        "local.server_ini_no_master_line": "{shard}: is_master (master shard or not) is missing",
         "local.allocate_ports_btn": "Allocate Non-conflicting Ports",
         "local.port_preflight_more": "...and {count} more conflict(s)",
         "local.launch_already_pending": "These shards are already being prepared for launch: {shards}",
