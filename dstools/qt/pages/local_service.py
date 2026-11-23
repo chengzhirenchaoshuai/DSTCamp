@@ -3542,9 +3542,10 @@ class LocalServicePage(Page):
             if self._public_state in ("failed", "loading"):
                 self._public_retry_attempt = 0
                 self._start_public_fetch(cluster)
-            if self._nat_state in ("failed", "loading"):
-                self._nat_retry_attempt = 0
-                self._start_nat_fetch(cluster)
+            # 内网穿透代码每次开服都重取：隧道可能在樱花官网等处被迁移、重建或换了端口，
+            # 本程序收不到这类改动，已显示的旧代码不会自己更新
+            self._nat_retry_attempt = 0
+            self._start_nat_fetch(cluster)
         self._last_master_ready = ready
 
     def _fetch_public_result(self, cluster, custom_host: str = ""):
