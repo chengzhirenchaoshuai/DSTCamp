@@ -659,6 +659,11 @@ class KleiRootDialog(dialogs.Dialog):
         if not chosen:
             return
         path = Path(chosen)
+        if not str(path).isascii():
+            # 非默认目录经命令行 -persistent_storage_root 传给专服，按 ANSI 读入后变乱码，存档读不到
+            dialogs.show_warning(self, t("settings.klei_root_label"),
+                                 t("settings.klei_root_non_ascii", path=str(path)))
+            return
         if (path / "cluster.ini").exists():
             # 选到了某个存档文件夹本身：根目录应是它的上一级
             dialogs.show_warning(self, t("settings.klei_root_label"),

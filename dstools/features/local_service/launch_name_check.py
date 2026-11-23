@@ -21,6 +21,22 @@ def non_ascii_names(names) -> list[str]:
     return [name for name in names if not name.isascii()]
 
 
+def non_ascii_storage_root(storage_args) -> str | None:
+    """存储参数里含非 ASCII 字符的存档根目录（-persistent_storage_root 与 -conf_dir 拼成的完整路径），没有返回 None。
+    这两个参数和 -cluster 一样经命令行按 ANSI 读入，路径含中文时专服会改读乱码目录，读不到存档。
+    默认位置不传参数，专服自己按 Unicode 取"文档"目录，不受影响。"""
+    args = list(storage_args)
+    values = {}
+    for flag in ("-persistent_storage_root", "-conf_dir"):
+        if flag in args and args.index(flag) + 1 < len(args):
+            values[flag] = args[args.index(flag) + 1]
+    if not values or all(value.isascii() for value in values.values()):
+        return None
+    root = values.get("-persistent_storage_root", "")
+    conf_dir = values.get("-conf_dir", "")
+    return str(Path(root) / conf_dir) if root else conf_dir
+
+
 def unencodable_entries(klei_root: Path, encoding: str = _ANSI_ENCODING) -> list[str]:
     """Klei 根目录下名字转不成系统 ANSI 编码的条目（只看第一层，与注入器一致）。"""
     result = []

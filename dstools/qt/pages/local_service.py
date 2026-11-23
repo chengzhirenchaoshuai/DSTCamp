@@ -44,7 +44,9 @@ from dstools.features.local_service.server_runtime import (
     get_runtime_mode, remember_install_dir,
     resolve_runtime, set_runtime_mode,
 )
-from dstools.features.local_service.launch_name_check import guess_original_name, non_ascii_names, unencodable_entries
+from dstools.features.local_service.launch_name_check import (
+    guess_original_name, non_ascii_names, non_ascii_storage_root, unencodable_entries,
+)
 from dstools.features.local_service.local_save_launch import (
     can_host as _can_launch, local_storage_args, sync_local_save_for_launch,
 )
@@ -2420,6 +2422,12 @@ class LocalServicePage(Page):
             return False
         if self._install_dir is None:
             return True
+        bad_root = non_ascii_storage_root(self._storage_args_for(cluster))
+        if bad_root:
+            # 早先设置的中文存档目录（当时选择时还没拦），或游戏默认位置以外的中文路径：专服同样读不到存档
+            dialogs.show_error(self.window(), t("local.name_check_title"),
+                               t("local.name_check_non_ascii_root", path=bad_root))
+            return False
         bin64_dir = find_bin64_dir(self._install_dir)
         if bin64_dir is None or luajit_injector.detect_state(bin64_dir) is not luajit_injector.InjectorState.ACTIVE:
             return True

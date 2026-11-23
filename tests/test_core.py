@@ -2592,11 +2592,17 @@ def test_luajit_game_bin64_install():
 def test_launch_name_check():
     """中文存档名开服时游戏会在 Klei 根目录建乱码文件夹，开 LuaJIT 必崩（2026-11-01 用户转储+本机复现）。"""
     from dstools.features.local_service.launch_name_check import (
-        guess_original_name, non_ascii_names, unencodable_entries,
+        guess_original_name, non_ascii_names, non_ascii_storage_root, unencodable_entries,
     )
 
     garbled = "".join(map(chr, (0xB7, 0xE8, 0xBF, 0xF1, 0xC0, 0xCF, 0xBB, 0xA2, 0xBB, 0xFA)))
     assert non_ascii_names(["Cluster_1", "疯狂老虎机", "Master", "森林"]) == ["疯狂老虎机", "森林"]
+    # 存档根目录经 -persistent_storage_root/-conf_dir 传给专服，同样按 ANSI 读入；默认位置不传参数不受影响
+    assert non_ascii_storage_root([]) is None
+    assert non_ascii_storage_root(["-persistent_storage_root", "C:/cundang", "-conf_dir", "dst"]) is None
+    bad = non_ascii_storage_root(["-persistent_storage_root", "C:/cundang", "-conf_dir", "DSTCamp_存档_1",
+                                  "-ownerdir", "123"])
+    assert bad == str(Path("C:/cundang") / "DSTCamp_存档_1"), bad
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         for name in ("Cluster_1", "疯狂老虎机", garbled):
