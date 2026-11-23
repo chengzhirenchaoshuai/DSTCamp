@@ -19,6 +19,12 @@ _RULES = (
     ("port_used", re.compile(r"\[(?P<proxy>[^\]]+)\] start error: port already used")),
     ("port_unavailable", re.compile(r"\[(?P<proxy>[^\]]+)\] start error: port unavailable")),
     ("port_not_allowed", re.compile(r"\[(?P<proxy>[^\]]+)\] start error: port not allowed")),
+    # 本机 DNS 解析不了节点域名（Go 的 DNSError：lookup <域名>[ on <DNS>]: i/o timeout 是 DNS 没响应、
+    # server misbehaving 是 DNS 返回出错），和节点无关，换节点没用。11-22 22:00 空悠夜的日志包：
+    # lookup cn-gz-3.qwq.fan: i/o timeout，同包里还有大量 Klei 域名 Could not resolve host。
+    # no such host 是域名不存在，仍归节点问题；必须排在 server_unreachable 前面
+    ("dns_timeout", re.compile(
+        r"connect to server error: .*lookup \S+(?: on \S+)?: (i/o timeout|server misbehaving)", re.IGNORECASE)),
     ("server_unreachable", re.compile(
         r"connect to server error: .*(refused|i/o timeout|timed out|no such host|unreachable)", re.IGNORECASE)),
     # 连上了但对方没按 frps 应答就断开。实测：控制端口已被别人重新部署改掉，本机 Clash TUN 先接下 TCP 再断开，

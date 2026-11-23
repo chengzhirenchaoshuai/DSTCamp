@@ -28,6 +28,15 @@ def test_session_shutdown_points_to_wrong_control_port() -> None:
     assert diagnose(lines).kind == "server_closed"
 
 
+def test_dns_timeout_is_not_a_node_problem() -> None:
+    # 11-22 22:00 空悠夜：本机 DNS 没响应，换节点没用；域名不存在和真正的连接超时仍归节点
+    prefix = "2026-11-22 22:00:01.000 [W] [client/service.go:322] connect to server error: dial tcp: "
+    assert diagnose([prefix + "lookup cn-gz-3.qwq.fan: i/o timeout"]).kind == "dns_timeout"
+    assert diagnose([prefix + "lookup cn-gz-3.qwq.fan on 192.168.1.1:53: server misbehaving"]).kind == "dns_timeout"
+    assert diagnose([prefix + "lookup cn-gz-3.qwq.fan: no such host"]).kind == "server_unreachable"
+    assert diagnose(["connect to server error: dial tcp 1.2.3.4:7000: i/o timeout"]).kind == "server_unreachable"
+
+
 def test_port_conflict_while_running_names_the_proxy() -> None:
     lines = [_LOGIN_OK,
              "2026-10-30 22:12:37.307 [I] [client/control.go:165] [caedd8674438e419] [save-a0e01ff4-Caves] start proxy success",
