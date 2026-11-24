@@ -579,7 +579,7 @@ class _AccountCombo(QComboBox):
 
 
 class ClusterBar(QWidget):
-    """顶部统一存档选择栏：存档类型（Steam/WeGame）+ 游戏账号（本机有多个时）+ 存档下拉 + 刷新。全部页签共用。"""
+    """顶部统一存档选择栏：存档类型（Steam/WeGame）+ 游戏账号（有账号时）+ 存档下拉 + 刷新。全部页签共用。"""
 
     _SPACING, _TIGHT_SPACING = 10, 6
     _HEIGHT, _COMPACT_HEIGHT = 56, 42  # 控件约 32 高，窗口矮时去掉多余的上下留白
@@ -596,7 +596,7 @@ class ClusterBar(QWidget):
         self._platform_label, self._account_label, self._archive_label = QLabel(), QLabel(), QLabel()
         for label in (self._platform_label, self._account_label, self._archive_label):
             label.setProperty("heading", True)
-        # 同一平台登录过多个游戏账号时才显示；本地存档和 Mod 配置同步都跟随这里选中的账号
+        # 有游戏账号就显示（单账号时也显示账号名和登录绿点）；本地存档和 Mod 配置同步都跟随这里选中的账号
         self._account = _AccountCombo()
         self._account.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._account.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -694,8 +694,9 @@ class ClusterBar(QWidget):
                 if current is not None and account.id == current.id:
                     self._account.setCurrentIndex(self._account.count() - 1)
             self._account.refresh_dot()
-            self._account_label.setVisible(len(accounts) > 1)
-            self._account.setVisible(len(accounts) > 1)
+            # 只有一个账号也显示：让用户看到账号名和"Steam 当前登录"绿点
+            self._account_label.setVisible(bool(accounts))
+            self._account.setVisible(bool(accounts))
             self._cluster.clear()
             selected = self._ctx.selected_cluster()
             for cluster in self._ctx.clusters():
