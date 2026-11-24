@@ -33,7 +33,8 @@ from dstools.features.cluster_config.config_manager import (
     load_shard_config, set_server_port,
 )
 from dstools.features.local_service import luajit_injector, luajit_runtime, steam_client_updater, steamcmd_updater
-from dstools.features.local_service.backup_manager import changed_since_last_backup, create_backup
+from dstools.features.local_service import save_integrity
+from dstools.features.local_service.backup_manager import backup_dir, changed_since_last_backup, create_backup
 from dstools.features.local_service.dedicated_server import (
     ServerStatus, detect_external_running_clusters,
     detect_external_shard_processes, find_bin64_dir, is_valid_install_dir,
@@ -2370,6 +2371,9 @@ class LocalServicePage(Page):
             return False
         if not self._check_server_ini(cluster):
             return False
+        # 重启是先正常关服再开，关服时游戏会重写索引并存一份新快照，此时检查只会读到正在写的文件
+        if not restarting and not self._check_save_integrity(cluster, shards):
+            return False
         if cluster.source == SaveSource.LOCAL and not self._prepare_local_save(cluster):
             return False
         if cluster.platform == Platform.STEAM:
@@ -2420,6 +2424,52 @@ class LocalServicePage(Page):
         dialogs.show_error(self.window(), t("local.server_ini_title"),
                            t("local.server_ini_problems", details=details))
         return False
+
+    def _check_save_integrity(self, cluster, shards) -> bool:
+        """存档索引或最新快照在异常关机时写坏了：索引坏了游戏会不报错直接生成新世界，快照坏了读档报错退出。
+        前者只能拦下让用户从备份恢复；后者可把写坏的快照移走、回退到上一份（规则见 save_integrity）。"""
+        problems = save_integrity.find_save_problems([shard.path for shard in shards])
+        if not problems:
+            return True
+        lost = [p for p in problems if p.kind == save_integrity.INDEX_LOST]
+        corrupt = [p for p in problems if p.kind == save_integrity.SNAPSHOT_CORRUPT]
+        if lost:
+            details = "\n".join(t("local.save_index_lost_line", shard=p.shard, session=p.orphans[0].session_id,
+                                  day=self._day_text(p.orphans[0].day)) for p in lost)
+            dialogs.show_error(self.window(), t("local.save_damaged_title"),
+                               t("local.save_index_lost", details=details))
+            return False
+        if any(p.fallback is None for p in corrupt):
+            details = "\n".join(t("local.save_snapshot_none_line", shard=p.shard) for p in corrupt
+                                if p.fallback is None)
+            dialogs.show_error(self.window(), t("local.save_damaged_title"),
+                               t("local.save_snapshot_unrecoverable", details=details))
+            return False
+        dest = save_integrity.quarantine_dir(backup_dir(cluster.path))
+        details = "\n".join(t("local.save_snapshot_line", shard=p.shard,
+                              bad="、".join(str(slot) for slot in p.bad_slots),
+                              good=p.fallback.latest, day=self._day_text(p.fallback.day)) for p in corrupt)
+        choice = dialogs.ask_choice(
+            self.window(), t("local.save_damaged_title"),
+            t("local.save_snapshot_corrupt", details=details, path=str(dest)),
+            [(t("dlg.cancel_btn"), "cancel"), (t("local.save_snapshot_fix_btn"), "fix")],
+            default="fix", min_width=dialogs.DIALOG_WIDTHS["md"])
+        if choice != "fix":
+            return False
+        shard_dirs = {shard.name: shard.path for shard in shards}
+        try:
+            for problem in corrupt:
+                moved = save_integrity.move_bad_snapshots(shard_dirs[problem.shard], problem, dest)
+                logging.getLogger(__name__).info("已移走 %s 写坏的快照 %s：%d 个文件 → %s", problem.shard, problem.bad_slots, len(moved), dest)
+        except OSError as exc:
+            dialogs.show_error(self.window(), t("local.save_damaged_title"),
+                               t("local.save_snapshot_fix_failed", detail=f"{type(exc).__name__}: {exc}"))
+            return False
+        return self._check_save_integrity(cluster, shards)  # 再查一遍：正常应已无问题，直接放行
+
+    @staticmethod
+    def _day_text(day) -> str:
+        return t("local.save_day", day=day) if day is not None else t("local.save_day_unknown")
 
     def _check_launch_names(self, cluster, shards) -> bool:
         """专服读不了非英文的存档/世界文件夹名；开着 LuaJIT 时 Klei 根目录有系统编码转不了的名字会启动即崩。

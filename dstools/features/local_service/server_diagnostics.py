@@ -57,6 +57,17 @@ _WORLD_LOADED_MARKER = "world generated on build"
 # 11-21 实例是 45 格物品栏类 Mod。末尾的 Reset() returning 正常启动时也有，不能当证据
 _ERROR_HANDLER_CRASH_MARKER = "error in error handling"
 _STACK_BUFFER_OVERRUN = 0xC0000409
+# 读档时存档文件本身坏了（本体 shardindex.lua OnLoadSaveDataFile 的断言原文）。11-24 用户强制重启后最新一份快照
+# 大小正常、内容全是 NUL，读档报 Encoded Savedata is empty，进程以 0xC0000409 退出；此前被当成 Mod 冲突。
+# 离线专服实测：删掉（移走）这一份即从上一份读档
+_SAVE_CORRUPT_MARKERS = (
+    "shardindex:getsavedata: encoded savedata is empty on load",
+    "shardindex:getsavedata: encoded savedata is nil on load",
+    "shardindex:getsavedata: savedata is nil on load",
+    "shardindex:getsavedata: savedata is empty on load",
+    "shardindex:getsavedata: load failed for file",
+    "corrupt save file [",
+)
 # 不会让进程退出的刷屏行，不能当成兜底证据：域名解析失败只是网络提示（11-21 18:32 一份日志里有 5598 次，
 # 曾被当成根因），世界生成重试是正常校验
 _NOISE_MARKERS = (
@@ -336,6 +347,14 @@ def diagnose_server_failure(
             "token_invalid", t("diag.token_invalid.title"),
             t("diag.token_invalid.summary", shard=shard_name), _tips("token_invalid"),
             _evidence(lines, _TOKEN_INVALID_MARKERS + ("your server will not start",)), (),
+        )
+
+    # 读档断言同样带 LUA ERROR 堆栈，要在 Mod 冲突之前认出来
+    if any(marker in lower for marker in _SAVE_CORRUPT_MARKERS):
+        return DiagnosticReport(
+            "save_corrupt", t("diag.save_corrupt.title"),
+            t("diag.save_corrupt.summary", shard=shard_name), _tips("save_corrupt"),
+            _evidence(lines, _SAVE_CORRUPT_MARKERS, limit=1), (),
         )
 
     # 进程不退出、世界也算就绪过，所以要在"仍在运行"的快速返回之前判断

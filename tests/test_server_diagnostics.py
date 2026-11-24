@@ -300,6 +300,21 @@ def test_worldgen_retry_and_error_handler_crash() -> None:
     assert report.category == "unknown" and report.evidence == ("[00:27:40]: Shutting down",), report
 
 
+def test_save_corrupt_not_blamed_on_mods() -> None:
+    """11-24 强制重启后最新快照全是 NUL：读档断言带 LUA ERROR 堆栈，曾被归成疑似 Mod 冲突。"""
+    lines = [
+        '[00:00:12]: [string "scripts/shardindex.lua"]:205: ShardIndex:GetSaveData: Encoded Savedata is empty '
+        'on load [session/01A1256FC42C7331/0000000069]',
+        "LUA ERROR stack traceback:",
+        "=[C]:-1 in (global) assert (C) <-1--1>",
+        "scripts/shardindex.lua:205 in (upvalue) OnLoadSaveDataFile (Lua) <196-215>",
+        "[00:00:10]: Mod: workshop-2189004162 (Insight)\tLoading modmain.lua",
+    ]
+    report = diagnose_server_failure(shard_name="Caves", exit_code=3221226505, world_ready=False, log_lines=lines)
+    assert report.category == "save_corrupt" and report.related_mods == (), report
+    assert "0000000069" in report.evidence[0], report
+
+
 def test_invalid_token_while_process_alive() -> None:
     """2026-11-02 用户日志：令牌失效后专服进程不退出、frpc 正常，用户以为是穿透问题，换节点也进不去。"""
     lines = [

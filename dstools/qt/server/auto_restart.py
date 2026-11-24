@@ -19,7 +19,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, QTimer
 
 from dstools.features.cluster_config.config_manager import load_cluster_config
-from dstools.features.local_service import luajit_injector
+from dstools.features.local_service import luajit_injector, save_integrity
 from dstools.features.local_service.auto_restart import (
     CRASH_RESTART_DELAY, MAX_CRASH_RESTARTS, TOKEN_BUSY_RECHECK, TOKEN_WAIT_LIMIT, CrashBudget, append_log,
     is_restartable,
@@ -193,6 +193,10 @@ class AutoRestartController(QObject):
         storage_args = page._storage_args_for(cluster)
         if luajit_injector.needs_regeneration(page._install_dir):
             self._give_up(cluster, state, t("local.auto_restart_reason_luajit"))
+            return
+        # 无人值守不弹框：存档写坏了照常拉起只会读档报错，或不报错地生成新世界，交给用户处理
+        if save_integrity.find_save_problems([shard.path for shard in targets]):
+            self._give_up(cluster, state, t("local.auto_restart_reason_save_damaged"))
             return
         keys = {(str(cluster.path), shard.name) for shard in targets}
         page._launching_keys.update(keys)

@@ -1466,6 +1466,22 @@ STRINGS = {
                                      "请到「存档信息」页用「从备份恢复」，恢复到配置还正常时的备份（恢复前会自动保留一份当前状态）。",
         "local.server_ini_damaged_line": "{shard}：文件是空的、已损坏或不存在",
         "local.server_ini_no_master_line": "{shard}：缺少「是否主世界」（is_master）",
+        "local.save_damaged_title": "存档文件损坏",
+        "local.save_index_lost": "以下世界的存档索引（save/shardindex）是空的或已损坏，多见于存档时黑屏、断电或强制重启。"
+                                 "这样开服，游戏会不提示地生成一个全新的世界，原来的进度还在磁盘上，但不会再被读取：\n\n{details}\n\n"
+                                 "请到「存档信息」页用「从备份恢复」恢复到正常的备份（恢复前会自动保留一份当前状态）；"
+                                 "确定要重新开始，可先用「离线重置世界」清掉旧进度再开服。",
+        "local.save_index_lost_line": "{shard}：原有进度在会话 {session}（{day}）",
+        "local.save_snapshot_corrupt": "以下世界最新的存档是空文件，多见于存档时黑屏、断电或强制重启，直接开服会读档报错退出：\n\n{details}\n\n"
+                                       "回退会把损坏的存档移到下面的文件夹（不删除），再从上一份存档开服，最后一次存档的进度会丢失：\n{path}",
+        "local.save_snapshot_line": "{shard}：第 {bad} 份存档损坏，回退到第 {good} 份（{day}）",
+        "local.save_snapshot_fix_btn": "回退并开服",
+        "local.save_snapshot_unrecoverable": "以下世界的存档全部损坏，没有可回退的存档：\n\n{details}\n\n"
+                                             "请到「存档信息」页用「从备份恢复」恢复到正常的备份（恢复前会自动保留一份当前状态）。",
+        "local.save_snapshot_none_line": "{shard}",
+        "local.save_snapshot_fix_failed": "移动损坏的存档失败，没有开服：{detail}",
+        "local.save_day": "第 {day} 天",
+        "local.save_day_unknown": "天数未知",
         "local.allocate_ports_btn": "分配不冲突的端口",
         "local.port_preflight_more": "……另有 {count} 项冲突",
         "local.launch_already_pending": "以下世界正在准备启动，请勿重复操作：{shards}",
@@ -1910,6 +1926,10 @@ STRINGS = {
         "diag.error_handler_crash.summary": "{shard} 读入世界后 Lua 错误处理自身出错（error in error handling）并退出，通常是某个 Mod 出错，但日志没有留下具体是哪个。",
         "diag.error_handler_crash.tip1": "按 Mod 二分排查：先禁用一半 Mod 开服，能开就说明问题在禁用的那一半里，再对半缩小范围。",
         "diag.error_handler_crash.tip2": "物品栏扩容（如 45 格物品栏）这类 Mod 是常见原因，可以优先禁用。",
+        "diag.save_corrupt.title": "存档文件损坏",
+        "diag.save_corrupt.summary": "{shard} 读档失败：最新一份存档是空的或已损坏，多见于存档时黑屏、断电或强制重启，与 Mod 无关。",
+        "diag.save_corrupt.tip1": "再点一次启动：开服前检查认出存档是空文件时，可以一键回退到上一份存档。",
+        "diag.save_corrupt.tip2": "回退不了时，到「存档信息」页用「从备份恢复」恢复到正常的备份。",
         "diag.luajit_boot_crash.title": "LuaJIT 注入器启动即崩溃",
         "diag.luajit_boot_crash.summary": "{shard} 在加载游戏数据前就退出了，崩溃发生在 LuaJIT 注入器里。",
         "diag.luajit_boot_crash.tip1": "最常见的原因：存档根目录（文档\\Klei\\DoNotStarveTogether）下有乱码名字的文件夹，多半是把存档文件夹改成中文名开服时游戏自己建的空文件夹。删掉它，存档文件夹名改回英文后再开服。",
@@ -1946,6 +1966,7 @@ STRINGS = {
         "local.auto_restart_reason_limit": "30 分钟内崩溃 {count} 次，请查看控制台日志",
         "local.auto_restart_reason_install": "找不到专用服务器工具",
         "local.auto_restart_reason_luajit": "LuaJIT 补丁需要重新生成，请手动启动",
+        "local.auto_restart_reason_save_damaged": "存档文件损坏，请手动启动并按提示处理",
         "local.auto_restart_reason_steamcmd_update": "SteamCMD 正在更新独立专服，请更新完成后手动启动",
         "local.auto_restart_reason_token_timeout": "等待令牌释放超过 {hours} 小时",
         "local.auto_restart_waiting_release": "等待 Klei 释放房间注册，服务器正在自动重试（已等待 {minutes} 分钟，崩溃后通常需要半小时左右）",
@@ -3521,6 +3542,22 @@ STRINGS = {
                                      "Use \"Restore from Backup\" on the Save Info page to go back to a backup from before it broke (the current state is kept first).",
         "local.server_ini_damaged_line": "{shard}: the file is empty, damaged or missing",
         "local.server_ini_no_master_line": "{shard}: is_master (master shard or not) is missing",
+        "local.save_damaged_title": "Save Files Damaged",
+        "local.save_index_lost": "The save index (save/shardindex) of these shards is empty or damaged, usually from a black screen, power loss or forced restart while saving. "
+                                 "Starting now would silently generate a brand-new world; the old progress is still on disk but would no longer be loaded:\n\n{details}\n\n"
+                                 "Use \"Restore from Backup\" on the Save Info page to go back to a good backup (the current state is kept first). "
+                                 "If you really want to start over, clear the old progress with \"Reset World Offline\" first.",
+        "local.save_index_lost_line": "{shard}: previous progress is in session {session} ({day})",
+        "local.save_snapshot_corrupt": "The latest save of these shards is an empty file, usually from a black screen, power loss or forced restart while saving. Starting now would fail while loading:\n\n{details}\n\n"
+                                       "Rolling back moves the damaged save to the folder below (nothing is deleted) and starts from the previous save; progress since that save is lost:\n{path}",
+        "local.save_snapshot_line": "{shard}: save #{bad} is damaged, roll back to #{good} ({day})",
+        "local.save_snapshot_fix_btn": "Roll Back and Start",
+        "local.save_snapshot_unrecoverable": "Every save of these shards is damaged, so there is nothing to roll back to:\n\n{details}\n\n"
+                                             "Use \"Restore from Backup\" on the Save Info page to go back to a good backup (the current state is kept first).",
+        "local.save_snapshot_none_line": "{shard}",
+        "local.save_snapshot_fix_failed": "Could not move the damaged save, the server was not started: {detail}",
+        "local.save_day": "day {day}",
+        "local.save_day_unknown": "day unknown",
         "local.allocate_ports_btn": "Allocate Non-conflicting Ports",
         "local.port_preflight_more": "...and {count} more conflict(s)",
         "local.launch_already_pending": "These shards are already being prepared for launch: {shards}",
@@ -3965,6 +4002,10 @@ STRINGS = {
         "diag.error_handler_crash.summary": "{shard} exited after the Lua error handler itself failed (error in error handling) once the world loaded. This is usually a mod error, but the log does not say which one.",
         "diag.error_handler_crash.tip1": "Bisect your mods: disable half of them and start the server. If it starts, the problem is in the disabled half; keep halving.",
         "diag.error_handler_crash.tip2": "Inventory-expansion mods (such as 45-slot inventory) are a common cause; try disabling them first.",
+        "diag.save_corrupt.title": "Save File Damaged",
+        "diag.save_corrupt.summary": "{shard} failed to load its save: the latest save is empty or damaged, usually from a black screen, power loss or forced restart while saving. This is not a mod problem.",
+        "diag.save_corrupt.tip1": "Start again: if the pre-start check finds the empty save file, you can roll back to the previous save in one click.",
+        "diag.save_corrupt.tip2": "If rolling back isn't possible, use \"Restore from Backup\" on the Save Info page to go back to a good backup.",
         "diag.luajit_boot_crash.title": "LuaJIT Injector Crashed at Startup",
         "diag.luajit_boot_crash.summary": "{shard} exited before loading game data. The crash happened inside the LuaJIT injector.",
         "diag.luajit_boot_crash.tip1": "Most common cause: a folder with a garbled name in the save root (Documents\\Klei\\DoNotStarveTogether), usually an empty folder the game created when a save folder was renamed to Chinese and started. Delete it and rename the save folder back to English, then start the server.",
@@ -4001,6 +4042,7 @@ STRINGS = {
         "local.auto_restart_reason_limit": "crashed {count} times within 30 minutes, check the console log",
         "local.auto_restart_reason_install": "dedicated server tool not found",
         "local.auto_restart_reason_luajit": "the LuaJIT patch needs regenerating, please start manually",
+        "local.auto_restart_reason_save_damaged": "save files are damaged, please start manually and follow the prompt",
         "local.auto_restart_reason_steamcmd_update": "SteamCMD is updating the dedicated server, please start manually once it finishes",
         "local.auto_restart_reason_token_timeout": "waited more than {hours} hours for the token to be released",
         "local.auto_restart_waiting_release": "Waiting for Klei to release the room registration; the server is retrying on its own ({minutes} min so far, usually about half an hour after a crash)",
