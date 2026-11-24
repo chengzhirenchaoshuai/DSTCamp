@@ -30,6 +30,16 @@ def list_save_sessions(shard_path: Path) -> list[SaveSession]:
     return sessions
 
 
+def find_active_session(shard_path: Path, sessions: list[SaveSession]) -> SaveSession | None:
+    """游戏开服会读的会话：只认 save/shardindex 里的 session_id，与会话新旧、目录名顺序无关。
+
+    索引读不出或指向的会话不在列表里时返回 None，此时游戏会生成新世界（见 save_integrity）。"""
+    from dstools.features.local_service.save_integrity import read_session_id
+
+    session_id = read_session_id(shard_path)
+    return next((s for s in sessions if s.session_id == session_id), None) if session_id else None
+
+
 def _read_meta_file(meta_path: Path) -> SaveMetadata | None:
     """解析一个 .meta 文件，不存在或解析失败返回 None。"""
     if not meta_path.exists():

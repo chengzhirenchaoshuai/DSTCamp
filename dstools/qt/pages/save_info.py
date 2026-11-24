@@ -254,7 +254,9 @@ class SaveInfoPage(Page):
             self._show_line(0, f"{t('save.session_id')}: {session.session_id}")
             self._show_line(1, f"{t('save.summary')}: {session.summary}")
             self._show_line(2, f"{t('save.slots')}: {session.slot_count}    {t('save.size')}: {session.size_mb:.1f} MB")
-            if session.extra_sessions > 0:
+            if not session.active:
+                self._show_line(3, t("save.no_active_session"))
+            elif session.extra_sessions > 0:
                 self._show_line(3, t("save.extra_sessions", count=session.extra_sessions))
             if not session.players:
                 self._add_row_message(t("save.no_players"))

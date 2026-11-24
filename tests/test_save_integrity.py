@@ -53,6 +53,22 @@ def test_index_lost_and_fresh_states() -> None:
         assert si.check_shard(shard).kind == si.INDEX_LOST
 
 
+def test_active_session_follows_shardindex() -> None:
+    """存档页展示的会话按 shardindex 认，不按目录名顺序（新会话 ID 排在旧会话后面时曾显示成旧世界）。"""
+    from dstools.features.save_browser.reader import find_active_session, list_save_sessions
+
+    with tempfile.TemporaryDirectory() as tmp:
+        shard = Path(tmp) / "Master"
+        sessions_dir = shard / "save" / "session"
+        _snapshot(sessions_dir / "0AAAAAAAAAAAAAAA", 68, day=57)
+        _snapshot(sessions_dir / "FBBBBBBBBBBBBBBB", 2, day=0)
+        sessions = list_save_sessions(shard)
+        _index(shard, _index_for("FBBBBBBBBBBBBBBB"))
+        assert find_active_session(shard, sessions).session_id == "FBBBBBBBBBBBBBBB"
+        _index(shard, b"\0" * 100)
+        assert find_active_session(shard, sessions) is None
+
+
 def test_blank_latest_snapshot_moved_aside() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         shard = Path(tmp) / "Caves"

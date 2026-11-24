@@ -10,7 +10,7 @@ from dstools.features.mod.parser import resolve_wegame_client_mods_dir
 from dstools.features.save_browser.character_icons import resolve_character
 from dstools.features.save_browser.connection_log import collect_player_connection_log
 from dstools.features.save_browser.reader import (
-    get_save_summary, list_save_sessions, list_session_players, make_identity_resolver,
+    find_active_session, get_save_summary, list_save_sessions, list_session_players, make_identity_resolver,
 )
 from dstools.models import Cluster, SaveSource
 from dstools.shared.app_settings import get_player_note
@@ -61,6 +61,7 @@ class SessionView:
     slot_count: int
     size_mb: float
     extra_sessions: int
+    active: bool = True  # 是 shardindex 指向、开服会读的会话
     players: list[PlayerView] = field(default_factory=list)
 
 
@@ -111,9 +112,10 @@ def load_session_view(cluster: Cluster, shard_name: str) -> SessionView | None:
         session.cluster_name = cluster.name
         session.shard_name = shard.name
         session.source = cluster.source
-    # 一个世界正常只有一个会话（只有"生成新世界"才会开新的）；真遇到多个只展示第一个，
-    # 另用 extra_sessions 提示还有几个。
-    session = sessions[0]
+    # 一个世界正常只有一个会话；断电写坏索引后游戏会另开新会话、旧会话留在磁盘上（11-24 实例）。
+    # 展示 shardindex 指向的生效会话，另用 extra_sessions 提示还有几个；索引没指向任何会话时展示第一个并标出。
+    active = find_active_session(shard.path, sessions)
+    session = active or sessions[0]
     session.players = list_session_players(session)
     platform = cluster.platform
     wegame_mods = resolve_wegame_client_mods_dir(platform)
@@ -147,5 +149,6 @@ def load_session_view(cluster: Cluster, shard_name: str) -> SessionView | None:
         slot_count=len(session.slots),
         size_mb=sum(slot.size for slot in session.slots) / (1024 * 1024),
         extra_sessions=len(sessions) - 1,
+        active=active is not None,
         players=players,
     )

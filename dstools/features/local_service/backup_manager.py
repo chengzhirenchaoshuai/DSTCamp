@@ -142,7 +142,7 @@ def _prune_old_backups(dest_dir: Path) -> None:
 def get_backup_summary(zip_path: Path) -> dict:
     """解压到临时目录读取备份的基本信息（名称/模式/人数/进度）供恢复列表使用；读不出的字段不出现，不猜。"""
     from dstools.features.cluster_config.config_manager import load_cluster_config
-    from dstools.features.save_browser.reader import get_save_summary, list_save_sessions
+    from dstools.features.save_browser.reader import find_active_session, get_save_summary, list_save_sessions
 
     info: dict = {}
     try:
@@ -164,7 +164,8 @@ def get_backup_summary(zip_path: Path) -> dict:
             if shard_dir:
                 sessions = list_save_sessions(shard_dir)
                 if sessions:
-                    info["summary"] = get_save_summary(sessions[-1])
+                    session = find_active_session(shard_dir, sessions) or sessions[-1]
+                    info["summary"] = get_save_summary(session)
     except (OSError, zipfile.BadZipFile):
         pass
     return info
