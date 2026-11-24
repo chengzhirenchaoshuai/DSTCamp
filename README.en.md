@@ -108,22 +108,42 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.8 changes
+## 1.9.9 changes
+
+### ✨ New features
+
+- When a black screen, power loss or forced restart corrupts a save, it is caught before the server starts: roll back to the last good snapshot in one click, or recover the index from a DSTCamp backup to keep your progress; load errors are no longer reported as "possible Mod conflict".
+- The save info page adds "Switch to Old Session": when the game started a new day-0 world but the old progress is still on disk, switch back in one click.
 
 ### ✨ Improvements
+
+- Port conflict messages include the world name, so you can tell which two worlds conflict.
+- The server save folder can no longer be set to a path with Chinese or other non-English characters; if already set, the pre-launch check explains how to change it.
+- Log bundles now include 10 past server logs per world instead of 5.
+
+### 🐞 Fixes
+
+- Turning on tunnel mapping with a corrupted server.ini rewrote it down to a single port line, causing port conflicts on launch; it is now caught before launch with a prompt to restore from backup.
+- The save info page and backup summaries sometimes showed an old world that is no longer loaded as the current progress.
+- After a tunnel was migrated or recreated on the provider's website, restarting the server still showed the old connect code.
+- With only one game account, the account name and the Steam signed-in indicator were not shown.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.8)</strong></summary>
+
+### 1.9.8
+
+#### ✨ Improvements
 
 - The console's "Mods that failed to load" list shows the error text from the log with suggestions; Mods Steam has not registered can be fixed here with one-click resubscribe.
 - Server diagnosis adds "crash caused by a Mod error", and detects "world generation failed" more accurately.
 - When frpc cannot connect, a local DNS timeout is told apart from node problems; for DNS timeouts it suggests switching network or DNS instead of changing nodes.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - After choosing an existing Sakura tunnel and turning mapping off, mapping could not be turned on again.
 - The local save Mod page showed Chinese++ Pro, the Bingbingyang runtime library and the LuaJIT companion Mod as "not installed", while the main Mods showed as disabled.
 - Duplicate Mod detection falsely flagged series Mods by the same author.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.7)</strong></summary>
 
 ### 1.9.7
 
