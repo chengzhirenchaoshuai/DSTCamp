@@ -17,7 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from dstools.features.mod.shardindex import ShardIndexError, decode_persistent_bytes
+import zipfile
+
+from dstools.features.mod.shardindex import (
+    ShardIndexError, decode_persistent_bytes, with_session_id, write_bytes_atomic,
+)
 from dstools.shared.lua_parser import parse_lua_file
 
 INDEX_LOST = "index_lost"              # 索引读不出，开服会静默生成新世界
@@ -94,6 +98,11 @@ def read_session_id(shard_dir: Path) -> str | None:
         raw = path.read_bytes()
     except OSError:
         return None
+    return session_id_from_bytes(raw)
+
+
+def session_id_from_bytes(raw: bytes) -> str | None:
+    """从 shardindex 文件内容里取 session_id，读不出时返回 None。"""
     if not raw.strip(b"\0"):
         return None
     try:
@@ -148,6 +157,65 @@ def session_briefs(shard_dir: Path) -> dict[str, SessionBrief]:
 
 def find_save_problems(shard_dirs) -> list[SaveProblem]:
     return [problem for problem in (check_shard(Path(d)) for d in shard_dirs) if problem is not None]
+
+
+@dataclass(frozen=True)
+class IndexRepair:
+    """从备份取回的存档索引：写入后游戏读 session 这个会话。"""
+
+    shard: str
+    backup: Path      # 取自哪份备份 zip
+    data: bytes       # 要写入的 shardindex 内容
+    session: SessionBrief
+    rewritten: bool   # 备份里的 session_id 不是磁盘上的旧会话，已改指过去
+
+
+def _backup_index(zip_path: Path, shard: str) -> bytes | None:
+    """备份 zip 里这个世界的 shardindex（zip 内路径按世界名不分大小写匹配），没有或读不了返回 None。"""
+    wanted = f"{shard}/save/shardindex".casefold()
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            name = next((n for n in zf.namelist() if n.replace("\\", "/").casefold() == wanted), None)
+            return zf.read(name) if name else None
+    except (OSError, zipfile.BadZipFile, ValueError):
+        return None
+
+
+def find_index_repair(problem: SaveProblem, backups: list[Path]) -> IndexRepair | None:
+    """为 INDEX_LOST 的世界从备份里找一份能用的 shardindex。
+
+    会话 ID 不会变，所以备份里的索引通常本来就指向磁盘上的旧会话，世界设置、Mod 列表也是游戏自己写的原样，
+    比凭空重建可靠。优先最新一份指向旧会话的备份；都不指向时（备份早于某次重新生成）取最新一份能读的，
+    把 session_id 改指到天数最多的旧会话。备份里的索引同样写坏（断电时正在备份）的跳过。"""
+    orphans = {brief.session_id: brief for brief in problem.orphans}
+    readable = []
+    for zip_path in backups:  # 调用方按新到旧给
+        raw = _backup_index(zip_path, problem.shard)
+        session_id = session_id_from_bytes(raw) if raw else None
+        if session_id is None:
+            continue
+        if session_id in orphans:
+            return IndexRepair(problem.shard, zip_path, raw, orphans[session_id], False)
+        readable.append((zip_path, raw))
+    target = problem.orphans[0]
+    for zip_path, raw in readable:
+        try:
+            return IndexRepair(problem.shard, zip_path, with_session_id(raw, target.session_id, str(zip_path)),
+                               target, True)
+        except (ShardIndexError, UnicodeDecodeError, ValueError):
+            continue
+    return None
+
+
+def apply_index_repair(shard_dir: Path, repair: IndexRepair, dest_root: Path) -> None:
+    """写坏的 shardindex 复制到 ``dest_root/<世界>/`` 留底，再原子替换成取回的内容（替换失败时原文件不动）。"""
+    path = Path(shard_dir) / "save" / "shardindex"
+    if path.exists():
+        target = Path(dest_root) / Path(shard_dir).name / "shardindex"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_bytes_atomic(path, repair.data)
 
 
 def quarantine_dir(backup_root: Path) -> Path:

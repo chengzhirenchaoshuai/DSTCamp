@@ -34,7 +34,9 @@ from dstools.features.cluster_config.config_manager import (
 )
 from dstools.features.local_service import luajit_injector, luajit_runtime, steam_client_updater, steamcmd_updater
 from dstools.features.local_service import save_integrity
-from dstools.features.local_service.backup_manager import backup_dir, changed_since_last_backup, create_backup
+from dstools.features.local_service.backup_manager import (
+    backup_dir, changed_since_last_backup, create_backup, list_backups,
+)
 from dstools.features.local_service.dedicated_server import (
     ServerStatus, detect_external_running_clusters,
     detect_external_shard_processes, find_bin64_dir, is_valid_install_dir,
@@ -2434,11 +2436,7 @@ class LocalServicePage(Page):
         lost = [p for p in problems if p.kind == save_integrity.INDEX_LOST]
         corrupt = [p for p in problems if p.kind == save_integrity.SNAPSHOT_CORRUPT]
         if lost:
-            details = "\n".join(t("local.save_index_lost_line", shard=p.shard, session=p.orphans[0].session_id,
-                                  day=self._day_text(p.orphans[0].day)) for p in lost)
-            dialogs.show_error(self.window(), t("local.save_damaged_title"),
-                               t("local.save_index_lost", details=details))
-            return False
+            return self._repair_lost_index(cluster, shards, lost)
         if any(p.fallback is None for p in corrupt):
             details = "\n".join(t("local.save_snapshot_none_line", shard=p.shard) for p in corrupt
                                 if p.fallback is None)
@@ -2466,6 +2464,41 @@ class LocalServicePage(Page):
                                t("local.save_snapshot_fix_failed", detail=f"{type(exc).__name__}: {exc}"))
             return False
         return self._check_save_integrity(cluster, shards)  # 再查一遍：正常应已无问题，直接放行
+
+    def _repair_lost_index(self, cluster, shards, lost) -> bool:
+        """存档索引写坏：每个世界都能从备份取回索引时提供"从备份修复"，否则只能拦下让用户整份恢复备份。"""
+        title = t("local.save_damaged_title")
+        backups = list_backups(cluster.path)
+        repairs = {p.shard: save_integrity.find_index_repair(p, backups) for p in lost}
+        if any(repair is None for repair in repairs.values()):
+            details = "\n".join(t("local.save_index_lost_line", shard=p.shard, session=p.orphans[0].session_id,
+                                  day=self._day_text(p.orphans[0].day)) for p in lost)
+            dialogs.show_error(self.window(), title, t("local.save_index_lost", details=details))
+            return False
+        lines = []
+        for repair in repairs.values():
+            key = "local.save_index_repair_line_rewritten" if repair.rewritten else "local.save_index_repair_line"
+            lines.append(t(key, shard=repair.shard, backup=repair.backup.name, session=repair.session.session_id,
+                           day=self._day_text(repair.session.day)))
+        dest = save_integrity.quarantine_dir(backup_dir(cluster.path))
+        choice = dialogs.ask_choice(
+            self.window(), title,
+            t("local.save_index_repair", details="\n".join(lines), path=str(dest)),
+            [(t("dlg.cancel_btn"), "cancel"), (t("local.save_index_repair_btn"), "fix")],
+            default="fix", min_width=dialogs.DIALOG_WIDTHS["md"])
+        if choice != "fix":
+            return False
+        shard_dirs = {shard.name: shard.path for shard in shards}
+        try:
+            for repair in repairs.values():
+                save_integrity.apply_index_repair(shard_dirs[repair.shard], repair, dest)
+                logging.getLogger(__name__).info("已从备份 %s 取回 %s 的存档索引，会话 %s",
+                                                 repair.backup.name, repair.shard, repair.session.session_id)
+        except OSError as exc:
+            dialogs.show_error(self.window(), title,
+                               t("local.save_index_repair_failed", detail=f"{type(exc).__name__}: {exc}"))
+            return False
+        return self._check_save_integrity(cluster, shards)  # 取回的会话最新快照若也写坏，接着提示回退
 
     @staticmethod
     def _day_text(day) -> str:

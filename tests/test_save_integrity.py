@@ -102,6 +102,39 @@ def test_switch_back_to_old_sessions() -> None:
         assert {item.shard: item.target.session_id for item in plan} == {"Master": NEW, "Caves": "01A1256FC42C7331"}
 
 
+def test_index_repaired_from_backup() -> None:
+    """索引写坏时从备份取回：跳过同样写坏的最新备份，优先指向旧会话的那份；都不指向时改指到旧会话。"""
+    import zipfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        shard = Path(tmp) / "1113" / "Master"
+        _snapshot(shard / "save" / "session" / OLD, 68, day=57)
+        _index(shard, b"\0" * 300)
+        problem = si.check_shard(shard)
+        assert problem.kind == si.INDEX_LOST
+
+        def backup(name: str, index: bytes) -> Path:
+            path = Path(tmp) / name
+            with zipfile.ZipFile(path, "w") as zf:
+                zf.writestr("master/save/shardindex", index)  # 世界名大小写不同也认
+            return path
+
+        broken = backup("c.zip", b"\0" * 300)       # 断电时正在备份
+        other = backup("b.zip", _index_for("0123456789ABCDEF"))
+        good = backup("a.zip", _index_for(OLD))
+        repair = si.find_index_repair(problem, [broken, other, good])
+        assert repair.backup == good and not repair.rewritten and repair.data == _index_for(OLD), repair
+        # 没有指向旧会话的备份：取最新一份能读的，改指到旧会话
+        repair = si.find_index_repair(problem, [broken, other])
+        assert repair.backup == other and repair.rewritten, repair
+        assert si.session_id_from_bytes(repair.data) == OLD
+        assert si.find_index_repair(problem, [broken]) is None
+
+        si.apply_index_repair(shard, repair, Path(tmp) / "q")
+        assert si.check_shard(shard) is None
+        assert (Path(tmp) / "q" / "Master" / "shardindex").read_bytes() == b"\0" * 300
+
+
 def test_blank_latest_snapshot_moved_aside() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         shard = Path(tmp) / "Caves"

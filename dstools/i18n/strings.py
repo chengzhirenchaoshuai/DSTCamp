@@ -1488,9 +1488,18 @@ STRINGS = {
         "local.save_damaged_title": "存档文件损坏",
         "local.save_index_lost": "以下世界的存档索引（save/shardindex）是空的或已损坏，多见于存档时黑屏、断电或强制重启。"
                                  "这样开服，游戏会不提示地生成一个全新的世界，原来的进度还在磁盘上，但不会再被读取：\n\n{details}\n\n"
+                                 "DSTCamp 的备份里也没有找到能用的存档索引，无法直接修复。"
                                  "请到「存档信息」页用「从备份恢复」恢复到正常的备份（恢复前会自动保留一份当前状态）；"
                                  "确定要重新开始，可先用「离线重置世界」清掉旧进度再开服。",
         "local.save_index_lost_line": "{shard}：原有进度在会话 {session}（{day}）",
+        "local.save_index_repair": "以下世界的存档索引（save/shardindex）是空的或已损坏，多见于存档时黑屏、断电或强制重启。"
+                                   "这样开服，游戏会不提示地生成一个全新的世界，原来的进度还在磁盘上，但不会再被读取。\n\n"
+                                   "可以从 DSTCamp 的备份里取回存档索引，让游戏继续读原来的进度：\n\n{details}\n\n"
+                                   "损坏的索引会复制到下面的文件夹留底：\n{path}",
+        "local.save_index_repair_line": "{shard}：取自备份 {backup}，读回会话 {session}（{day}）",
+        "local.save_index_repair_line_rewritten": "{shard}：取自备份 {backup}，改指到磁盘上的旧会话 {session}（{day}）",
+        "local.save_index_repair_btn": "从备份修复并开服",
+        "local.save_index_repair_failed": "修复存档索引失败，没有开服：{detail}",
         "local.save_snapshot_corrupt": "以下世界最新的存档是空文件，多见于存档时黑屏、断电或强制重启，直接开服会读档报错退出：\n\n{details}\n\n"
                                        "回退会把损坏的存档移到下面的文件夹（不删除），再从上一份存档开服，最后一次存档的进度会丢失：\n{path}",
         "local.save_snapshot_line": "{shard}：第 {bad} 份存档损坏，回退到第 {good} 份（{day}）",
@@ -3583,9 +3592,18 @@ STRINGS = {
         "local.save_damaged_title": "Save Files Damaged",
         "local.save_index_lost": "The save index (save/shardindex) of these shards is empty or damaged, usually from a black screen, power loss or forced restart while saving. "
                                  "Starting now would silently generate a brand-new world; the old progress is still on disk but would no longer be loaded:\n\n{details}\n\n"
+                                 "No usable save index was found in DSTCamp's backups either, so it can't be repaired directly. "
                                  "Use \"Restore from Backup\" on the Save Info page to go back to a good backup (the current state is kept first). "
                                  "If you really want to start over, clear the old progress with \"Reset World Offline\" first.",
         "local.save_index_lost_line": "{shard}: previous progress is in session {session} ({day})",
+        "local.save_index_repair": "The save index (save/shardindex) of these shards is empty or damaged, usually from a black screen, power loss or forced restart while saving. "
+                                   "Starting now would silently generate a brand-new world; the old progress is still on disk but would no longer be loaded.\n\n"
+                                   "The save index can be taken from a DSTCamp backup so the game keeps loading the old progress:\n\n{details}\n\n"
+                                   "A copy of the damaged index is kept in this folder:\n{path}",
+        "local.save_index_repair_line": "{shard}: from backup {backup}, loads session {session} ({day})",
+        "local.save_index_repair_line_rewritten": "{shard}: from backup {backup}, pointed to the old session on disk {session} ({day})",
+        "local.save_index_repair_btn": "Repair from Backup and Start",
+        "local.save_index_repair_failed": "Could not repair the save index, the server was not started: {detail}",
         "local.save_snapshot_corrupt": "The latest save of these shards is an empty file, usually from a black screen, power loss or forced restart while saving. Starting now would fail while loading:\n\n{details}\n\n"
                                        "Rolling back moves the damaged save to the folder below (nothing is deleted) and starts from the previous save; progress since that save is lost:\n{path}",
         "local.save_snapshot_line": "{shard}: save #{bad} is damaged, roll back to #{good} ({day})",
