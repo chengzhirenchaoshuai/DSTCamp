@@ -12,6 +12,7 @@
 
 import base64
 import os
+import re
 import struct
 import zlib
 from pathlib import Path
@@ -25,6 +26,7 @@ _HEADER_LEN = 11
 _PLAIN_HEADER = b"KLEI     1 "
 _ENCODED_FLAG = b"D"
 _KEY = "enabled_mods"
+_SESSION_ID_RE = re.compile(r'session_id\s*=\s*"[0-9A-Fa-f]*"')
 
 # 几个 Mod 往客户端 Mod 列表注入的"仅服务端"代理名 -> 本体的工坊文件夹名。这些本体是客户端模组，游戏开服界面
 # 不让勾进服务器模组，于是 Mod 自己注册一个硬盘上不存在的虚拟服务器模组占位：开服时钩子把代理名换回本体名，
@@ -153,6 +155,37 @@ def save_shardindex_mods(path: Path, mods: dict[str, ModEntry]) -> None:
 
     tmp = path.with_name(path.name + ".dstcamp.tmp")
     tmp.write_bytes(_PLAIN_HEADER + new_text.encode("utf-8"))
+    os.replace(tmp, path)
+
+
+def with_session_id(raw: bytes, session_id: str, source: str = "shardindex") -> bytes:
+    """返回把 shardindex 的 session_id 改成 session_id 后的文件内容，其余内容逐字节保留；改前改后重新解析校验。
+
+    游戏开服只读这个字段指向的会话（ShardIndex:CheckWorldFile），改它就是"切回某个会话"（离线专服已实测）。
+    没有这个字段时（游戏重置后 session_id 为 nil，DataDumper 不写）补在顶层表开头。"""
+    if not raw.startswith(_PLAIN_HEADER):
+        raise ShardIndexError("shardindex 不是明文格式，不能安全写回")
+    if not re.fullmatch(r"[0-9A-Fa-f]+", session_id):
+        raise ShardIndexError(f"会话 ID 格式不对：{session_id}")
+    text = raw[_HEADER_LEN:].decode("utf-8")
+    before = parse_lua_table(text, source)
+    value = f'session_id="{session_id}"'
+    new_text, count = _SESSION_ID_RE.subn(value, text)
+    if count == 0:
+        brace = _top_level_open_brace(text)
+        new_text = text[:brace + 1] + f"\n  {value}," + text[brace + 1:]
+    elif count > 1:
+        raise ShardIndexError("shardindex 里有多处 session_id，不能确定改哪一处")
+    after = parse_lua_table(new_text, source)
+    before.pop("session_id", None)
+    if after.pop("session_id", None) != session_id or before != after:
+        raise ShardIndexError("写回校验失败：session_id 以外的内容发生了变化")
+    return _PLAIN_HEADER + new_text.encode("utf-8")
+
+
+def write_bytes_atomic(path: Path, data: bytes) -> None:
+    tmp = Path(path).with_name(Path(path).name + ".dstcamp.tmp")
+    tmp.write_bytes(data)
     os.replace(tmp, path)
 
 

@@ -131,6 +131,21 @@ def check_shard(shard_dir: Path) -> SaveProblem | None:
     return SaveProblem(shard_dir.name, INDEX_LOST, session_id or "", orphans=tuple(orphans))
 
 
+def session_briefs(shard_dir: Path) -> dict[str, SessionBrief]:
+    """世界目录里每个有完好快照的会话：{会话 ID: 最新完好快照}。"""
+    root = Path(shard_dir) / "save" / "session"
+    result = {}
+    try:
+        directories = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return result
+    for directory in directories:
+        _bad, brief = _scan_session(directory)
+        if brief is not None:
+            result[directory.name] = brief
+    return result
+
+
 def find_save_problems(shard_dirs) -> list[SaveProblem]:
     return [problem for problem in (check_shard(Path(d)) for d in shard_dirs) if problem is not None]
 

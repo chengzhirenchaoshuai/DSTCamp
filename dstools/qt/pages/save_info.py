@@ -23,7 +23,9 @@ from dstools.features.save_browser.cluster_copy import (
 )
 from dstools.features.save_browser.save_bundle import create_save_bundle, default_save_bundle_output_dir
 from dstools.features.save_browser.save_delete import recycle_cluster_dir
+from dstools.features.save_browser import session_switch
 from dstools.features.save_browser.world_reset import reset_worlds, shards_with_sessions
+from dstools.features.mod.shardindex import LOCAL_SAVE_OPEN, ShardIndexError, local_save_play_state
 from dstools.i18n import t
 from dstools.models import SaveSource
 from dstools.qt import dialogs
@@ -125,8 +127,18 @@ class SaveInfoPage(Page):
         layout.addLayout(shard_row)
 
         self._session_lines = [_label() for _ in range(4)]
-        for label in self._session_lines:
+        for label in self._session_lines[:3]:
             layout.addWidget(label)
+        # 第 4 行是"还有旧会话/索引没指向会话"的提示，旁边放"切回旧会话"（只在有别的会话时显示）
+        extra_row = QHBoxLayout()
+        extra_row.addWidget(self._session_lines[3])
+        self._switch_button = QPushButton()
+        self._switch_button.clicked.connect(self._on_switch_session)
+        self._switch_button.setVisible(False)
+        self._switch_running = False
+        extra_row.addWidget(self._switch_button)
+        extra_row.addStretch()
+        layout.addLayout(extra_row)
 
         self._players_title = _label(size_key="FONT_SIZE_BASE", bold=True, muted=False)
         layout.addWidget(self._players_title)
@@ -154,6 +166,8 @@ class SaveInfoPage(Page):
         self._delete_button.setText(t("save.delete_busy") if self._delete_running else t("save.delete_btn"))
         self._reset_button.setText(t("save.reset_world_busy") if self._reset_running else t("save.reset_world_btn"))
         self._reset_button.setToolTip(t("save.reset_world_hover"))
+        self._switch_button.setText(t("save.switch_session_busy") if self._switch_running else t("save.switch_session_btn"))
+        self._switch_button.setToolTip(t("save.switch_session_hover"))
         self._copy_to_server.setText(t("save.copy_to_server"))
         self._bundle_button.setText(t("save.bundle_running") if self._bundle_running else t("save.bundle_btn"))
         self._manage_button.setText(t("save.backup_management"))
@@ -234,6 +248,7 @@ class SaveInfoPage(Page):
         for label in self._session_lines:
             label.setText("")
             label.setVisible(False)
+        self._switch_button.setVisible(False)
         if cluster is None or not self._shard:
             self._show_line(0, t("save.no_saves"))
             return
@@ -247,6 +262,7 @@ class SaveInfoPage(Page):
             self._clear_rows()
             for label in self._session_lines:
                 label.setVisible(False)
+            self._switch_button.setVisible(False)
             if session is None:
                 self._show_line(0, t("save.no_saves"))
                 self._add_row_message(t("save.no_players"))
@@ -258,6 +274,7 @@ class SaveInfoPage(Page):
                 self._show_line(3, t("save.no_active_session"))
             elif session.extra_sessions > 0:
                 self._show_line(3, t("save.extra_sessions", count=session.extra_sessions))
+            self._switch_button.setVisible(session.extra_sessions > 0)
             if not session.players:
                 self._add_row_message(t("save.no_players"))
             for player in session.players:
@@ -464,6 +481,91 @@ class SaveInfoPage(Page):
             finish()
             self.load()
             dialogs.show_error(self._window(), title, t("save.reset_world_failed", error=str(exc)))
+
+        run_async(work, done, failed)
+
+    @staticmethod
+    def _brief_text(brief) -> str:
+        day = t("local.save_day", day=brief.day) if brief.day is not None else t("local.save_day_unknown")
+        return t("save.switch_session_brief", session=brief.session_id, day=day, slot=brief.latest)
+
+    def _on_switch_session(self) -> None:
+        """切回旧会话：改各世界 shardindex 的 session_id（业务见 features/save_browser/session_switch.py）。"""
+        cluster = self.ctx.selected_cluster()
+        if cluster is None or self._switch_running or not self._shard:
+            return
+        title = t("save.switch_session_title")
+        if self._cluster_in_use(cluster):
+            dialogs.show_warning(self._window(), title, t("save.switch_session_running", name=cluster.name))
+            return
+        shard_dir = next((s.path for s in cluster.shards if s.name == self._shard), None)
+        candidates = session_switch.inactive_sessions(shard_dir) if shard_dir is not None else []
+        if not candidates:
+            dialogs.show_info(self._window(), title, t("save.switch_session_none", shard=self._shard))
+            return
+        chosen = candidates[0]
+        if len(candidates) > 1:
+            choices = [(self._brief_text(b), b.session_id) for b in candidates[:3]]
+            value = dialogs.ask_choice(self._window(), title, t("save.switch_session_pick", shard=self._shard),
+                                       choices + [(t("dlg.cancel_btn"), "cancel")], default="cancel",
+                                       min_width=dialogs.DIALOG_WIDTHS["md"])
+            chosen = next((b for b in candidates if b.session_id == value), None)
+            if chosen is None:
+                return
+        try:
+            plan = session_switch.plan_switch(cluster.path, self._shard, chosen.session_id)
+        except (OSError, ShardIndexError) as exc:
+            dialogs.show_error(self._window(), title, t("save.switch_session_failed", error=str(exc)))
+            return
+        if cluster.source == SaveSource.LOCAL:
+            # 本地存档：游戏客户端开着时缓存了存档设置，要回到开始页面才重读（检测会跑 tasklist，放后台）
+            run_async(lambda: local_save_play_state(cluster),
+                      lambda state: self._confirm_switch(cluster, plan, state == LOCAL_SAVE_OPEN),
+                      lambda _exc: self._confirm_switch(cluster, plan, False))
+        else:
+            self._confirm_switch(cluster, plan, False)
+
+    def _confirm_switch(self, cluster, plan, game_open: bool) -> None:
+        title = t("save.switch_session_title")
+        lines = []
+        for item in plan:
+            current = self._brief_text(item.current_brief) if item.current_brief else (
+                item.current or t("save.switch_session_no_current"))
+            if item.target is None:
+                lines.append(t("save.switch_session_keep_line", shard=item.shard, current=current))
+            else:
+                lines.append(t("save.switch_session_line", shard=item.shard, current=current,
+                               target=self._brief_text(item.target)))
+        message = t("save.switch_session_confirm", name=cluster.name, details="\n".join(lines))
+        if game_open:
+            message += t("save.switch_session_game_open")
+        choice = dialogs.ask_choice(self._window(), title, message,
+                                    [(t("dlg.cancel_btn"), "cancel"), (t("save.switch_session_confirm_btn"), "switch")],
+                                    default="cancel", min_width=dialogs.DIALOG_WIDTHS["md"])
+        if choice != "switch":
+            return
+        self._switch_running = True
+        self._switch_button.setEnabled(False)
+        self._switch_button.setText(t("save.switch_session_busy"))
+
+        def work():
+            create_backup(cluster.path, keep=True)
+            return session_switch.apply_switch(plan)
+
+        def finish() -> None:
+            self._switch_running = False
+            self._switch_button.setText(t("save.switch_session_btn"))
+            self._switch_button.setEnabled(True)
+
+        def done(switched: list[str]) -> None:
+            finish()
+            self.load()
+            dialogs.show_info(self._window(), title, t("save.switch_session_done", shards="、".join(switched)))
+
+        def failed(exc: Exception) -> None:
+            finish()
+            self.load()
+            dialogs.show_error(self._window(), title, t("save.switch_session_failed", error=str(exc)))
 
         run_async(work, done, failed)
 

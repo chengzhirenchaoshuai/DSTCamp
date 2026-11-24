@@ -69,6 +69,39 @@ def test_active_session_follows_shardindex() -> None:
         assert find_active_session(shard, sessions) is None
 
 
+def test_switch_back_to_old_sessions() -> None:
+    """断电后游戏各世界另开了新会话：以主世界选的旧会话为准，洞穴按同编号对上自己的旧会话，只改 session_id。"""
+    from dstools.features.save_browser import session_switch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cluster = Path(tmp) / "1113"
+        layout = {"Master": (OLD, NEW), "Caves": ("60514BBD3F96B75D", "01A1256FC42C7331")}
+        for shard, (old, new) in layout.items():
+            (cluster / shard).mkdir(parents=True)
+            (cluster / shard / "server.ini").write_text("[SHARD]\n", encoding="utf-8")
+            sessions = cluster / shard / "save" / "session"
+            _snapshot(sessions / old, 68, day=57)
+            _snapshot(sessions / old, 69, blank=True)
+            _snapshot(sessions / new, 4, day=0)
+            _index(cluster / shard, b"KLEI     1 return {\n  enabled_mods={},\n  session_id=\"" + new.encode()
+                   + b"\",\n  version=5,\n  world={ options={ id=\"x\" } }\n}")
+        plan = session_switch.plan_switch(cluster, "Master", OLD)
+        targets = {item.shard: item.target.session_id for item in plan}
+        assert targets == {"Master": OLD, "Caves": "60514BBD3F96B75D"}, plan
+        before = (cluster / "Caves" / "save" / "shardindex").read_bytes()
+        assert sorted(session_switch.apply_switch(plan)) == ["Caves", "Master"]
+        for shard, (old, new) in layout.items():
+            assert si.read_session_id(cluster / shard) == old
+            assert (cluster / shard / "save" / "session" / new / "0000000004").is_file()  # 新会话保留
+        after = (cluster / "Caves" / "save" / "shardindex").read_bytes()
+        assert after == before.replace(b"01A1256FC42C7331", b"60514BBD3F96B75D"), after
+        # 切过去之后最新一份是空文件，交给开服前检查回退
+        assert si.check_shard(cluster / "Master").kind == si.SNAPSHOT_CORRUPT
+        # 切回来同样可行
+        plan = session_switch.plan_switch(cluster, "Caves", "01A1256FC42C7331")
+        assert {item.shard: item.target.session_id for item in plan} == {"Master": NEW, "Caves": "01A1256FC42C7331"}
+
+
 def test_blank_latest_snapshot_moved_aside() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         shard = Path(tmp) / "Caves"
