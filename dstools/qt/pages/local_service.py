@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from dstools.features.cluster_config.config_manager import (
-    ServerIniDamagedError, find_server_ini_problems, get_cluster_option, get_shard_option, load_cluster_config,
-    load_shard_config, set_server_port,
+    ServerIniDamagedError, enable_sharding_for_launch, find_server_ini_problems, get_cluster_option,
+    get_shard_option, load_cluster_config, load_shard_config, set_server_port,
 )
 from dstools.features.local_service import luajit_injector, luajit_runtime, steam_client_updater, steamcmd_updater
 from dstools.features.local_service import save_integrity
@@ -2371,6 +2371,8 @@ class LocalServicePage(Page):
             return False
         if not self._check_launch_names(cluster, shards):
             return False
+        if not self._enable_sharding(cluster, target_names):
+            return False
         if not self._check_server_ini(cluster):
             return False
         # 重启是先正常关服再开，关服时游戏会重写索引并存一份新快照，此时检查只会读到正在写的文件
@@ -2414,6 +2416,22 @@ class LocalServicePage(Page):
             dialogs.show_error(self.window(), t("local.port_preflight_title"), t("local.port_preflight_invalid", details="\n".join(lines)))
             return False
         return self._check_port_conflicts(cluster, shards, target_names, candidate_claims, allow_repair, restarting)
+
+    def _enable_sharding(self, cluster, target_names) -> bool:
+        """多世界一起运行却关着世界互联时自动打开（见 enable_sharding_for_launch），只写日志不弹窗；
+        须在 server.ini 检查和端口检查之前，两者都按互联是否开启判断。"""
+        running = {proc.shard_name for proc in self.manager.running()
+                   if str(proc.cluster_path) == str(cluster.path)}
+        try:
+            changed = enable_sharding_for_launch(cluster.path, set(target_names) | running)
+        except OSError as exc:
+            dialogs.show_error(self.window(), t("local.shard_enable_title"),
+                               t("local.shard_enable_failed", detail=f"{type(exc).__name__}: {exc}"))
+            return False
+        if changed:
+            logging.getLogger(__name__).info("%s 有多个世界一起运行但 cluster.ini 关着世界互联，已自动开启", cluster.name)
+            self.ctx.cluster_config_saved.emit(cluster)
+        return True
 
     def _check_server_ini(self, cluster) -> bool:
         """server.ini 空了、坏了或多世界缺 is_master 时拦下：照常开服只会表现成端口冲突、地上洞穴连不上，

@@ -207,6 +207,29 @@ def find_server_ini_problems(cluster) -> list[tuple[str, str]]:
     return problems
 
 
+# 打开世界互联时一并补上的连接字段（官方默认值，同 CLUSTER_INI_DEFAULTS）：开着互联却缺这几项专服拒绝启动
+_SHARD_LINK_FIELDS = ("bind_ip", "master_ip", "master_port", "cluster_key")
+
+
+def enable_sharding_for_launch(cluster_path: Path, shard_names) -> bool:
+    """同一存档要有两个以上世界一起运行、cluster.ini 却关着世界互联时，改成开启并写回，返回是否改过。
+
+    shard_enabled=false 时各世界照常启动却各自独立（日志 Shard server mode disabled by configuration
+    file），洞口全部不可用、也不报错；多世界下这个组合没有用途，游戏客户端开服也总按世界数重写它。
+    单世界不动：关着互联主世界不占 master_port，同时开几个单世界存档不会端口冲突。"""
+    if len(set(shard_names)) < 2:
+        return False
+    config = load_cluster_config(Path(cluster_path))
+    if config.shard.get("shard_enabled") is True:
+        return False
+    config.shard["shard_enabled"] = True
+    for key in _SHARD_LINK_FIELDS:
+        if config.shard.get(key) in (None, ""):
+            config.shard[key] = CLUSTER_INI_DEFAULTS[("SHARD", key)]
+    save_cluster_config(config, Path(cluster_path))
+    return True
+
+
 def set_shard_option(config: ShardConfig, section: str, key: str,
                      value: Any) -> None:
     """设置 server.ini 中的单个选项。"""

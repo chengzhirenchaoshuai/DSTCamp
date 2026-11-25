@@ -1104,5 +1104,25 @@ def test_damaged_server_ini_is_reported_and_never_shrunk_to_port_line() -> None:
         assert find_server_ini_problems(cluster) == [("Master", "damaged"), ("Caves", "no_is_master")]
 
 
+def test_multi_shard_launch_turns_sharding_on() -> None:
+    """11-25 Three Shuttles：cluster.ini 关着世界互联，地上洞穴各自独立运行、洞口全不可用。"""
+    from dstools.features.cluster_config.config_manager import enable_sharding_for_launch, load_cluster_config
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cluster = _write_cluster(Path(tmp), "Three Shuttles")
+        ini = cluster.path / "cluster.ini"
+        ini.write_text("[NETWORK]\ncluster_name = x\n\n[SHARD]\nshard_enabled = false\n", encoding="utf-8")
+
+        assert enable_sharding_for_launch(cluster.path, {"Master"}) is False  # 只开一个世界不动
+        assert load_cluster_config(cluster.path).shard == {"shard_enabled": False}
+
+        assert enable_sharding_for_launch(cluster.path, {"Master", "Caves"}) is True
+        config = load_cluster_config(cluster.path)
+        assert config.network["cluster_name"] == "x"
+        assert config.shard == {"shard_enabled": True, "bind_ip": "127.0.0.1", "master_ip": "127.0.0.1",
+                                "master_port": DEFAULT_MASTER_PORT, "cluster_key": "defaultPass"}
+        assert enable_sharding_for_launch(cluster.path, {"Master", "Caves"}) is False
+
+
 if __name__ == "__main__":
     run(globals())

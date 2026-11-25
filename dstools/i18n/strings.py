@@ -1528,6 +1528,9 @@ STRINGS = {
         "lan_conflict.outcome_save": "本次没有保存。",
         "lan_conflict.goto_mapping_btn": "前往内网穿透页",
         "local.port_repair_failed": "端口配置更新失败，原文件已恢复。\n\n详细信息：{detail}",
+        "local.shard_enable_title": "开启世界互联",
+        "local.shard_enable_failed": "这个存档有多个世界要一起运行，但 cluster.ini 关着「世界互联」，"
+                                     "照常开服各世界会互不相通（洞口不能用）。自动开启时写入失败，本次没有开服。\n\n详细信息：{detail}",
         "local.no_shards": "该存档下未找到任何世界",
         "local.start_failed": "世界“{shard}”启动失败：{detail}",
         "local.legacy_prepare_failed": "旧式 Mod 无法准备到专服运行目录：\n{detail}",
@@ -3632,6 +3635,10 @@ STRINGS = {
         "lan_conflict.outcome_save": "Nothing was saved.",
         "lan_conflict.goto_mapping_btn": "Go to NAT Traversal",
         "local.port_repair_failed": "Port settings could not be updated; the original files were restored.\n\nDetails: {detail}",
+        "local.shard_enable_title": "Enable Shard Linking",
+        "local.shard_enable_failed": "This save runs several shards together, but cluster.ini has shard linking turned off, "
+                                     "so the shards would run unconnected (portals unusable). Turning it on failed, so the "
+                                     "server was not started.\n\nDetails: {detail}",
         "local.no_shards": "No shards found for this save",
         "local.start_failed": 'Failed to start shard "{shard}": {detail}',
         "local.legacy_prepare_failed": "Failed to prepare a Legacy Mod for the dedicated server:\n{detail}",
