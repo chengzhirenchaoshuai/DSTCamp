@@ -103,6 +103,10 @@ class _DraftContext:
     def cluster_running(self, _cluster) -> bool:
         return False
 
+    def running_shard_names(self, _cluster) -> list[str]:
+        # 保存房间设置后的重启提示要用；缺了它向导里保存就抛 AttributeError（11-24 Cluster_1 用户）
+        return []
+
     def goto_tab(self, _key: str) -> None:
         pass
 
