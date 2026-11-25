@@ -50,9 +50,6 @@ def build_cluster_config(cluster: Cluster, values: Values):
     for (section, key), raw in values.items():
         if section in CLUSTER_SECTIONS:
             set_cluster_option(config, section, key, raw)
-    if cluster.source == SaveSource.SERVER and len(cluster.shards) > 1:
-        # 世界互联在配置页只读、按多世界显示为开启，保存时与显示保持一致（开服前同样会打开）
-        config.shard["shard_enabled"] = True
     # 这两项不渲染在表单里，上面循环碰不到；不主动清掉的话每次保存都会原样写回
     for section, key in REMOVED_CLUSTER_FIELDS:
         getattr(config, section.lower()).pop(key, None)
