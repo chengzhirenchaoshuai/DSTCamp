@@ -110,9 +110,12 @@ CLUSTER_FIELD_INFO: dict[tuple[str, str], dict[str, tuple[str, str]]] = {
         "en": ("Max Snapshots", "Maximum number of historical save snapshots kept for rollback, default 6."),
     },
     ("SHARD", "shard_enabled"): {
-        "zh": ("世界互联", "是否启用主从世界架构（例如需要独立的洞穴世界时必须开启）。"),
-        "en": ("Shard Enabled", "Whether the master/slave shard topology is enabled (required for a "
-               "separate Caves world, for example)."),
+        "zh": ("世界互联", "各世界之间是否连通（洞口、传送门靠它跨世界）。按世界数自动决定、不能手动修改："
+                           "多世界存档始终开启，开服前发现关着会自动打开；单世界存档不需要，关着时主世界不占用互联端口。"),
+        "en": ("Shard Enabled", "Whether the shards are linked (portals such as sinkholes need it). Decided by the "
+               "number of shards and not editable: always on for multi-shard saves, turned back on before "
+               "launch if found off; single-shard saves don't need it, and with it off the master doesn't "
+               "bind the master port."),
     },
     ("SHARD", "bind_ip"): {
         "zh": ("监听ip", "主世界用于接受其他世界连接的网络地址，通常为 127.0.0.1 或 0.0.0.0。"),

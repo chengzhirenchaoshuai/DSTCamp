@@ -36,6 +36,7 @@ SECTION_FIELD_ORDER = {
     ],
     "STEAM": ["steam_group_only", "steam_group_admins", "steam_group_id"],
 }
+SHARD_ENABLED_FIELD = ("SHARD", "shard_enabled")
 # 官方已不再读取这两项：不显示/编辑，加载和保存时都从配置里清掉
 REMOVED_CLUSTER_FIELDS = [("GAMEPLAY", "vote_kick_enabled"), ("NETWORK", "cluster_intention")]
 CLUSTER_SECTIONS = ("GAMEPLAY", "NETWORK", "MISC", "SHARD", "STEAM")
@@ -136,6 +137,9 @@ def build_cluster_columns(cluster: Cluster, local_server: dict | None = None) ->
     if is_server:
         # 游戏没写进文件不代表没有默认行为，只是这份存档还没存过；本地存档由客户端管理，不替它补
         backfill_cluster_defaults(config)
+    if is_server and len(cluster.shards) > 1:
+        # 多世界开服前总会打开世界互联（enable_sharding_for_launch），按实际生效的值显示
+        config.shard["shard_enabled"] = True
     local_values = {} if is_server or local_server is None else local_form_values(local_server)
     for (section, key), value in local_values.items():
         getattr(config, section.lower())[key] = value
@@ -158,7 +162,8 @@ def build_cluster_columns(cluster: Cluster, local_server: dict | None = None) ->
 
 def _cluster_field(section: str, key: str, value, is_server: bool, local_editable: bool) -> FieldSpec:
     if is_server:
-        return make_field(section, key, value)
+        # 世界互联按世界数决定，手动关掉只会让多个世界互不相通，不给改
+        return make_field(section, key, value, readonly=(section, key) == SHARD_ENABLED_FIELD)
     if not local_editable:
         return make_field(section, key, value, readonly=True)
     # 游戏内建服人数上限比专服小

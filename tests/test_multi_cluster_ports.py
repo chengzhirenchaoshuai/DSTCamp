@@ -1116,6 +1116,12 @@ def test_multi_shard_launch_turns_sharding_on() -> None:
         assert enable_sharding_for_launch(cluster.path, {"Master"}) is False  # 只开一个世界不动
         assert load_cluster_config(cluster.path).shard == {"shard_enabled": False}
 
+        # 配置页：多世界按实际生效的"开启"只读显示
+        from dstools.features.cluster_config.form_logic import build_cluster_columns
+        spec = next(f for column in build_cluster_columns(cluster) for group in column for f in group.fields
+                    if (f.section, f.key) == ("SHARD", "shard_enabled"))
+        assert spec.readonly and spec.value is True
+
         assert enable_sharding_for_launch(cluster.path, {"Master", "Caves"}) is True
         config = load_cluster_config(cluster.path)
         assert config.network["cluster_name"] == "x"
