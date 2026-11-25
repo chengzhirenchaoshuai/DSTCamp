@@ -123,8 +123,9 @@ def analyze_mod_loading(
 # 错误正文从下一行起，没有时间戳前缀，以空行（或只有空白的行）结束；运行出错还跟着 LUA ERROR 堆栈。
 # modinfo 这一种在启动时对目录里所有 Mod 都会读，未启用的 Mod 也会打印，只能提供原文，不能用来判定失败
 _MOD_ERROR_LOADING_MARKER = "error loading mod!"
-_MOD_ERROR_CONTEXT_RE = re.compile(r"\bMod:\s+([^\s(]+)", re.IGNORECASE)
-_MODINFO_ERROR_RE = re.compile(r"Error loading mod:\s+([^\s(!]+)", re.IGNORECASE)
+# 本地 Mod 的目录名可以带空格（如 "pumpkin bomb survival"），不能用 \S+ 截取，整段取出后再还原目录名
+_MOD_ERROR_CONTEXT_RE = re.compile(r"\bMod:\s+(.+?)\s{2,}Error loading mod!", re.IGNORECASE)
+_MODINFO_ERROR_RE = re.compile(r"Error loading mod:\s+(.+)!", re.IGNORECASE)
 _LOG_TIMESTAMP_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\]:")
 _MOD_DISABLED_MARKER = "because it had an error"
 MOD_ERROR_MAX_LINES = 30
@@ -133,10 +134,29 @@ _LUA_CHUNK_RE = re.compile(r'\[string "\.\./mods/[^/"\\]+[/\\]([^"]*)"\]')
 _MISSING_MOD_FILE_RE = re.compile(r"module '[^']+' not found|cannot open \S+", re.IGNORECASE)
 
 
-class ModErrorCollector:
-    """逐行接收专服日志，收集每个 Mod 第一次加载出错时的错误原文（mod_id -> 文本）。"""
+def mod_name_from_infoname(infoname: str, known_mods: Iterable[str] = ()) -> str:
+    """日志里的 Mod 标识还原成目录名。
 
-    def __init__(self) -> None:
+    游戏用 ModInfoname 打印 Mod（本体 modutil.lua）：有显示名时是「目录名 (显示名)」，否则只有目录名。
+    本地 Mod 的目录名可以带空格甚至括号，优先按已启用的目录名匹配；没登记的按第一个 " (" 切开。
+    """
+    infoname = infoname.strip()
+    for name in sorted(known_mods, key=len, reverse=True):
+        if infoname == name or infoname.startswith(name + " ("):
+            return name
+    if infoname.endswith(")") and " (" in infoname:
+        return infoname.split(" (", 1)[0]
+    return infoname
+
+
+class ModErrorCollector:
+    """逐行接收专服日志，收集每个 Mod 第一次加载出错时的错误原文（mod_id -> 文本）。
+
+    known_mods 传已启用 Mod 的集合（按引用保存，随日志继续增加），用来还原带空格的目录名。
+    """
+
+    def __init__(self, known_mods: Iterable[str] = ()) -> None:
+        self._known_mods = known_mods
         self.errors: dict[str, str] = {}
         self._mod_id: str | None = None
         self._lines: list[str] = []
@@ -151,12 +171,13 @@ class ModErrorCollector:
                 return
         lower = line.lower()
         mod_id = None
+        match = None
         if _MOD_ERROR_LOADING_MARKER in lower:
             match = _MOD_ERROR_CONTEXT_RE.search(line)
-            mod_id = match.group(1) if match else None
         elif "error loading mod:" in lower:
             match = _MODINFO_ERROR_RE.search(line)
-            mod_id = match.group(1) if match else None
+        if match:
+            mod_id = mod_name_from_infoname(match.group(1), self._known_mods)
         if mod_id:
             self._mod_id, self._lines = mod_id, []
 

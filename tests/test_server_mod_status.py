@@ -14,6 +14,7 @@ from dstools.features.local_service.dedicated_server import (  # noqa: E402
     ServerStatus,
     advance_world_ready_marker,
 )
+from dstools.features.local_service.server_diagnostics import summarize_mod_error  # noqa: E402
 from _harness import run  # noqa: E402
 
 
@@ -161,6 +162,35 @@ def test_mod_syntax_error_is_failed_but_world_can_be_ready() -> None:
     error = process.mod_errors["CommonModSets"]
     assert error == "[string \"../mods/CommonModSets/modmain.lua\"]:7: unfinished string near '''"
     assert summarize_mod_error(error) == "modmain.lua:7: unfinished string near '''"
+
+
+def test_local_mod_folder_with_spaces() -> None:
+    """11-25 用户截图：本地 Mod 目录名带空格，加载成功却被报成加载失败；出错时也要记到这个 Mod 上。"""
+    ready = ["About to start a shard with these settings:", "Reset() returning", "Sim paused"]
+    process = _run_process([
+        "modoverrides.lua enabling pumpkin bomb survival",
+        "modoverrides.lua enabling plain mod",
+        "Loading mod: pumpkin bomb survival (南瓜炸弹生存) Version:1.0",
+        "Loading mod: plain mod Version:2.0",
+        "Mod: pumpkin bomb survival (南瓜炸弹生存)\tLoading modmain.lua\t",
+        *ready,
+    ])
+    assert process.missing_mods == []
+
+    broken = _run_process([
+        "modoverrides.lua enabling workshop-1",
+        "modoverrides.lua enabling pumpkin bomb survival",
+        "Loading mod: workshop-1 (One) Version:1.0",
+        "Loading mod: pumpkin bomb survival (南瓜炸弹生存) Version:1.0",
+        "Mod: workshop-1 (One)\tLoading modmain.lua\t",
+        "Mod: pumpkin bomb survival (南瓜炸弹生存)\tLoading modmain.lua\t",
+        "Mod: pumpkin bomb survival (南瓜炸弹生存)\t  Error loading mod!",
+        "[string \"../mods/pumpkin bomb survival/modmain.lua\"]:3: unexpected symbol",
+        "Disabling pumpkin bomb survival (南瓜炸弹生存) because it had an error.",
+        *ready,
+    ])
+    assert broken.missing_mods == ["pumpkin bomb survival"]
+    assert summarize_mod_error(broken.mod_errors["pumpkin bomb survival"]) == "modmain.lua:3: unexpected symbol"
 
 
 def test_mod_error_text_collected_from_real_log_block() -> None:

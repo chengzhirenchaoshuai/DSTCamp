@@ -20,7 +20,9 @@ from dstools.shared import app_settings
 from dstools.features.cluster_config.config_manager import get_shard_option, load_shard_config
 from dstools.features.mod.manager import load_mod_overrides
 from dstools.features.local_service.console_log import ConsoleOnlyLog
-from dstools.features.local_service.server_diagnostics import ModErrorCollector, analyze_mod_loading
+from dstools.features.local_service.server_diagnostics import (
+    ModErrorCollector, analyze_mod_loading, mod_name_from_infoname,
+)
 from dstools.shared.steam_discovery import find_all_steam_libraries
 
 IS_WINDOWS = sys.platform == "win32"
@@ -290,11 +292,15 @@ def advance_world_ready_marker(
 # Mod 加载完整性：配置启用时打印 "modoverrides.lua enabling <id>"（不代表加载成功），
 # 真正加载才打印 "Loading mod: <id> (<name>) Version:..."，两者之差即配置启用但未加载的 Mod。
 # 不依赖"加载失败"文案（真机日志里没见过，无法核实）。
-_MOD_ENABLING_RE = re.compile(r"modoverrides\.lua enabling (\S+)", re.IGNORECASE)
-_MOD_LOADING_RE = re.compile(r"loading mod:\s*(\S+)\s*\(", re.IGNORECASE)
-_MOD_REGISTER_RE = re.compile(r"Registering Mod\s+(\S+)", re.IGNORECASE)
-_MOD_CONTEXT_RE = re.compile(r"Mod:\s+(\S+)\s+\(", re.IGNORECASE)
-_MOD_DISABLED_RE = re.compile(r"Disabling\s+(\S+)(?:\s+\([^)]*\))?\s+because it had an error", re.IGNORECASE)
+# 本地 Mod 的目录名可以带空格（如 "pumpkin bomb survival"），不能用 \S+ 截取。
+# enabling 与 Registering Mod 行打印的是目录名本身，取到行尾；其余行是本体 ModInfoname 的
+# 「目录名 (显示名)」，整段取出后用 mod_name_from_infoname 按已启用目录名还原。
+_MOD_ENABLING_RE = re.compile(r"modoverrides\.lua enabling (.+?)\s*$", re.IGNORECASE)
+_MOD_LOADING_RE = re.compile(r"loading mod:\s*(.+)\s+Version:", re.IGNORECASE)
+_MOD_REGISTER_RE = re.compile(r"Registering Mod\s+(.+?)\s*$", re.IGNORECASE)
+# print 多个参数以制表符分隔；moderror 拼接时用两个空格；"Error loading mod: X!" 是 modinfo 出错，不算上下文
+_MOD_CONTEXT_RE = re.compile(r"(?<!loading )\bMod:\s+(.+?)(?:\t|\s{2,}|$)", re.IGNORECASE)
+_MOD_DISABLED_RE = re.compile(r"Disabling\s+(.+?)\s+because it had an error", re.IGNORECASE)
 # c_shutdown 的参数在实际用法中会出现空参数、布尔值或 0/1。只识别完整
 # 命令，避免聊天/公告文字里恰好包含这段文本时把进程误标为正在停止。
 _SHUTDOWN_COMMAND_RE = re.compile(
@@ -343,7 +349,7 @@ class ServerProcess:
         self._mod_context: str | None = None
         self.missing_mods: list[str] | None = None
         # 世界就绪前日志里各 Mod 的加载错误原文（mod_id -> 文本），控制台加载失败列表用
-        self._mod_error_collector = ModErrorCollector()
+        self._mod_error_collector = ModErrorCollector(self.mods_enabled)
 
     @property
     def visible_mod_ids(self) -> set[str]:
@@ -404,7 +410,7 @@ class ServerProcess:
         if not hasattr(self, "_mod_context"):
             self._mod_context = None
         if not hasattr(self, "_mod_error_collector"):
-            self._mod_error_collector = ModErrorCollector()
+            self._mod_error_collector = ModErrorCollector(self.mods_enabled)
         try:
             for line in self.proc.stdout:
                 line = line.rstrip("\n")
@@ -423,7 +429,7 @@ class ServerProcess:
                     else:
                         m = _MOD_LOADING_RE.search(line)
                         if m:
-                            self.mods_loaded.add(m.group(1))
+                            self.mods_loaded.add(mod_name_from_infoname(m.group(1), self.mods_enabled))
                         else:
                             m = _MOD_REGISTER_RE.search(line)
                             if m:
@@ -431,12 +437,12 @@ class ServerProcess:
 
                     context = _MOD_CONTEXT_RE.search(line)
                     if context:
-                        self._mod_context = context.group(1)
+                        self._mod_context = mod_name_from_infoname(context.group(1), self.mods_enabled)
                     if "error loading mod!" in line.lower() and self._mod_context:
                         self.mods_failed.add(self._mod_context)
                     disabled = _MOD_DISABLED_RE.search(line)
                     if disabled:
-                        self.mods_failed.add(disabled.group(1))
+                        self.mods_failed.add(mod_name_from_infoname(disabled.group(1), self.mods_enabled))
                     real_start_seen, ready_now = advance_world_ready_marker(
                         line, self.is_master, real_start_seen,
                     )
