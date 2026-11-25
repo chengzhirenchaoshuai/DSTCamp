@@ -30,8 +30,9 @@ from dstools.shared.resource_paths import bundled_resource_dir
 
 _FILTER_DEBOUNCE_MS = 150
 _LOG_LINES_SHOWN = 300
-# sync.log 里的游戏配置文件名（冲突行后面紧跟全角冒号）
-_FILE_NAME_RE = re.compile(r"modconfiguration_[^\s：:]+")
+# sync.log 里的游戏配置文件名：每行一个，拉取/推送行在行尾，冲突/错误行后面紧跟全角冒号。
+# 本地 Mod 的目录名可以带空格，不能截到空格为止
+_FILE_NAME_RE = re.compile(r"modconfiguration_[^：:\r\n]*[^：:\s]")
 _ICON_SIZE = 56
 _DEFAULT_ICON_PATH = bundled_resource_dir() / "icons" / "ui" / "mod_icon_default.png"
 # 状态 -> (文案键, 颜色键)

@@ -37,7 +37,8 @@ _BOOT_STALL_MARKER = "curlrequestmanager::clientthread::main()"
 _BOOT_PROGRESS_MARKER = "mounting file system"
 # Lua 读不到 Mod 文件的两种报错（cannot open ...lua、module '...' not found）。
 # 2026-11-14/15 两次是 LuaJIT 补丁当时版本的 bug，作者已修复；配套 Mod 强制更新，不再单独归给 LuaJIT
-_MISSING_FILE_RE = re.compile(r"cannot open \S+?\.lua|module '[^']+' not found", re.IGNORECASE)
+# 路径可能带空格（本地 Mod 目录名），不能用 \S 截取
+_MISSING_FILE_RE = re.compile(r"cannot open .+?\.lua|module '[^']+' not found", re.IGNORECASE)
 # DontStarveLuaJit2 发现当前虚拟机与配置的 LuaVmType 不同时打印这一行并 c_reset()。正常切换一次就好；
 # 同一进程出现两次以上说明配置值无效：2026-11-16 modoverrides 里写成了字符串 "luavmtype.jit"，每次加载都
 # 判定要切换，主世界约 10 秒重载一次（Received world rollback request: count=0），玩家进服即被断开
