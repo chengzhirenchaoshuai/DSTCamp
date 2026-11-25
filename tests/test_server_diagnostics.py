@@ -257,6 +257,32 @@ def test_library_mod_not_blamed_for_relayed_error() -> None:
     assert report.related_mods == ("workshop-3750536829",)
 
 
+def test_local_mods_listed_as_related() -> None:
+    """本地 Mod 没有工坊 ID，按目录名（可带空格）从堆栈路径和 MOD ERROR 行里认出来；未启用的目录不列。"""
+    enabled = ["workshop-1", "pumpkin bomb survival", "CommonModSets"]
+    runtime = [
+        "[string \"scripts/components/inventory.lua\"]:770: attempt to index a nil value",
+        "LUA ERROR stack traceback:",
+        "scripts/components/inventory.lua:770 in (method) IsInsulated",
+        "../mods/pumpkin bomb survival/scripts/pumpkin.lua:12 in (local) fn",
+        "../mods/not enabled/modmain.lua:3 in (main) chunk",
+    ]
+    report = diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=True, log_lines=runtime, enabled_mods=enabled,
+    )
+    assert report.category == "mod_conflict" and report.related_mods == ("pumpkin bomb survival",)
+
+    mod_error = [
+        "[00:00:09]: MOD ERROR: CommonModSets (常用mod集合): Mod: CommonModSets (常用mod集合)  Error loading mod!",
+        "LUA ERROR stack traceback:",
+        "=[C] in function 'error'",
+    ]
+    report = diagnose_server_failure(
+        shard_name="Master", exit_code=1, world_ready=False, log_lines=mod_error, enabled_mods=enabled,
+    )
+    assert report.related_mods == ("CommonModSets",)
+
+
 def test_luajit_reload_loop() -> None:
     # 11-16：LuaVmType 存成字符串 "luavmtype.jit"，每次加载都 c_reset()，进程一直在跑
     cycle = [

@@ -8,6 +8,10 @@ from dstools.i18n import t
 
 
 _WORKSHOP_RE = re.compile(r"workshop-\d+", re.IGNORECASE)
+# Lua 堆栈与代码块名里的 Mod 目录：../mods/<目录>/…（本地 Mod 的目录名可以带空格）
+_MOD_DIR_RE = re.compile(r"\.\./mods/([^/\\\"\r\n]+)[/\\]")
+# 带行号的 Mod 文件位置，如 ../mods/<目录>/modmain.lua:72
+_MOD_PATH_LINE_RE = re.compile(r"\.\./mods/[^/\\\"\r\n]+[/\\].*:\d+")
 _TOKEN_CONFLICT_MARKER = "e_rowid_exist"
 # Klei 不认这个令牌（被删除或重新生成过、内容残缺）或令牌文件为空：进程不退出，但服务器不会上线
 _TOKEN_INVALID_MARKERS = (
@@ -271,39 +275,55 @@ def _lua_evidence(lines: list[str], limit: int = 14) -> tuple[str, ...]:
 
 def _mods(lines: list[str], enabled: Iterable[str], loaded: Iterable[str]) -> tuple[str, ...]:
     def normalize(values):
-        return {str(value).lower() for value in values if str(value).strip()}
+        return {str(value).lower(): str(value) for value in values if str(value).strip()}
 
-    # 疑似 Mod 只从配置里已启用的集合中产生（日志搜索路径会列出大量未启用 Mod）；loaded 仅作没有预读配置时的兜底
-    enabled_set = normalize(enabled)
-    loaded_set = normalize(loaded)
-    allowed = enabled_set or loaded_set
-    stack_mods = set()
+    # 疑似 Mod 只从配置里已启用的集合中产生（日志搜索路径会列出大量未启用 Mod）；loaded 仅作没有预读配置时的兜底。
+    # 键为小写，值为原样的 Mod 名（工坊是 workshop-<id>，本地 Mod 是目录名，可能带空格）
+    allowed = normalize(enabled) or normalize(loaded)
+
+    def mods_in(line: str) -> dict[str, str]:
+        """行内出现的 Mod：工坊 ID、../mods/<目录>/ 路径里的目录名，以及 ModInfoname 形式的已启用 Mod 名。"""
+        found = {m.group(0).lower(): m.group(0) for m in _WORKSHOP_RE.finditer(line)}
+        found.update((m.group(1).lower(), m.group(1)) for m in _MOD_DIR_RE.finditer(line))
+        lower = line.lower()
+        if "mod error:" in lower or " in mod " in lower:
+            # 本体 mods.lua：MOD ERROR: <名> (<显示名>): …，error calling <函数> in mod <名> (<显示名>): …
+            for key, name in allowed.items():
+                if re.search(r"(?:mod error:|\bin mod)\s+" + re.escape(key) + r"(?: \(|:)", lower):
+                    found[key] = name
+        return found
+
+    stack_mods: dict[str, str] = {}
     traceback_indexes = [i for i, line in enumerate(lines)
                          if "lua error" in line.lower() or "stack traceback" in line.lower()]
     for index, line in enumerate(lines):
-        ids = {m.group(0) for m in _WORKSHOP_RE.finditer(line)}
+        ids = mods_in(line)
         # 只接受明确的错误归因行；模块搜索失败列表里的路径只是加载器
         # 的尝试顺序，不能把其中列出的所有 Mod 都误报成嫌疑对象。
         lower = line.lower()
-        if "mod error:" in lower or "error calling" in lower and "mod workshop-" in lower:
+        if "mod error:" in lower or "error calling" in lower and " in mod " in lower:
             stack_mods.update(ids)
         if any(index >= marker and index <= marker + 80 for marker in traceback_indexes):
-            if "../mods/" in lower and re.search(r"../mods/workshop-\d+[/\\].*:\d+", lower):
+            if _MOD_PATH_LINE_RE.search(lower):
                 # 堆栈中间帧经过运行库不代表是它的问题
-                stack_mods.update(ids - {m for m in ids if m.lower() in _LIBRARY_MODS})
+                stack_mods.update((k, v) for k, v in ids.items() if k not in _LIBRARY_MODS)
         # Lua 堆栈前一行常用 [string "../mods/.../modmain.lua"] 写出根错误。
         if any(index < marker and marker - index <= 6 for marker in traceback_indexes):
-            if "[string \"../mods/" in lower and re.search(r"../mods/workshop-\d+[/\\].*:\d+", lower):
+            if "[string \"../mods/" in lower and _MOD_PATH_LINE_RE.search(lower):
                 # 运行库替别人 require 时报的"找不到文件"也写在它自己的文件名下，同样不算它的
                 if _MISSING_FILE_RE.search(line):
-                    ids = {m for m in ids if m.lower() not in _LIBRARY_MODS}
+                    ids = {k: v for k, v in ids.items() if k not in _LIBRARY_MODS}
                 stack_mods.update(ids)
     # Lua 堆栈里出现的 Mod 路径是最有价值的归因证据；有堆栈证据时不把
     # 整个启用列表都显示成“疑似相关”，避免用户误以为每个 Mod 都有问题。
-    if stack_mods:
-        # 没有可读启用集合时（测试样例、少数旧日志）保留错误堆栈中明确出现的 ID
-        return tuple(sorted(stack_mods & allowed if allowed else stack_mods,
-                            key=str.lower))
+    if allowed:
+        result = [allowed[key] for key in stack_mods if key in allowed]
+    else:
+        # 没有可读启用集合时（测试样例、少数旧日志）只保留堆栈中明确出现的工坊 ID；
+        # 路径里的任意目录名没有启用集合核对，可能是被截断的路径片段
+        result = [name for name in stack_mods.values() if _WORKSHOP_RE.fullmatch(name)]
+    if result:
+        return tuple(sorted(result, key=str.lower))
     # 有 Lua 错误但没有明确 Mod 路径时，不显示整个启用列表，改由 UI 展示
     # 第一段错误堆栈，避免 Insight 等无关 Mod 被误认为冲突原因。
     return ()
