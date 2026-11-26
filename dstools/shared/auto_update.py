@@ -407,9 +407,16 @@ def cleanup_stale_update_artifacts() -> None:
     if not getattr(sys, "frozen", False):
         return
     try:
-        install_dir = Path(sys.executable).resolve().parent
+        current = Path(sys.executable).resolve()
+        install_dir = current.parent
+        # 只删本程序自己的备份（当前名、固定名、旧的带版本号名 + .old）。EXE 可能放在盘符根目录
+        # 或桌面等公共位置，不能按 *.exe.old 把别的程序的备份也删掉。
         for stale in install_dir.glob("*.exe.old"):
-            _safe_unlink(stale)
+            exe_name = stale.name[: -len(".old")]
+            if exe_name.lower() in (current.name.lower(), STANDARD_EXE_NAME.lower()) or (
+                _LEGACY_VERSIONED_EXE_NAME_RE.fullmatch(exe_name)
+            ):
+                _safe_unlink(stale)
         for stale in install_dir.glob(_HIDDEN_STAGED_GLOB):
             _safe_unlink(stale)
         _safe_unlink(install_dir / _UPDATE_LOG_NAME)
@@ -440,21 +447,3 @@ def clear_download_mark() -> None:
     if not getattr(sys, "frozen", False) or sys.platform != "win32":
         return
     _safe_unlink(Path(f"{sys.executable}:Zone.Identifier"))
-
-
-def cleanup_vestigial_external_tools() -> None:
-    """清理存量 ZIP 版更新到内嵌版后不再被读取的外置 tools/ 目录。
-
-    只在"当前 EXE 自带内嵌 tools 且同级还有外置 tools/"时删除（此时外置目录不会被任何代码读取）。
-    """
-    if not getattr(sys, "frozen", False):
-        return
-    bundled_tools = Path(getattr(sys, "_MEIPASS", "")) / "tools"
-    if not bundled_tools.is_dir():
-        return
-    try:
-        external_tools = Path(sys.executable).resolve().parent / "tools"
-        if external_tools.is_dir():
-            _safe_rmtree(external_tools)
-    except OSError:
-        pass

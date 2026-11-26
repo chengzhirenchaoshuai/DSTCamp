@@ -379,6 +379,12 @@ def test_cleanup_removes_known_stale_artifacts() -> None:
         (install_dir / "apply_update.log").write_text("失败原因", encoding="utf-8")
         keep_file = install_dir / "readme.txt"
         keep_file.write_text("keep", encoding="utf-8")
+        # EXE 放在盘符根目录等公共位置时，别的程序的备份和 tools 目录都不能动
+        other_backup = install_dir / "其他程序.exe.old"
+        other_backup.write_bytes(b"other")
+        other_tools = install_dir / "tools" / "dsh" / "keep.txt"
+        other_tools.parent.mkdir(parents=True)
+        other_tools.write_text("keep", encoding="utf-8")
 
         updates_dir = root / "data" / "updates"
         (updates_dir / "1.3.6").mkdir(parents=True)
@@ -399,6 +405,8 @@ def test_cleanup_removes_known_stale_artifacts() -> None:
         assert not (install_dir / ".我的旧名字.update-4321.exe").exists()
         assert not (install_dir / "apply_update.log").exists()
         assert keep_file.exists()
+        assert other_backup.exists()
+        assert other_tools.exists()
         assert current.exists()
         assert not (updates_dir / "1.3.6").exists()
         assert updates_dir.joinpath("apply_update.ps1").exists()
@@ -418,49 +426,6 @@ def test_cleanup_is_noop_when_not_frozen() -> None:
         ):
             auto_update.cleanup_stale_update_artifacts()
         assert stale.exists()
-
-
-def test_cleanup_removes_vestigial_external_tools_once_embedded() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        install_dir = root / "install"
-        install_dir.mkdir()
-        (install_dir / "tools").mkdir()
-        (install_dir / "tools" / "leftover.txt").write_text("dead", encoding="utf-8")
-        current = install_dir / "DSTCamp.exe"
-        current.write_bytes(b"current")
-
-        meipass = root / "meipass"
-        (meipass / "tools").mkdir(parents=True)
-
-        with patch.object(auto_update.sys, "frozen", True, create=True), patch.object(
-            auto_update.sys, "executable", str(current)
-        ), patch.object(auto_update.sys, "_MEIPASS", str(meipass), create=True):
-            auto_update.cleanup_vestigial_external_tools()
-
-        assert not (install_dir / "tools").exists()
-
-
-def test_cleanup_keeps_external_tools_when_not_yet_embedded() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        install_dir = root / "install"
-        install_dir.mkdir()
-        (install_dir / "tools").mkdir()
-        needed = install_dir / "tools" / "still-needed.txt"
-        needed.write_text("in use", encoding="utf-8")
-        current = install_dir / "DSTCamp-1.3.5.exe"
-        current.write_bytes(b"current")
-
-        meipass = root / "meipass"
-        meipass.mkdir()  # 没有内嵌 tools 子目录——这份 EXE 仍需要外置 tools
-
-        with patch.object(auto_update.sys, "frozen", True, create=True), patch.object(
-            auto_update.sys, "executable", str(current)
-        ), patch.object(auto_update.sys, "_MEIPASS", str(meipass), create=True):
-            auto_update.cleanup_vestigial_external_tools()
-
-        assert needed.exists()
 
 
 if __name__ == "__main__":

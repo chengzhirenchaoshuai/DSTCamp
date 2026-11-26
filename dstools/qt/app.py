@@ -53,7 +53,6 @@ def main() -> int:
     # 清理上次自动更新留下的临时文件、旧版 EXE 备份等（尽力而为，失败不影响启动）
     from dstools.shared.auto_update import (
         cleanup_stale_update_artifacts,
-        cleanup_vestigial_external_tools,
         clear_download_mark,
         take_update_failure_log,
     )
@@ -64,7 +63,6 @@ def main() -> int:
     update_failure = take_update_failure_log()
     clear_download_mark()
     cleanup_stale_update_artifacts()
-    cleanup_vestigial_external_tools()
     cleanup_stale_worker_dirs()
     # 开服场景的老用户迁移要在建窗口（会写设置）之前做，靠设置文件是否为空区分新老用户
     from dstools.features.local_service.usage_scenario import migrate_usage_scenario
