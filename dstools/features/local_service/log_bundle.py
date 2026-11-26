@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+from collections import deque
 import re
 import zipfile
 from pathlib import Path
@@ -19,6 +20,12 @@ _ERROR_MARKERS = (
     "socket_port_already_in_use",
 )
 _MAX_LOG_BYTES = 32 * 1024 * 1024
+# 服务器日志超过这个大小时折叠连续重复行再打包。11-26 用户的主世界日志 22 MB，其中 17.6 万行是棱镜
+# Mod 同一行 Stale Component Reference 连续刷屏，折叠后约 1.1 MB；群机器人插件拒收 20 MB 以上的文件
+_SERVER_LOG_COLLAPSE_BYTES = 8 * 1024 * 1024
+# 折叠后仍超过上限（大量不重复的输出）时保留开头（启动、Mod 加载、令牌）和末尾（出错时刻）
+_SERVER_LOG_PACKED_BYTES = 16 * 1024 * 1024
+_SERVER_LOG_HEAD_BYTES = 2 * 1024 * 1024
 _MAX_BACKUP_FILES_PER_SHARD = 10
 _MOD_LINE_RE = re.compile(
     r"(?:inserting\s+modname,|Loading\s+mod:|Mod:)\s*"
@@ -59,17 +66,73 @@ def _looks_like_error(path: Path) -> bool:
     return False
 
 
-def _add_file(files: list[tuple[Path, str]], source: Path, arcname: str) -> None:
+def _add_file(files: list[tuple[Path, str]], source: Path, arcname: str,
+              limit: int | None = _MAX_LOG_BYTES) -> None:
+    """limit 为 None 时不限大小（服务器日志，打包时按需折叠）。"""
     try:
-        if source.is_file() and source.stat().st_size <= _MAX_LOG_BYTES:
+        if source.is_file() and (limit is None or source.stat().st_size <= limit):
             files.append((source, arcname))
     except OSError:
         pass
 
 
+def _is_server_log(arcname: str) -> bool:
+    return arcname.endswith(".txt") and "server_log" in arcname
+
+
+def _collapse_server_log(path: Path) -> str:
+    """折叠连续重复的行（去掉行首运行时长后相同即算重复），只留第一行并注明重复次数与最后一次的时间；
+    折叠后仍超过 _SERVER_LOG_PACKED_BYTES 时只留开头与末尾。逐行流式处理，内存只占结果大小。"""
+    head: list[str] = []
+    head_bytes = 0
+    tail: deque[str] = deque()
+    tail_bytes = 0
+    dropped = 0
+    tail_limit = _SERVER_LOG_PACKED_BYTES - _SERVER_LOG_HEAD_BYTES
+
+    def emit(line: str) -> None:
+        nonlocal head_bytes, tail_bytes, dropped
+        size = len(line.encode("utf-8"))
+        if head_bytes + size <= _SERVER_LOG_HEAD_BYTES and not tail:
+            head.append(line)
+            head_bytes += size
+            return
+        tail.append(line)
+        tail_bytes += size
+        while tail_bytes > tail_limit and tail:
+            removed = tail.popleft()
+            tail_bytes -= len(removed.encode("utf-8"))
+            dropped += len(removed.encode("utf-8"))
+
+    def flush(repeats: int, last_stamp: str) -> None:
+        if repeats:
+            emit(f"[DSTCamp] 上一行又连续重复 {repeats} 次（最后一次 {last_stamp or '时间未知'}），打包时已折叠\n")
+
+    previous_body = None
+    repeats = 0
+    last_stamp = ""
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as stream:
+        for line in stream:
+            match = _ELAPSED_RE.match(line)
+            body = line[match.end():] if match else line
+            if body == previous_body:
+                repeats += 1
+                last_stamp = match.group(0)[:-1] if match else ""
+                continue
+            flush(repeats, last_stamp)
+            repeats = 0
+            previous_body = body
+            emit(line)
+    flush(repeats, last_stamp)
+    text = "".join(head)
+    if dropped:
+        text += f"\n[DSTCamp] ……中间省略约 {dropped} 字节，以下是日志末尾……\n"
+    return text + "".join(tail)
+
+
 def _files_for_shard(shard_path: Path, shard_name: str) -> list[tuple[Path, str]]:
     files: list[tuple[Path, str]] = []
-    _add_file(files, shard_path / "server_log.txt", f"{shard_name}/server_log.txt")
+    _add_file(files, shard_path / "server_log.txt", f"{shard_name}/server_log.txt", limit=None)
     # 运行中报错通常会滚动到 backup/server_log；优先带错误日志，再补最新日志。
     backup_dir = shard_path / "backup" / "server_log"
     try:
@@ -93,7 +156,7 @@ def _files_for_shard(shard_path: Path, shard_name: str) -> list[tuple[Path, str]
             if len(selected) >= _MAX_BACKUP_FILES_PER_SHARD:
                 break
     for candidate in selected:
-        _add_file(files, candidate, f"{shard_name}/backup/server_log/{candidate.name}")
+        _add_file(files, candidate, f"{shard_name}/backup/server_log/{candidate.name}", limit=None)
 
     # 这些配置有助于定位 Mod/世界配置问题，但不包含 cluster_token.txt。
     for filename in ("server.ini", "modoverrides.lua", "leveldataoverride.lua"):
@@ -311,8 +374,14 @@ def create_log_bundle(cluster_path: Path, shard_names=None, output_dir: Path | N
     tails.extend(client_tails)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for source, arcname in files:
+            size = source.stat().st_size
+            if _is_server_log(arcname) and size > _SERVER_LOG_COLLAPSE_BYTES:
+                text = _collapse_server_log(source)
+                archive.writestr(arcname, text)
+                manifest.append(f"{arcname}（原 {size} bytes，已折叠连续重复行为 {len(text.encode('utf-8'))} bytes）")
+                continue
             archive.write(source, arcname)
-            manifest.append(f"{arcname} ({source.stat().st_size} bytes)")
+            manifest.append(f"{arcname} ({size} bytes)")
         for arcname, text in tails:
             archive.writestr(arcname, text)
             manifest.append(f"{arcname}（末尾 {len(text.encode('utf-8'))} bytes）")
