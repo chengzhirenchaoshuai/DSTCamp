@@ -108,28 +108,44 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 1.9.9 changes
+## 2.0.0 changes
 
-### ✨ New features
+### ✨ Improvements
+
+- Crash diagnosis now also lists local Mods under "possibly related Mods".
+- Exported logs fold consecutive repeated lines in server logs, so very large logs (such as a Mod spamming the same line) are included instead of skipped.
+
+### 🐞 Fixes
+
+- When the EXE was placed in a location such as the root of drive D, starting it deleted the whole tools folder next to it.
+- With the cache folder set to a shared location such as a drive root, "Clear Cache Directory" deleted other files, as well as Mods downloaded by SteamCMD and its login state; it now deletes only DSTCamp's own files, and replacing a server's mods folder with a link moves the original folder to the Recycle Bin.
+- In multi-world saves with "Shard Linking" turned off, the surface and caves could not reach each other; it is now turned on automatically before launch.
+- Failing to reach Klei's login server was misreported as "Invalid Server Token".
+- Local Mods whose folder names contain spaces were falsely reported as failed to load, and their names were shown incompletely.
+- Saving room settings, admins or the token in the new save wizard raised an error.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 1.9.9)</strong></summary>
+
+### 1.9.9
+
+#### ✨ New features
 
 - When a black screen, power loss or forced restart corrupts a save, it is caught before the server starts: roll back to the last good snapshot in one click, or recover the index from a DSTCamp backup to keep your progress; load errors are no longer reported as "possible Mod conflict".
 - The save info page adds "Switch to Old Session": when the game started a new day-0 world but the old progress is still on disk, switch back in one click.
 
-### ✨ Improvements
+#### ✨ Improvements
 
 - Port conflict messages include the world name, so you can tell which two worlds conflict.
 - The server save folder can no longer be set to a path with Chinese or other non-English characters; if already set, the pre-launch check explains how to change it.
 - Log bundles now include 10 past server logs per world instead of 5.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - Turning on tunnel mapping with a corrupted server.ini rewrote it down to a single port line, causing port conflicts on launch; it is now caught before launch with a prompt to restore from backup.
 - The save info page and backup summaries sometimes showed an old world that is no longer loaded as the current progress.
 - After a tunnel was migrated or recreated on the provider's website, restarting the server still showed the old connect code.
 - With only one game account, the account name and the Steam signed-in indicator were not shown.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.8)</strong></summary>
 
 ### 1.9.8
 
@@ -299,7 +315,7 @@ All of these now match the game:
 #### 🐞 Fixes
 
 - After switching Sakura/Lolia nodes while a world was running and getting a new port, restarting the world as prompted let the game write the old port back, so direct connections timed out: ports are now checked against the mapping records and corrected before every start (including Start All and auto-restart).
-- With an invalid server token (E_INVALID_TOKEN or no token found) the server didn't exit and frpc kept running, which looked like a tunneling problem: the console now reports "invalid server token", explains that switching nodes won't help, and points you to regenerate and replace the token on the Klei website; auto-restart no longer retries this kind of failure.
+- With an invalid server token (E_INVALID_TOKEN or no token found) the server didn't exit and frpc kept running, which looked like a tunneling problem: the console now reports "Invalid Server Token", explains that switching nodes won't help, and points you to regenerate and replace the token on the Klei website; auto-restart no longer retries this kind of failure.
 
 ### 1.8.4
 
