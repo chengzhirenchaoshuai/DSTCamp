@@ -775,7 +775,7 @@ _set_verified_scope(PORKLAND_SETTINGS, {"porkland_season_start"}, {PORKLAND_LOCA
 # 与岛屿冒险的四个季节一样跟着主世界走（任何世界类型做主世界都显示）
 _set_verified_scope(PORKLAND_SETTINGS, {"temperate", "humid", "lush"}, None, master_controlled=True)
 
-# workshop-3360553731 == Beneath the World Below（深埋之下），0.4.17.0
+# workshop-3360553731 == Beneath the World Below（深埋之下），0.4.17.1
 # 来源（content/322330/3360553731/）：
 #   - 25 个无条件条目：scripts/mains/init/bwb_customizations.lua，init_worldgen.lua 逐条注册；
 #     0.4.16 起原版测试版重做石虾，Mod 注释掉了 rocky_gold/rocky_master（旧存档里的会被换成普通石虾），
@@ -1152,7 +1152,7 @@ MOD_VERIFIED_VERSIONS: dict[str, str] = {
     _IA_CORE_ID: "1.0.81",
     _IA_SHIPWRECKED_ID: "1.0.64",
     _PORKLAND_ID: "1.0.50",
-    _BWB_ID: "0.4.17.0",
+    _BWB_ID: "0.4.17.1",
     _TA_ID: "26.09.19",
 }
 
