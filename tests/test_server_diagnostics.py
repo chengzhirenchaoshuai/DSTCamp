@@ -353,6 +353,21 @@ def test_invalid_token_while_process_alive() -> None:
     assert report is not None and report.category == "token_invalid"
 
 
+def test_klei_unreachable_not_blamed_on_token() -> None:
+    """11-25 用户日志：洞穴开服时连不上 Klei 登录服务器（HTTP 状态 0），同样打印找不到令牌，但令牌没问题。"""
+    lines = [
+        "[00:01:17]: CURL ERROR: (login.kleientertainment.com) [7]Failed to connect to "
+        "login.kleientertainment.com port 443: Timed out",
+        '[00:01:17]: [0] Account Failed (6): ""',
+        "[00:01:17]: !!!! Your Server Will Not Start !!!!",
+        "[00:01:17]: No auth token could be found.",
+    ]
+    assert contains_startup_failure(lines)
+    report = diagnose_server_failure(shard_name="Caves", exit_code=None, world_ready=False, log_lines=lines)
+    assert report is not None and report.category == "klei_unreachable", report
+    assert any("login.kleientertainment.com" in line for line in report.evidence), report
+
+
 def test_console_player_commands_run_in_lua() -> None:
     """控制台"在线玩家"/暂停的命令在 Lua 5.1 里实际执行：输出能解析，复活/杀死只作用于对应状态的玩家。"""
     from lupa.lua51 import LuaRuntime

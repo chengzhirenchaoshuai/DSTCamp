@@ -18,6 +18,11 @@ _TOKEN_INVALID_MARKERS = (
     "e_invalid_token",
     "no auth token could be found",
 )
+# 开服时连不上 Klei 登录服务器：账号请求的 HTTP 状态是 0（没拿到任何响应），之后同样打印 Your Server Will Not Start
+# 和 No auth token could be found，但令牌本身没问题。11-25 用户日志：洞穴连开三次都是
+# CURL ERROR: (login.kleientertainment.com) … Timed out → [0] Account Failed (6): ""，同一令牌的主世界照常上线。
+# 令牌真被 Klei 拒绝时状态是 200、带错误码：[200] Account Failed (6): "E_INVALID_TOKEN"
+_KLEI_UNREACHABLE_RE = re.compile(r"\[0\] account failed", re.IGNORECASE)
 _RUNTIME_LUA_ERROR_MARKERS = (
     "lua error",
     "stack traceback",
@@ -382,6 +387,15 @@ def diagnose_server_failure(
             _tips("token_conflict"),
             _evidence(lines, ("e_rowid_exist", "master server broadcast error")),
             (),
+        )
+
+    # 网络原因的"找不到令牌"要在令牌无效之前认出来，否则会让用户去官网重新生成一个没问题的令牌
+    if ("your server will not start" in lower and _KLEI_UNREACHABLE_RE.search(lower)
+            and "e_invalid_token" not in lower):
+        return DiagnosticReport(
+            "klei_unreachable", t("diag.klei_unreachable.title"),
+            t("diag.klei_unreachable.summary", shard=shard_name), _tips("klei_unreachable"),
+            _evidence(lines, ("curl error: (login.", "account failed")), (),
         )
 
     if any(marker in lower for marker in _TOKEN_INVALID_MARKERS):
