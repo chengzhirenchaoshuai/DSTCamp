@@ -14,6 +14,7 @@ from pathlib import Path
 from dstools.features.mod.manager import load_mod_overrides
 from dstools.i18n import t
 from dstools.models import Cluster
+from dstools.shared.recycle_bin import move_to_recycle_bin
 
 
 def get_enabled_mod_ids(cluster: Cluster) -> list[str]:
@@ -244,9 +245,10 @@ def detach_mod_sync_junction(
 
 
 def _ensure_junction(target: Path, src: Path, *, allow_replace: bool = False) -> bool:
-    """永久删除已有目标并建立指向 ``src`` 的目录联接，返回是否删除过已有目标。
+    """移除已有目标并建立指向 ``src`` 的目录联接，返回是否移除过已有目标。
 
-    界面须在调用前展示精确路径并确认；不做长期备份，建链失败不会自动恢复原目标。
+    界面须在调用前展示精确路径并确认。文件夹和文件移到回收站（里面可能有用户自己的本地 Mod），
+    联接/链接只删链接本身；建链失败不会自动恢复原目标。
     """
     target = Path(target)
     src = Path(src)
@@ -267,12 +269,10 @@ def _ensure_junction(target: Path, src: Path, *, allow_replace: bool = False) ->
         try:
             if os.path.isjunction(target):
                 os.rmdir(target)
-            elif os.path.islink(target) or target.is_file():
+            elif os.path.islink(target):
                 target.unlink()
-            elif target.is_dir():
-                shutil.rmtree(target)
             else:
-                target.unlink()
+                move_to_recycle_bin(target)
             replaced = True
         except OSError as exc:
             raise ModSyncOperationError(

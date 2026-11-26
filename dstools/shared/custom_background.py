@@ -43,7 +43,7 @@ def _clear_saved_file() -> None:
     d = _data_dir()
     if not d.exists():
         return
-    for f in d.iterdir():
+    for f in d.glob("custom_bg.*"):  # 只删本模块写入的背景图
         try:
             f.unlink()
         except OSError:

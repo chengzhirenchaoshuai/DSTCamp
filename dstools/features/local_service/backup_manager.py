@@ -9,6 +9,7 @@ cluster_token.txt/adminlist.txt/blocklist.txt；跳过游戏自己滚动维护�
 """
 
 import os
+import re
 import shutil
 import time
 import tempfile
@@ -133,8 +134,11 @@ def restore_backup(cluster_path: Path, backup_zip: Path) -> None:
 
 
 def _prune_old_backups(dest_dir: Path) -> None:
-    """自动备份超过保留份数时删最旧的；带 _keep 标记的手动类备份不计数也不删。"""
-    backups = sorted((p for p in dest_dir.glob("*.zip") if not is_kept_backup(p)), key=lambda p: p.name, reverse=True)
+    """自动备份超过保留份数时删最旧的；带 _keep 标记的手动类备份不计数也不删。
+    只认 create_backup 生成的文件名（<存档名>_<日期>_<时间>[_序号].zip），用户自己放进来的 zip 不动。"""
+    auto_name = re.compile(re.escape(dest_dir.name) + r"_\d{8}_\d{6}(?:_\d+)?\.zip", re.IGNORECASE)
+    backups = sorted((p for p in dest_dir.glob("*.zip") if auto_name.fullmatch(p.name)),
+                     key=lambda p: p.name, reverse=True)
     for old in backups[get_backup_retention():]:
         old.unlink()
 

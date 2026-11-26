@@ -640,9 +640,6 @@ def _deploy_one(archive: Path, target: Path) -> bool:
             target.rename(backup)
             moved_old = True
         stage.rename(target)
-        if moved_old:
-            shutil.rmtree(backup)
-        return True
     except Exception:
         if os.path.lexists(target) and moved_old and os.path.lexists(backup):
             shutil.rmtree(target, ignore_errors=True)
@@ -651,7 +648,21 @@ def _deploy_one(archive: Path, target: Path) -> bool:
         raise
     finally:
         if stage.exists():
-            shutil.rmtree(stage, ignore_errors=True)
+            _discard_sibling(stage)
+    # 新目录已生效，旧副本只是回滚保护：删不干净（文件被占用等）也不能回滚，
+    # 否则会删掉新目录、把删了一半的旧副本改回原名
+    if moved_old:
+        _discard_sibling(backup)
+    return True
+
+
+def _discard_sibling(path: Path) -> None:
+    """尽力删除 mods 目录里的临时/备份副本；先删 modinfo.lua，删不干净的残留也不会被游戏当成 Mod 加载。"""
+    try:
+        (path / "modinfo.lua").unlink(missing_ok=True)
+    except OSError:
+        pass
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def deploy_legacy_package(

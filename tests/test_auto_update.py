@@ -319,6 +319,7 @@ def test_helper_migrates_over_existing_standard_exe() -> None:
             "-TargetBackupExe", str(root / "DSTCamp.exe.old"),
         ], check=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
         assert not (root / "apply_update.log").exists()
+        assert not (root / "data" / "apply_update.log").exists()
         assert target.read_bytes() == expected[staged]
         assert (root / "DSTCamp.exe.old").read_bytes() == expected[target]
         assert (root / "DSTCamp-1.6.3.exe.old").read_bytes() == expected[current]
@@ -350,7 +351,36 @@ def test_helper_retries_while_old_exe_is_still_in_use() -> None:
             "-TargetBackupExe", str(root / "DSTCamp.exe.old"),
         ], check=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
         assert not (root / "apply_update.log").exists()
+        assert not (root / "data" / "apply_update.log").exists()
         assert current.read_bytes() == expected and not staged.exists()
+        time.sleep(1)  # 等拉起的进程退出再删临时目录
+
+
+def test_helper_failure_log_goes_to_update_dir() -> None:
+    """替换失败时日志写进助手脚本所在的 data/updates，不写 EXE 所在目录；重启后的程序从那里读出。"""
+    system32 = Path(r"C:\Windows\System32")
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        current = root / auto_update.STANDARD_EXE_NAME
+        shutil.copy(system32 / "hostname.exe", current)
+        finished = subprocess.Popen(["cmd", "/c", "exit"], creationflags=subprocess.CREATE_NO_WINDOW)
+        finished.wait()
+        with patch.object(auto_update, "data_dir", return_value=root / "data"):
+            script = auto_update._helper_script()
+        subprocess.run([
+            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+            "-ParentPid", str(finished.pid), "-CurrentExe", str(current),
+            "-NewExe", str(root / ".DSTCamp.update-1.exe"),  # 不存在：移动新版时失败并回滚
+            "-TargetExe", str(current), "-BackupExe", str(root / "DSTCamp.exe.old"),
+            "-TargetBackupExe", str(root / "DSTCamp.exe.old"),
+        ], check=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+        assert not (root / "apply_update.log").exists()
+        assert current.is_file() and not (root / "DSTCamp.exe.old").exists()
+        with patch.object(auto_update.sys, "frozen", True, create=True), patch.object(
+            auto_update, "data_dir", return_value=root / "data"
+        ):
+            assert auto_update.take_update_failure_log()
+        assert not (root / "data" / "apply_update.log").exists()
         time.sleep(1)  # 等拉起的进程退出再删临时目录
 
 
@@ -376,7 +406,9 @@ def test_cleanup_removes_known_stale_artifacts() -> None:
         # 上一次失败更新留下的隐藏 staged 文件——用跟"当前文件名"不同的
         # stem 生成，模拟用户在两次更新之间改过名字的场景。
         (install_dir / ".我的旧名字.update-4321.exe").write_bytes(b"stale")
-        (install_dir / "apply_update.log").write_text("失败原因", encoding="utf-8")
+        # EXE 同目录的同名日志不是本程序的（失败日志写在 data/updates 里）
+        other_log = install_dir / "apply_update.log"
+        other_log.write_text("别的程序的日志", encoding="utf-8")
         keep_file = install_dir / "readme.txt"
         keep_file.write_text("keep", encoding="utf-8")
         # EXE 放在盘符根目录等公共位置时，别的程序的备份和 tools 目录都不能动
@@ -390,6 +422,7 @@ def test_cleanup_removes_known_stale_artifacts() -> None:
         (updates_dir / "1.3.6").mkdir(parents=True)
         (updates_dir / "1.3.6" / "DSTCamp-1.3.6.exe").write_bytes(b"stale-download")
         updates_dir.joinpath("apply_update.ps1").write_text("script", encoding="utf-8")
+        updates_dir.joinpath("apply_update.log").write_text("失败原因", encoding="utf-8")
         # 比当前版本新的下载留给下次复用，半截文件留着续传
         newer = updates_dir / "999.0.0"
         newer.mkdir()
@@ -403,7 +436,8 @@ def test_cleanup_removes_known_stale_artifacts() -> None:
 
         assert not (install_dir / "DSTCamp-1.3.7.exe.old").exists()
         assert not (install_dir / ".我的旧名字.update-4321.exe").exists()
-        assert not (install_dir / "apply_update.log").exists()
+        assert other_log.exists()
+        assert not updates_dir.joinpath("apply_update.log").exists()
         assert keep_file.exists()
         assert other_backup.exists()
         assert other_tools.exists()

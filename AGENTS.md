@@ -34,7 +34,7 @@ reference/            开发核对资料（含 dev_scripts/、old_releases/）�
 build/、release/      可重建的构建中间产物与发布产物，不进 Git
 ```
 
-运行时目录 `%APPDATA%/DSTCamp/`：`settings.json`；`cache/` 可重建（可改位置，须纯 ASCII）；`data/` 需保留的数据；`security/` SSH 密钥、WireGuard/Mihomo 配置与 OAuth 令牌。新增目录时按此分类并更新 `resource_paths.py` 顶部清单。
+运行时目录 `%APPDATA%/DSTCamp/`：`settings.json`；`cache/` 可重建（可改位置，须纯 ASCII）；`data/` 需保留的数据；`security/` SSH 密钥、WireGuard/Mihomo 配置与 OAuth 令牌。新增目录时按此分类并更新 `resource_paths.py` 顶部清单，缓存子目录还要登记到 `CACHE_SUBDIRS`（「清理缓存目录」只删登记过的）。删除操作只针对本程序自己生成、能按名字或标记精确认出的文件，不按通配或"目录里全部"删：EXE 和缓存目录可能放在盘符根目录等公共位置。
 
 ## 常用命令
 

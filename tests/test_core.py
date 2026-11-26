@@ -937,12 +937,25 @@ def test_app_settings_toggles():
         assert get_cache_dir_override() is None
         assert cache_root_dir() == root / "cache"
 
-        legacy_background = cache_dir("background")
+        legacy_background = cache_root_dir() / "background"
         legacy_background.mkdir(parents=True)
         (legacy_background / "custom.png").write_bytes(b"image")
         migrated = data_dir("background", legacy_cache_name="background")
         assert migrated == root / "data" / "background"
         assert (migrated / "custom.png").read_bytes() == b"image"
+        # 自定义缓存目录（可能是盘符根目录）里的同名文件夹不是旧版留下的，不能搬走
+        set_cache_dir_override(custom_cache)
+        foreign = custom_cache / "frpc_config"
+        foreign.mkdir(parents=True)
+        assert data_dir("frpc_config", legacy_cache_name="frpc_config") == root / "data" / "frpc_config"
+        assert foreign.is_dir() and not (root / "data" / "frpc_config").exists()
+        set_cache_dir_override(None)
+        try:
+            cache_dir("not_registered")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("未登记的缓存子目录应拒绝")
         assert security_dir("frp_selfhost") == root / "security" / "frp_selfhost"
 
         bundled_tool = root / "bundle" / "tools" / "frpc" / "frpc.exe"
@@ -1053,7 +1066,19 @@ def test_mod_sync_junction():
         plan_mod_sync,
     )
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # 被替换的文件夹/文件应移到回收站；测试里记录下来再真删，不往真实回收站里放东西
+    recycled = []
+
+    def fake_recycle(path):
+        recycled.append(Path(path))
+        if Path(path).is_dir():
+            shutil.rmtree(path)
+        else:
+            Path(path).unlink()
+
+    with tempfile.TemporaryDirectory() as tmp, patch(
+        "dstools.features.mod.sync.move_to_recycle_bin", side_effect=fake_recycle
+    ):
         src = Path(tmp) / "client_mods" / "workshop-123"
         target = Path(tmp) / "server_mods" / "workshop-123"
         src.mkdir(parents=True)
@@ -1068,7 +1093,7 @@ def test_mod_sync_junction():
         _ensure_junction(target, src)
         assert os.path.isjunction(target), "重复调用应该保持联接，不报错"
 
-        # 已有真实文件夹按新规则直接删除，不再保留长期备份。
+        # 已有真实文件夹移到回收站，不再保留长期备份。
         real_target = Path(tmp) / "server_mods" / "workshop-456"
         real_src = Path(tmp) / "client_mods" / "workshop-456"
         real_src.mkdir(parents=True)
@@ -1087,6 +1112,7 @@ def test_mod_sync_junction():
             "删除 target 这个联接本身，绝不能牵连删除它指向的 src 真实内容"
         )
         assert replaced is True
+        assert recycled == [real_target]
         assert not list(real_target.parent.glob("mods.dstcamp-backup-*"))
 
         # 用户确认的是永久删除；因此 mklink 后续失败时不会偷偷恢复或创建
@@ -2297,11 +2323,14 @@ def test_backup_manager_prune_retention_boundary():
                 (dest / f"Cluster_2_2026010{i}_000000.zip").write_bytes(b"")
             kept = dest / "Cluster_2_20250101_000000_keep.zip"  # 比所有自动备份都旧的手动类备份
             kept.write_bytes(b"")
+            foreign = dest / "00_用户自己的资料.zip"  # 不是本程序生成的命名，按名字排最旧也不能删
+            foreign.write_bytes(b"")
 
             newest = create_backup(cluster)  # 第 8 份，真实时间戳，必然是最新的
             backups = list_backups(cluster)
-            assert len(backups) == 6, f"应该保留 5 份自动备份加 1 份手动类备份，实际 {len(backups)} 份"
+            assert len(backups) == 7, f"应该保留 5 份自动备份、1 份手动类备份和用户的 zip，实际 {len(backups)} 份"
             assert kept in backups, "带 _keep 标记的备份不参与自动清理"
+            assert foreign in backups, "不是自动备份命名的 zip 不能被清理"
 
             assert backups[0] == newest, "最新的一份必须排在最前面"
             assert backups == sorted(backups, key=lambda p: p.name, reverse=True)

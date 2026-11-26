@@ -78,13 +78,11 @@ def exe_dir() -> Path:
 
 
 def tool_binary_dir() -> Path:
-    """返回第三方工具目录，兼容内嵌版和 ZIP 外置版。"""
+    """返回随包第三方工具目录：冻结版在 onefile 临时展开目录里，源码运行时在仓库根目录。
+
+    不读 EXE 同级的 tools/：EXE 可能放在盘符根目录等公共位置，同级的 tools 是别的程序的。"""
     if getattr(sys, "frozen", False):
-        # 单文件版优先取临时展开目录；ZIP 版回退到 exe 同级目录。
-        bundled_tools = Path(sys._MEIPASS) / "tools"
-        if bundled_tools.is_dir():
-            return bundled_tools
-        return exe_dir() / "tools"
+        return Path(sys._MEIPASS) / "tools"
     return Path(__file__).parent.parent.parent / "tools"
 
 
@@ -152,17 +150,19 @@ def default_cache_root_dir() -> Path:
     return get_settings_dir() / "cache"
 
 
+def _legacy_cache_root_dir() -> Path:
+    """不含用户自定义位置的缓存根目录（默认位置，或旧版“缓存跟随 EXE”的 EXE 同级 cache）。"""
+    from dstools.shared.app_settings import get_cache_use_exe_dir
+
+    return exe_dir() / "cache" if get_cache_use_exe_dir() else default_cache_root_dir()
+
+
 def cache_root_dir() -> Path:
     """返回缓存根目录，并兼容旧版“缓存跟随 EXE”设置。"""
-    from dstools.shared.app_settings import (
-        get_cache_dir_override,
-        get_cache_use_exe_dir,
-    )
+    from dstools.shared.app_settings import get_cache_dir_override
 
     override = get_cache_dir_override()
-    if override is not None:
-        return override
-    return exe_dir() / "cache" if get_cache_use_exe_dir() else default_cache_root_dir()
+    return override if override is not None else _legacy_cache_root_dir()
 
 
 def path_is_ascii(path: str | Path) -> bool:
@@ -195,8 +195,20 @@ def validate_cache_root(path: str | Path) -> str | None:
     return None
 
 
+# 缓存根目录下本程序使用的全部子目录。缓存根目录可由用户改到任意位置（甚至盘符根目录），
+# 「清理缓存目录」只删这里登记的子目录；新增缓存子目录须先登记，否则 cache_dir() 报错。
+CACHE_SUBDIRS = frozenset({
+    "character_icons", "connection_log", "console_log", "controller_glyphs", "frpc_log",
+    "legacy_v1_read", "lobby_accel_mihomo", "mod_chs_translation", "mod_full_resolve",
+    "mod_icons", "mod_versions", "modinfo_static", "runtime", "steamcmd", "vcredist",
+    "world_mod_icons",
+})
+
+
 def cache_dir(name: str) -> Path:
-    """返回具名缓存子目录，但不主动创建。"""
+    """返回具名缓存子目录，但不主动创建；名字须已登记在 CACHE_SUBDIRS。"""
+    if name not in CACHE_SUBDIRS:
+        raise ValueError(f"未登记的缓存子目录：{name}")
     return cache_root_dir() / name
 
 
@@ -204,7 +216,8 @@ def _persistent_dir(kind: str, name: str, legacy_cache_name: str | None) -> Path
     target = get_settings_dir() / kind / name
     if not legacy_cache_name or target.exists():
         return target
-    legacy = cache_root_dir() / legacy_cache_name
+    # 只从 1.1.0 之前的旧缓存位置迁移：自定义缓存目录是之后才有的功能，那里同名的文件夹不是本程序的
+    legacy = _legacy_cache_root_dir() / legacy_cache_name
     if not legacy.exists():
         return target
     try:

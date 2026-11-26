@@ -17,9 +17,7 @@ def default_save_bundle_output_dir() -> Path:
 
 def _is_link_or_junction(path: Path) -> bool:
     """链接可能指向存档目录外，完整导出时不跟随它们。"""
-    return path.is_symlink() or (
-        hasattr(os.path, "isjunction") and os.path.isjunction(path)
-    )
+    return path.is_symlink() or os.path.isjunction(path)
 
 
 def _raise_walk_error(error: OSError) -> None:

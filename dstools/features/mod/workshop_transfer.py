@@ -111,6 +111,10 @@ def copy_workshop_items(source_content: Path, target_content: Path, workshop_ids
     target_content.mkdir(parents=True, exist_ok=True)
     copied, failures = [], []
     for wid in dict.fromkeys(str(w) for w in workshop_ids):
+        if not (wid.isascii() and wid.isdigit()):
+            # 会拼进路径并在失败时整目录删除，只接受纯数字 ID
+            failures.append((wid, "工坊 ID 无效"))
+            continue
         if on_item is not None:
             on_item(wid)
         target = target_content / wid

@@ -1208,7 +1208,7 @@ class SteamWorkshopSession:
             result.error = "Steam 返回的 Mod 安装目录不符合 Workshop 路径，已停止重新下载"
             return False
         try:
-            if getattr(os.path, "isjunction", lambda _path: False)(path):
+            if os.path.isjunction(path):
                 os.rmdir(path)
             elif path.is_symlink():
                 path.unlink()

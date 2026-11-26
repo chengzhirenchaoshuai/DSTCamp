@@ -33,9 +33,10 @@ STANDARD_EXE_NAME = "DSTCamp.exe"
 _LEGACY_VERSIONED_EXE_NAME_RE = re.compile(
     r"^DSTCamp-\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?\.exe$", re.IGNORECASE
 )
-# 隐藏 staged 文件的命名规律，launch_update_helper() 与 cleanup_stale_update_artifacts() 共用
-_HIDDEN_STAGED_GLOB = ".*.update-*.exe"
-# 与 _helper_script() 里 PS1 模板内 $LogFile 的文件名保持一致。
+# 隐藏 staged 文件的命名规律（_hidden_staged_name），cleanup_stale_update_artifacts() 按它精确匹配
+_HIDDEN_STAGED_RE = re.compile(r"^\..+\.update-\d+\.exe$", re.IGNORECASE)
+# 与 _helper_script() 里 PS1 模板内 $LogFile 的文件名保持一致；放在助手脚本所在的
+# data/updates 目录，不写进 EXE 所在目录（那里可能是盘符根目录等公共位置）。
 _UPDATE_LOG_NAME = "apply_update.log"
 # 与 _helper_script() 里的路径保持一致；清理下载缓存目录时需要跳过它。
 _HELPER_SCRIPT_NAME = "apply_update.ps1"
@@ -228,7 +229,7 @@ def _helper_script() -> Path:
     [string]$TargetBackupExe
 )
 $ErrorActionPreference = 'Stop'
-$LogFile = Join-Path (Split-Path -Parent $NewExe) 'apply_update.log'
+$LogFile = Join-Path $PSScriptRoot 'apply_update.log'
 # 坑：旧进程恰在本脚本启动时退出、而 onefile 启动器还握着它的句柄时，Wait-Process 抛出
 # "进程已退出，因此无法处理请求"（InvalidOperationException）。这类异常不受 -ErrorAction 控制，
 # 在 Stop 下会直接终止整个脚本：不替换、不写日志、也不重启（1.7.2 测试实测）。所以包在 try 里，出错即视为已退出。
@@ -333,7 +334,7 @@ def take_update_failure_log() -> str:
     """读出并删除上次更新助手留下的失败日志；没有则返回空字符串。须在清理残留前调用。"""
     if not getattr(sys, "frozen", False):
         return ""
-    log = Path(sys.executable).resolve().parent / _UPDATE_LOG_NAME
+    log = data_dir("updates") / _UPDATE_LOG_NAME
     try:
         text = log.read_text(encoding="utf-8-sig", errors="replace").strip()
     except OSError:
@@ -399,7 +400,7 @@ def _safe_rmtree(path: Path) -> None:
 
 
 def cleanup_stale_update_artifacts() -> None:
-    """尽力清理历史更新遗留的 ``*.exe.old``、staged 文件、失败日志和过时的下载，单个失败不影响启动。
+    """尽力清理历史更新遗留的 ``*.exe.old``、staged 文件和 data/updates 里的失败日志与过时下载，单个失败不影响启动。
 
     能正常启动到这里就说明这些都已是残留，不依赖持久化的更新状态。
     比当前版本新的下载目录整个保留：下完的直接复用，半截的 ``.part`` 下次续传。
@@ -417,9 +418,9 @@ def cleanup_stale_update_artifacts() -> None:
                 _LEGACY_VERSIONED_EXE_NAME_RE.fullmatch(exe_name)
             ):
                 _safe_unlink(stale)
-        for stale in install_dir.glob(_HIDDEN_STAGED_GLOB):
-            _safe_unlink(stale)
-        _safe_unlink(install_dir / _UPDATE_LOG_NAME)
+        for stale in install_dir.glob(".*.update-*.exe"):
+            if _HIDDEN_STAGED_RE.fullmatch(stale.name):
+                _safe_unlink(stale)
     except OSError:
         pass
     try:

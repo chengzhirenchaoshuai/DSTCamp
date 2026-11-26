@@ -891,23 +891,27 @@ class MainWindow(QWidget):
         self.ctx.refresh_env()
 
     def clear_cache_dir(self) -> None:
-        """"文件"菜单"清理缓存目录"——只清缓存根目录下的内容，根目录本身留着。
-        图标/解析/翻译缓存是按需重建的，清完不需要重启。"""
+        """"文件"菜单"清理缓存目录"——只删本程序登记的缓存子目录，缓存根目录里的其他内容一律不动
+        （缓存目录可以被改到任意位置）。图标/解析/翻译缓存是按需重建的，清完不需要重启。"""
+        import os
         import shutil
 
-        from dstools.shared.resource_paths import cache_root_dir
+        from dstools.shared.resource_paths import CACHE_SUBDIRS, cache_root_dir
 
         target = cache_root_dir()
-        if not target.is_dir() or not any(target.iterdir()):
+        items = sorted(target / name for name in CACHE_SUBDIRS if os.path.lexists(target / name))
+        if not items:
             dialogs.show_info(self, t("app.clear_cache_dir"), t("settings.cache_dir_clear_empty"))
             return
         if not dialogs.ask_yes_no(self, t("app.clear_cache_dir"),
                                   t("settings.cache_dir_clear_confirm", path=str(target))):
             return
         failed = []
-        for item in target.iterdir():
+        for item in items:
             try:
-                if item.is_dir() and not item.is_symlink():
+                if os.path.isjunction(item):
+                    os.rmdir(item)  # 联接只删联接本身
+                elif item.is_dir() and not item.is_symlink():
                     shutil.rmtree(item)
                 else:
                     item.unlink()

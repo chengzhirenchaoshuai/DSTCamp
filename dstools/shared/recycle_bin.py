@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from ctypes import wintypes
 from pathlib import Path
 
@@ -28,8 +29,12 @@ class _SHFILEOPSTRUCTW(ctypes.Structure):
 
 
 def move_to_recycle_bin(path: Path) -> None:
-    """把 path 整体移到回收站，失败或用户取消时抛 OSError；链接须由调用方先排除，用 os.rmdir/unlink 只删链接。"""
-    target = Path(path).resolve()
+    """把 path 整体移到回收站，失败或用户取消时抛 OSError。
+
+    链接一律拒绝：解析后会变成链接目标，把别处的真实内容移走；调用方应用 os.rmdir/unlink 只删链接。"""
+    target = Path(os.path.abspath(path))  # 规范化成完整路径但不跟随链接（resolve 会跟随）
+    if target.is_symlink() or os.path.isjunction(target):
+        raise OSError(f"拒绝把链接移到回收站：{target}")
     if not target.exists():
         raise FileNotFoundError(f"路径不存在：{target}")
     operation = _SHFILEOPSTRUCTW()

@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/chengzhirenchaoshuai/DSTCamp/releases"><img alt="Release" src="https://img.shields.io/github/v/release/chengzhirenchaoshuai/DSTCamp?color=orange"></a>
-  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-blue">
   <img alt="UI" src="https://img.shields.io/badge/UI-Qt%20(PySide6)-41cd52">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-informational">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">

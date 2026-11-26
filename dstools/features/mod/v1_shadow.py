@@ -23,7 +23,7 @@ class ShadowedMod:
 
 
 def _is_link(path: Path) -> bool:
-    return path.is_symlink() or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
+    return path.is_symlink() or os.path.isjunction(path)
 
 
 def _name_of(folder: Path) -> str:

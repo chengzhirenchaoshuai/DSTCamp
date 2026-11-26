@@ -90,9 +90,7 @@ def delete_workshop_residual(
             raise ValueError("残留目录不在标准 Workshop 路径内")
     except OSError as exc:
         raise ValueError(f"无法确认残留目录：{exc}") from exc
-    if candidate.is_symlink() or (
-        hasattr(os.path, "isjunction") and os.path.isjunction(candidate)
-    ):
+    if candidate.is_symlink() or os.path.isjunction(candidate):
         raise ValueError("拒绝处理链接或目录联接")
     if not candidate.is_dir():
         raise ValueError("残留目录不存在")
@@ -148,9 +146,7 @@ def delete_legacy_runtime_residual(
         raise ValueError("V1 残留目录不在标准 mods 路径内")
     if candidate.name != f"workshop-{text_id}":
         raise ValueError("V1 残留目录名称不符合规范")
-    if candidate.is_symlink() or (
-        hasattr(os.path, "isjunction") and os.path.isjunction(candidate)
-    ):
+    if candidate.is_symlink() or os.path.isjunction(candidate):
         raise ValueError("拒绝处理链接或目录联接")
     if not candidate.is_dir() or not (candidate / "modinfo.lua").is_file():
         raise ValueError("V1 残留目录不存在或内容不完整")
@@ -244,7 +240,7 @@ def force_remove_other_account_items(
                 continue
             candidate = root / wid
             try:
-                if candidate.is_symlink() or (hasattr(os.path, "isjunction") and os.path.isjunction(candidate)):
+                if candidate.is_symlink() or os.path.isjunction(candidate):
                     raise ValueError("拒绝处理链接或目录联接")
                 if candidate.exists():
                     if not candidate.is_dir():
