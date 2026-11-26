@@ -204,6 +204,10 @@ CACHE_SUBDIRS = frozenset({
     "world_mod_icons",
 })
 
+# 「清理缓存目录」跳过的子目录：steamcmd 里有 SteamCMD 通道专服实际使用的工坊 Mod（可达数 GB）
+# 和登录状态，删了要重新下载、重新登录；它的 Mod 另由「SteamCMD Mod 清理」按条目删除。
+CACHE_CLEAR_SKIPPED = frozenset({"steamcmd"})
+
 
 def cache_dir(name: str) -> Path:
     """返回具名缓存子目录，但不主动创建；名字须已登记在 CACHE_SUBDIRS。"""
