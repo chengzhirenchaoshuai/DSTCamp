@@ -238,7 +238,7 @@ def _tools_package_hint() -> str:
     """本机和服务器都下载不到 frps 时的出路：网盘工具包放进「下载」文件夹，重新部署时自动导入。"""
     from dstools.shared import tool_store
 
-    return (f"如果服务器也下载失败：从蓝奏云（{tool_store.TOOLS_LANZOU_URL}，密码 {tool_store.TOOLS_LANZOU_PASSWORD}）"
+    return (f"如果服务器也下载失败：从蓝奏云（{tool_store.TOOLS_LANZOU_URL}，提取码 {tool_store.TOOLS_LANZOU_PASSWORD}）"
             f"下载工具包 {tool_store.TOOLS_PACKAGE_NAME}，放在「下载」文件夹里后重新部署，程序会自动导入，"
             f"不再需要服务器访问 GitHub。")
 

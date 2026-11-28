@@ -748,7 +748,7 @@ class ManualUpdateDialog(dialogs.Dialog):
         links = (
             (t("about.manual_update_baidu"), "https://pan.baidu.com/s/1hnyarybAGHjOsCCyUNlsmw?pwd=6666", None),
             (t("about.manual_update_quark"), "https://pan.quark.cn/s/80446b171dc7?pwd=SmW6", None),
-            (t("about.manual_update_lanzou"), "https://wwblt.lanzout.com/b01euospla", "45w9"),
+            (t("about.manual_update_lanzou"), "https://wwblt.lanzout.com/b01euospla", "6666"),
             (t("about.manual_update_tools", password=tool_store.TOOLS_LANZOU_PASSWORD),
              tool_store.TOOLS_LANZOU_URL, tool_store.TOOLS_LANZOU_PASSWORD),
         )
