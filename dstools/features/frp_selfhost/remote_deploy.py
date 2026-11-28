@@ -240,22 +240,26 @@ def _cached_frps_binary_path(arch: str) -> str:
     return f"/opt/dstcamp-frp/.frps_bin_cache_v{deploy.FRP_VERSION}_{arch}"
 
 
-def _maybe_upload_frps_binary(client: paramiko.SSHClient, on_log: LogFn) -> str | None:
+def _run_remote(client: paramiko.SSHClient, command: str, timeout: float = 30) -> tuple[int, str]:
+    """执行一条远程命令，返回 (退出码, stderr 文本)。"""
+    _stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+    exit_code = stdout.channel.recv_exit_status()
+    return exit_code, stderr.read().decode("utf-8", errors="replace").strip()
+
+
+def _maybe_upload_frps_binary(client: paramiko.SSHClient, on_log: LogFn, sudo: str) -> str | None:
     """架构匹配本机 frps 时上传到远程固定缓存路径并返回该路径，否则返回 None。
 
-    已存在缓存（``test -f``）则跳过上传；先传到临时名再 posix_rename，避免断线留下半成品
-    被误判为缓存。"""
+    ``sudo`` 是命令前缀（root 为空，免密 sudo 账号为 ``"sudo -n "``）。SFTP 只能以登录账号身份写文件，
+    ubuntu 等普通账号写不进 /opt，所以先传到 /tmp，再用 sudo 复制进缓存目录；先复制成临时名再改名，
+    避免断线留下半成品被误判为缓存。已存在缓存（``test -f``）则跳过上传。"""
     arch = _detect_remote_arch(client)
     if arch not in _BUNDLED_ARCHS:
         on_log(f"服务器架构（{arch or '未知'}）没有对应的本地打包二进制，改为让服务器自己下载。")
         return None
     remote_path = _cached_frps_binary_path(arch)
-    _stdin, stdout, _stderr = client.exec_command("mkdir -p /opt/dstcamp-frp", timeout=10)
-    stdout.channel.recv_exit_status()
-    _stdin, stdout, _stderr = client.exec_command(f"test -f '{remote_path}' && echo EXISTS", timeout=10)
-    already_cached = stdout.read().decode("utf-8", errors="replace").strip() == "EXISTS"
-    stdout.channel.recv_exit_status()
-    if already_cached:
+    exit_code, _err = _run_remote(client, f"test -f '{remote_path}'", timeout=10)
+    if exit_code == 0:
         on_log(f"检测到服务器上已经缓存过 frps 程序本体（{arch}），跳过上传。")
         return remote_path
     xz_path = _local_frps_binary_xz(arch, on_log)
@@ -264,16 +268,33 @@ def _maybe_upload_frps_binary(client: paramiko.SSHClient, on_log: LogFn) -> str 
 
     on_log(f"正在上传 frps 程序本体（{arch}，避免服务器自己访问 GitHub）...")
     import secrets
-    tmp_path = f"/opt/dstcamp-frp/.frps_bin_upload_{secrets.token_hex(4)}"
-    # 用 putfo 直接上传解压出的字节流：落盘到本地临时文件同样会被杀软按 frp 内容特征查杀
-    with lzma.open(xz_path, "rb") as fsrc:
-        sftp = client.open_sftp()
+
+    import paramiko
+    token = secrets.token_hex(4)
+    upload_path = f"/tmp/.dstcamp_frps_upload_{token}"
+    partial_path = f"{remote_path}.part_{token}"
+    try:
+        # 用 putfo 直接上传解压出的字节流：落盘到本地临时文件同样会被杀软按 frp 内容特征查杀
+        with lzma.open(xz_path, "rb") as fsrc:
+            sftp = client.open_sftp()
+            try:
+                sftp.putfo(fsrc, upload_path)
+            finally:
+                sftp.close()
+        # /tmp 可能是独立的 tmpfs，跨文件系统 mv 不是原子操作，所以先 cp 成临时名再同目录改名
+        exit_code, err = _run_remote(
+            client,
+            f"{sudo}mkdir -p /opt/dstcamp-frp && {sudo}cp '{upload_path}' '{partial_path}'"
+            f" && {sudo}chmod 755 '{partial_path}' && {sudo}mv -f '{partial_path}' '{remote_path}'",
+            timeout=60)
+        if exit_code != 0:
+            _run_remote(client, f"{sudo}rm -f '{partial_path}'", timeout=10)
+            raise OSError(f"放入缓存目录失败（退出码 {exit_code}）：{err or '无错误输出'}")
+    finally:
         try:
-            sftp.putfo(fsrc, tmp_path)
-            sftp.chmod(tmp_path, 0o755)
-            sftp.posix_rename(tmp_path, remote_path)
-        finally:
-            sftp.close()
+            _run_remote(client, f"rm -f '{upload_path}'", timeout=10)
+        except (paramiko.SSHException, OSError):
+            pass  # 清理失败不影响结果，/tmp 会被系统定期清理
     return remote_path
 
 
@@ -347,7 +368,8 @@ def deploy_via_ssh(
                 "「<用户名> ALL=(ALL) NOPASSWD:ALL」后重试。")
 
         try:
-            remote_frps_path = _maybe_upload_frps_binary(client, on_log)
+            remote_frps_path = _maybe_upload_frps_binary(
+                client, on_log, "" if permission == "root" else "sudo -n ")
         except (paramiko.SSHException, OSError) as e:
             # 上传二进制失败不算致命——退回脚本自己下载那条路径，只是
             # 记一句日志说明为什么退回，不中断整个部署。
