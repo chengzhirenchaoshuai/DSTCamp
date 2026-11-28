@@ -7,7 +7,7 @@ FRP_VERSION 须与 tools/ 里按需下载的 frpc、frps 版本一致：服务�
 import re
 import secrets
 
-FRP_VERSION = "0.71.1"
+FRP_VERSION = "0.72.0"
 
 DEFAULT_BIND_PORT = 7000
 

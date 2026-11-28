@@ -20,7 +20,7 @@ from pathlib import Path
 from dstools.shared.http_download import ProgressCallback, download_verified, matches
 from dstools.shared.resource_paths import data_dir
 
-TOOLS_RELEASE_TAG = "tools-2"
+TOOLS_RELEASE_TAG = "tools-3"
 TOOLS_PACKAGE_NAME = f"DSTCamp-{TOOLS_RELEASE_TAG}.zip"
 # 网盘工具包的蓝奏云单文件分享（与 TOOLS_RELEASE_TAG 一一对应，换工具版本时一起换）
 TOOLS_LANZOU_URL = "https://wwblt.lanzout.com/i6y4M4e1ippi"
@@ -42,12 +42,12 @@ class StoreTool:
 
 
 TOOLS = (
-    StoreTool("frp_selfhost/frpc.exe.xz", "frpc.exe.xz", 4860156,
-              "2e2808b3d75ad9dc3692592ef374d27997ed32311a83dd9f0f2959f3eb444a97"),
-    StoreTool("frp_selfhost/frps_linux_amd64.xz", "frps_linux_amd64.xz", 5768668,
-              "c41e118df89cf35c895a3b6649c02b072e03864a4c4f2751fbfe8198008fac10"),
-    StoreTool("frp_selfhost/frps_linux_arm64.xz", "frps_linux_arm64.xz", 4872256,
-              "96667fc7e2bed83e2d30490295c26a8517f3235c6d2806c2895821f34f5f60e7"),
+    StoreTool("frp_selfhost/frpc.exe.xz", "frpc.exe.xz", 4965496,
+              "0511bccba60b61098ca875458f89d7b033e650587efa7ab75f0a6b3072d9cd37"),
+    StoreTool("frp_selfhost/frps_linux_amd64.xz", "frps_linux_amd64.xz", 5941080,
+              "514507c6abcfed770ee802092c3052a3328ff4195361a73764d9cef215f163ce"),
+    StoreTool("frp_selfhost/frps_linux_arm64.xz", "frps_linux_arm64.xz", 5017100,
+              "5c43c9c75caf8f1dc36485f6bd378e55283af17814552109d921cf7c0841fa08"),
     StoreTool("frpc-sakura/sakura-frpc.exe.xz", "sakura-frpc.exe.xz", 4255628,
               "70c47f8afe6930aaafc886293dc3c9c45a48b0bb71eddbe93004c4694abf2b08"),
     StoreTool("vcredist/VC++ 2013 x86.exe", "vcredist_2013_x86.exe", 6510136,
