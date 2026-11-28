@@ -108,14 +108,30 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 
 `tests/_harness.py` runs every `test_*` function in definition order, so new tests need no registration. Real Windows GUI, Steam, frpc, and game behavior still require manual validation before release.
 
-## 2.0.0 changes
+## 2.0.1 changes
 
 ### ✨ Improvements
+
+- The frpc used by self-hosted nodes and Lolia, and the self-hosted frps, are upgraded to frp 0.72.0, fixing 100% CPU usage after a session closes, slow reconnection after a disconnect, and more.
+- When frp or other components fail to download automatically, the cloud-drive tools package in your Downloads folder is imported automatically; the download window now offers "Download from Cloud Drive" and "Import Tools Package…" directly and continues once imported, with no need to look for it under About -> Manual Update. Manual Update also gains a download link for the tools package.
+- The Lanzou extraction code in Manual Update is now 6666.
+
+### 🐞 Fixes
+
+- One-click deployment of a self-hosted frps with a non-root account such as ubuntu always failed to upload the frps binary (No such file), leaving the server to download it from GitHub itself, which often hangs on servers in mainland China.
+- When the server has SSH key login turned off, initial authentication was misreported as "the public key may not have been pushed correctly"; it now explains the cause and gives the commands to turn key login on.
+
+<details>
+<summary><strong>Earlier versions (1.3.5 ~ 2.0.0)</strong></summary>
+
+### 2.0.0
+
+#### ✨ Improvements
 
 - Crash diagnosis now also lists local Mods under "possibly related Mods".
 - Exported logs fold consecutive repeated lines in server logs, so very large logs (such as a Mod spamming the same line) are included instead of skipped.
 
-### 🐞 Fixes
+#### 🐞 Fixes
 
 - When the EXE was placed in a location such as the root of drive D, starting it deleted the whole tools folder next to it.
 - With the cache folder set to a shared location such as a drive root, "Clear Cache Directory" deleted other files, as well as Mods downloaded by SteamCMD and its login state; it now deletes only DSTCamp's own files, and replacing a server's mods folder with a link moves the original folder to the Recycle Bin.
@@ -123,9 +139,6 @@ python scripts/build_exe.py         # stage allowlisted resources in build/, wri
 - Failing to reach Klei's login server was misreported as "Invalid Server Token".
 - Local Mods whose folder names contain spaces were falsely reported as failed to load, and their names were shown incompletely.
 - Saving room settings, admins or the token in the new save wizard raised an error.
-
-<details>
-<summary><strong>Earlier versions (1.3.5 ~ 1.9.9)</strong></summary>
 
 ### 1.9.9
 
