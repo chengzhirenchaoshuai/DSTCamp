@@ -11,11 +11,13 @@ frp 系列以 .xz 原样存放、用时才由 runtime_tool_path() 解压：裸 e
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import threading
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from dstools.shared.http_download import ProgressCallback, download_verified, matches
 from dstools.shared.resource_paths import data_dir
@@ -76,18 +78,80 @@ def find_stored(relative: str) -> Path | None:
     return path if matches(path, tool.size, tool.sha256) else None
 
 
-def download_tool(relative: str, progress: ProgressCallback | None = None) -> Path:
-    """下载登记过的工具到 data/tools/，已有校验通过的副本直接返回。失败抛 OSError。"""
+def download_tool(relative: str, progress: ProgressCallback | None = None,
+                  on_imported: Callable[[Path], None] | None = None) -> Path:
+    """下载登记过的工具到 data/tools/，已有校验通过的副本直接返回。
+
+    网络下载失败时，再看「下载」文件夹里有没有当前版本的网盘工具包（用户从蓝奏云下完常常不知道要导入），
+    有就导入并回调 on_imported(工具包路径)；仍拿不到时抛出原来的 OSError。"""
     tool = _BY_RELATIVE[relative]
     target = _stored_path(tool)
     target.parent.mkdir(parents=True, exist_ok=True)
     urls = tuple(url.format(tag=TOOLS_RELEASE_TAG, asset=tool.asset) for url in _RELEASE_URLS)
     if tool.official_url:
         urls = (tool.official_url, *urls)
-    with _lock:
-        if not matches(target, tool.size, tool.sha256):
-            download_verified(urls, target, tool.size, tool.sha256, progress)
+    try:
+        with _lock:
+            if not matches(target, tool.size, tool.sha256):
+                download_verified(urls, target, tool.size, tool.sha256, progress)
+    except OSError as download_error:
+        package = find_downloaded_package()
+        if package is None:
+            raise
+        try:
+            import_tools_package(package)
+        except (OSError, zipfile.BadZipFile):
+            raise download_error from None  # 工具包坏了就当没有，报原来的下载错误
+        stored = find_stored(relative)
+        if stored is None:
+            raise
+        if on_imported is not None:
+            on_imported(package)
+        return stored
     return target
+
+
+def downloads_dir() -> Path:
+    """当前用户的「下载」文件夹：按系统登记的位置（用户可能移到了别的盘），取不到时用 主目录/Downloads。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _GUID(ctypes.Structure):
+            _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD),
+                        ("Data3", wintypes.WORD), ("Data4", ctypes.c_ubyte * 8)]
+
+        # FOLDERID_Downloads {374DE290-123F-4565-9164-39C4925E467B}
+        folder_id = _GUID(0x374DE290, 0x123F, 0x4565,
+                          (ctypes.c_ubyte * 8)(0x91, 0x64, 0x39, 0xC4, 0x92, 0x5E, 0x46, 0x7B))
+        buffer = ctypes.c_wchar_p()
+        shell32 = ctypes.windll.shell32
+        if shell32.SHGetKnownFolderPath(ctypes.byref(folder_id), 0, None, ctypes.byref(buffer)) == 0:
+            try:
+                return Path(buffer.value)
+            finally:
+                ctypes.windll.ole32.CoTaskMemFree(buffer)
+    except (AttributeError, OSError):
+        pass
+    return Path.home() / "Downloads"
+
+
+def _is_package_name(name: str) -> bool:
+    """当前版本工具包的文件名：DSTCamp-tools-N.zip，或浏览器重复下载时加的「 (1)」「(1)」后缀。"""
+    stem = TOOLS_PACKAGE_NAME[:-len(".zip")]
+    return re.fullmatch(re.escape(stem) + r"(?: ?\(\d+\))?\.zip", name, re.IGNORECASE) is not None
+
+
+def find_downloaded_package() -> Path | None:
+    """「下载」文件夹顶层里当前版本的工具包，有多个时取最新的；只按文件名精确认，不递归、不碰别的文件。"""
+    try:
+        candidates = [entry for entry in downloads_dir().iterdir()
+                      if _is_package_name(entry.name) and entry.is_file()]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda entry: entry.stat().st_mtime)
+    except OSError:
+        return None
 
 
 def is_tools_package(package: Path) -> bool:

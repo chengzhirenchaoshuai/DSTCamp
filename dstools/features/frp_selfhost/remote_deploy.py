@@ -227,10 +227,20 @@ def _local_frps_binary_xz(arch: str, on_log: LogFn) -> Path | None:
             on_log(f"  已下载 {shown[0]}%")
 
     try:
-        return tool_store.download_tool(relative, progress)
+        return tool_store.download_tool(
+            relative, progress, lambda package: on_log(f"自动下载失败，已从「下载」文件夹的工具包 {package} 导入。"))
     except OSError as exc:
-        on_log(f"下载 frps 失败（{exc}），改为让服务器自己下载。")
+        on_log(f"下载 frps 失败（{exc}），改为让服务器自己下载。{_tools_package_hint()}")
         return None
+
+
+def _tools_package_hint() -> str:
+    """本机和服务器都下载不到 frps 时的出路：网盘工具包放进「下载」文件夹，重新部署时自动导入。"""
+    from dstools.shared import tool_store
+
+    return (f"如果服务器也下载失败：从蓝奏云（{tool_store.TOOLS_LANZOU_URL}，密码 {tool_store.TOOLS_LANZOU_PASSWORD}）"
+            f"下载工具包 {tool_store.TOOLS_PACKAGE_NAME}，放在「下载」文件夹里后重新部署，程序会自动导入，"
+            f"不再需要服务器访问 GitHub。")
 
 
 def _detect_remote_arch(client: paramiko.SSHClient) -> str:
@@ -438,7 +448,11 @@ def deploy_via_ssh(
                 f"dstcamp-frps 自己），已跳过安装/更新。请换一个端口，或者先在服务器上"
                 f"停掉占用这个端口的服务，再重新部署。")
         elif exit_code != 0:
-            raise RemoteDeployError(f"部署脚本执行失败（退出码 {exit_code}），请查看上面的日志定位原因")
+            message = f"部署脚本执行失败（退出码 {exit_code}），请查看上面的日志定位原因"
+            # 走的是服务器自己从 GitHub 下载，失败多半卡在这一步；工具包只有 amd64/arm64 的 frps
+            if not remote_frps_path and _detect_remote_arch(client) in _BUNDLED_ARCHS:
+                message += f"。{_tools_package_hint()}"
+            raise RemoteDeployError(message)
         on_log("部署完成。")
         return True
     except (paramiko.SSHException, OSError) as e:

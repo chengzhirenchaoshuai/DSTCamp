@@ -29,6 +29,7 @@ from dstools.shared.app_settings import (
 from dstools.shared.custom_background import (
     clear_custom_bg_image, get_custom_bg_path, set_custom_bg_image,
 )
+from dstools.shared import tool_store
 from dstools.shared.font_styles import FONT_FAMILY_BY_STYLE, FONT_STYLE_NAMES
 from dstools.shared.resource_paths import cache_root_dir, default_cache_root_dir, validate_cache_root
 from dstools.shared.update_check import check_latest_release, is_newer_version
@@ -743,11 +744,13 @@ class ManualUpdateDialog(dialogs.Dialog):
     def __init__(self, parent):
         super().__init__(parent, t("about.manual_update_title"), 480)
         self.picked_package: Path | None = None
-        self.body.addWidget(self.text_label(t("about.manual_update_hint")))
+        self.body.addWidget(self.text_label(t("about.manual_update_hint", package=tool_store.TOOLS_PACKAGE_NAME)))
         links = (
             (t("about.manual_update_baidu"), "https://pan.baidu.com/s/1hnyarybAGHjOsCCyUNlsmw?pwd=6666", None),
             (t("about.manual_update_quark"), "https://pan.quark.cn/s/80446b171dc7?pwd=SmW6", None),
             (t("about.manual_update_lanzou"), "https://wwblt.lanzout.com/b01euospla", "45w9"),
+            (t("about.manual_update_tools", password=tool_store.TOOLS_LANZOU_PASSWORD),
+             tool_store.TOOLS_LANZOU_URL, tool_store.TOOLS_LANZOU_PASSWORD),
         )
         for label, url, code in links:
             link = QLabel(f'<a href="{url}">{label}</a>')

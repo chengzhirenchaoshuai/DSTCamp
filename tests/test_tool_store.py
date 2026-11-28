@@ -54,6 +54,33 @@ def test_download_tries_official_then_mirrors_and_verifies() -> None:
         assert tool_store.find_stored(tool.relative) == path
 
 
+def test_download_failure_falls_back_to_package_in_downloads() -> None:
+    """网络下载失败时导入「下载」文件夹里当前版本的工具包（认浏览器加的 (1) 后缀，别的 zip 不碰）；没有就报原错误。"""
+    payload = lzma.compress(b"demo-tool")
+    tool = _fake_tool(payload)
+    current = tool_store.TOOLS_PACKAGE_NAME[:-len(".zip")]
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.dict(tool_store._BY_RELATIVE, {tool.relative: tool}, clear=True), \
+            patch.dict(tool_store._BY_ASSET, {tool.asset: tool}, clear=True), \
+            patch.object(tool_store, "data_dir", return_value=Path(directory) / "tools"), \
+            patch.object(tool_store, "downloads_dir", return_value=Path(directory)), \
+            patch.object(http_download.urllib.request, "urlopen",
+                         side_effect=http_download.urllib.error.URLError("不通")):
+        with zipfile.ZipFile(Path(directory) / "DSTCamp-tools-1.zip", "w") as archive:
+            archive.writestr("demo.exe.xz", payload)
+        try:
+            tool_store.download_tool(tool.relative)
+            raise AssertionError("旧版本的工具包不该被导入")
+        except OSError:
+            pass
+        package = Path(directory) / f"{current} (1).zip"
+        with zipfile.ZipFile(package, "w") as archive:
+            archive.writestr("demo.exe.xz", payload)
+        imported = []
+        path = tool_store.download_tool(tool.relative, on_imported=imported.append)
+        assert path.read_bytes() == payload and imported == [package]
+
+
 def test_tools_package_import_and_frozen_lookup() -> None:
     """工具包逐个校验后导入（可带一层目录，篡改的拒收）；发布版 EXE 里没有该工具时从导入的副本解压运行。"""
     payload = lzma.compress(b"demo-tool-binary")
