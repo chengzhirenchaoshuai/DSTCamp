@@ -187,6 +187,16 @@ def verify_key_login(
                        auth_timeout=connect_timeout)
         on_log("验证成功，以后连接这台服务器不再需要密码。")
         return True
+    except paramiko.BadAuthenticationType as e:
+        if "publickey" in (e.allowed_types or []):
+            raise RemoteDeployError(f"密钥验证失败（公钥可能没有正确推送）: {e}") from e
+        # 公钥已推送成功，但服务器 sshd 关闭了密钥登录（allowed types 里没有 publickey）
+        raise RemoteDeployError(
+            f"服务器只允许 {'、'.join(e.allowed_types or []) or '其它方式'} 登录，关闭了密钥登录"
+            "（公钥已推送成功，不是公钥的问题）。请用 root 在服务器上执行 "
+            "grep -rin PubkeyAuthentication /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ ，"
+            "把查到的 PubkeyAuthentication no 改成 yes（若有 AuthenticationMethods password 一行也删掉），"
+            "再执行 systemctl restart ssh（CentOS 等为 sshd）后重新鉴权。") from e
     except paramiko.AuthenticationException as e:
         raise RemoteDeployError(f"密钥验证失败（公钥可能没有正确推送）: {e}") from e
     except (paramiko.SSHException, OSError) as e:
